@@ -53,7 +53,6 @@ export default function Home() {
   const [editingCharIndex, setEditingCharIndex] = useState<number | null>(null);
   const [selectedScenarioId, setSelectedScenarioId] = useState<string>("");
   
-  // ★ 部屋を立てる時に自分が使うキャラクターID
   const [hostCharId, setHostCharId] = useState<string>("");
 
   const [rooms, setRooms] = useState<Room[]>([]);
@@ -74,7 +73,6 @@ export default function Home() {
 
   const activeScenario = scenarios.find((s) => s.id === selectedScenarioId) || scenarios[0];
 
-  // ★ シーン情報のフォールバック（古い部屋対策）
   const defaultScene: Scene = { id: "scene_main", name: "メインルーム", memberIds: [] };
   const myScene = activeRoom?.scenes?.find(s => joinedCharacter && s.memberIds.includes(joinedCharacter.id)) || activeRoom?.scenes?.[0] || defaultScene;
 
@@ -110,7 +108,6 @@ export default function Home() {
     if (data) {
       setCurrentUser({ id: data.id, handleName: data.handle_name, avatarUrl: data.avatar_url, bio: data.bio });
     } else {
-      // ★ エラー修正箇所：avatar_url をプロパティ名に指定
       const newProfile = { id: userId, handle_name: emailStr.split("@")[0], avatar_url: DEFAULT_AVATAR, bio: "よろしくお願いします。" };
       await supabase.from('profiles').insert(newProfile);
       setCurrentUser({ id: userId, handleName: newProfile.handle_name, avatarUrl: newProfile.avatar_url, bio: newProfile.bio });
@@ -127,7 +124,6 @@ export default function Home() {
     initApp();
   }, []);
 
-  // シナリオが切り替わった時、選択中のキャラをリセットする
   useEffect(() => {
     setHostCharId("");
   }, [selectedScenarioId]);
@@ -188,13 +184,11 @@ export default function Home() {
   const handleJoinRoom = (room: Room, character: Character) => {
     if (!currentUser) return;
     setActiveRoom(room); setJoinedCharacter(character);
-    // 入室先の初期シーン
     const targetSceneId = room.scenes?.[0]?.id || "scene_main";
     setMessages([{ sender: "gm", text: `【セッション入室】\nシナリオ：「${room.scenario?.title}」\nプレイヤー：${currentUser.handleName}\nキャラクター：${character.name}\n\nAI GM「接続完了。これより開始します。」`, type: "system", sceneId: targetSceneId }]);
     setCurrentView("game");
   };
 
-  // ★ 部屋作成と同時に選択したキャラクターで入室する
   const handleCreateRoom = async () => {
     if (!currentUser || !activeScenario) return;
     if (!hostCharId) {
@@ -205,7 +199,7 @@ export default function Home() {
     const initialScenes: Scene[] = [{
       id: `scene_main_${Date.now()}`,
       name: "メインルーム",
-      memberIds: activeScenario.presetCharacters.map(c => c.id) // 全員を初期メインルームに配置
+      memberIds: activeScenario.presetCharacters.map(c => c.id)
     }];
 
     const { data, error } = await supabase.from('rooms').insert({
@@ -219,19 +213,12 @@ export default function Home() {
       await fetchData();
       setLobbyMessages(prev => [...prev, { id: `lmsg_${Date.now()}_sys`, senderName: "システム", text: `【募集開始】${currentUser.handleName}さんが「${activeScenario.title}」の部屋を立てました！`, time: new Date().toLocaleTimeString('ja-JP', { hour: '2-digit', minute: '2-digit' }), isSystem: true }]);
       
-      // 作成した部屋オブジェクトを構築して、すぐにJoin関数を呼ぶ
       const newRoom: Room = {
-        id: data.id,
-        scenario_id: data.scenario_id,
-        scenario: activeScenario,
-        host_name: data.host_name,
-        status: data.status,
-        scenes: data.scenes
+        id: data.id, scenario_id: data.scenario_id, scenario: activeScenario,
+        host_name: data.host_name, status: data.status, scenes: data.scenes
       };
       const hostChar = activeScenario.presetCharacters.find(c => c.id === hostCharId);
-      if (hostChar) {
-        handleJoinRoom(newRoom, hostChar);
-      }
+      if (hostChar) handleJoinRoom(newRoom, hostChar);
     }
   };
 
@@ -272,6 +259,36 @@ export default function Home() {
       ...prev,
       { sender: "gm", text: `【システム】パーティーが「${splitScene1.name}」と「${splitScene2.name}」に分割されました。`, type: "system", sceneId: newScenes[0].id },
       { sender: "gm", text: `【システム】パーティーが「${splitScene1.name}」と「${splitScene2.name}」に分割されました。`, type: "system", sceneId: newScenes[1].id }
+    ]);
+  };
+
+  // ★ パーティーを1つのシーン（メインルーム）に合流させる機能
+  const executeMergeParty = async () => {
+    if(!activeRoom || !activeRoom.scenario) return;
+    
+    // 全キャラクターのIDを集める
+    const allMembers = activeRoom.scenario.presetCharacters.map(c => c.id);
+    const mainScene: Scene = {
+      id: `scene_main_${Date.now()}`,
+      name: "メインルーム",
+      memberIds: allMembers
+    };
+    
+    // DB更新
+    await supabase.from('rooms').update({ scenes: [mainScene] }).eq('id', activeRoom.id);
+    
+    // ローカル状態更新
+    setActiveRoom({...activeRoom, scenes: [mainScene]});
+
+    // システムメッセージ投下（※将来的にここにAIの要約文をくっつけます！）
+    setMessages(prev => [
+      ...prev,
+      { 
+        sender: "gm", 
+        text: `【システム】パーティーが合流しました。\n\n（※ここにAI GMによる各チームの行動要約が挿入されます）`, 
+        type: "system", 
+        sceneId: mainScene.id 
+      }
     ]);
   };
 
@@ -514,7 +531,6 @@ export default function Home() {
                 <div className="flex flex-col">
                   <div className="flex items-center gap-2 mb-0.5">
                     <span className="text-[10px] text-blue-400 font-bold border border-blue-500/50 bg-blue-900/30 px-2 py-0.5 rounded w-fit">ROOM: {activeRoom.scenario?.title}</span>
-                    {/* ★ 現在のシーン名を表示 */}
                     <span className="text-[10px] text-red-400 font-bold border border-red-500/50 bg-red-900/30 px-2 py-0.5 rounded w-fit flex items-center gap-1">
                       📍 現在地: {myScene.name}
                       {myScene.leaderId === joinedCharacter.id && <span className="text-amber-300 ml-1">👑 (Leader)</span>}
@@ -529,12 +545,20 @@ export default function Home() {
               </div>
             </div>
             <div className="flex items-center gap-2">
-              {/* ★ エラー修正箇所：activeRoom.scenes が存在するか安全に判定 */}
-              {currentUser.handleName === activeRoom.host_name && (activeRoom.scenes && activeRoom.scenes.length <= 1) && (
-                <button onClick={() => setIsSplitModalOpen(true)} className="bg-red-900/50 hover:bg-red-800/80 border border-red-500/50 text-red-300 text-[10px] px-2 py-1.5 rounded mr-4">
-                  [開発] 強制分割
-                </button>
+              
+              {/* ★ シーン数に応じて「強制分割」と「合流」ボタンを切り替える */}
+              {currentUser.handleName === activeRoom.host_name && (
+                (activeRoom.scenes && activeRoom.scenes.length <= 1) ? (
+                  <button onClick={() => setIsSplitModalOpen(true)} className="bg-red-900/50 hover:bg-red-800/80 border border-red-500/50 text-red-300 text-[10px] px-2 py-1.5 rounded mr-4">
+                    [開発] 強制分割
+                  </button>
+                ) : (
+                  <button onClick={executeMergeParty} className="bg-amber-900/50 hover:bg-amber-800/80 border border-amber-500/50 text-amber-300 text-[10px] px-2 py-1.5 rounded mr-4 shadow-lg shadow-amber-900/50">
+                    [開発] メインへ合流
+                  </button>
+                )
               )}
+
               <button onClick={() => rollDice(joinedCharacter.san, "SAN")} className="bg-cyan-700 hover:bg-cyan-600 text-white text-xs px-2 py-1 rounded font-medium">SAN ({joinedCharacter.san})</button>
               <button onClick={() => rollDice(joinedCharacter.str, "STR")} className="bg-red-700 hover:bg-red-600 text-white text-xs px-2 py-1 rounded font-medium">STR ({joinedCharacter.str})</button>
               <button onClick={() => rollDice(joinedCharacter.dex, "DEX")} className="bg-green-700 hover:bg-green-600 text-white text-xs px-2 py-1 rounded font-medium">DEX ({joinedCharacter.dex})</button>
