@@ -10,7 +10,7 @@ type Character = {
   name: string;
   job: string;
   personality: string;
-  imageUrl: string; // キャラ画像URL
+  imageUrl: string;
   hp: number;
   san: number;
   str: number;
@@ -29,8 +29,8 @@ type Scenario = {
   setting: string;
   npcList: string;
   plot: string;
-  imageUrl: string; // シナリオパッケージ画像URL
-  presetCharacters: Character[]; // シナリオに紐づくキャラクター達
+  imageUrl: string;
+  presetCharacters: Character[];
 };
 
 type Room = {
@@ -53,9 +53,8 @@ type LobbyMessage = {
   time: string;
 };
 
-// --- ダミーのプレースホルダー画像 ---
-const NO_IMAGE_SCENARIO = "https://images.unsplash.com/photo-1614729939124-03290b5609ce?auto=format&fit=crop&w=400&q=80"; // 星空のダミー
-const NO_IMAGE_CHAR = "https://images.unsplash.com/photo-1544502062-f82887f03d1c?auto=format&fit=crop&w=200&q=80"; // シルエット風ダミー
+const NO_IMAGE_SCENARIO = "https://images.unsplash.com/photo-1614729939124-03290b5609ce?auto=format&fit=crop&w=400&q=80";
+const NO_IMAGE_CHAR = "https://images.unsplash.com/photo-1544502062-f82887f03d1c?auto=format&fit=crop&w=200&q=80";
 
 export default function Home() {
   const [currentView, setCurrentView] = useState<ViewState>("lobby");
@@ -86,11 +85,9 @@ export default function Home() {
     }
   ]);
   const [editingScenario, setEditingScenario] = useState<Scenario | null>(null);
-  const [editingCharIndex, setEditingCharIndex] = useState<number | null>(null); // シナリオ編集中のキャラ編集用
+  const [editingCharIndex, setEditingCharIndex] = useState<number | null>(null);
 
   const [selectedScenarioId, setSelectedScenarioId] = useState<string>("s1");
-  const [selectedCharId, setSelectedCharId] = useState<string>("c1");
-
   const [rooms, setRooms] = useState<Room[]>([
     {
       id: "room_dummy_1",
@@ -100,7 +97,7 @@ export default function Home() {
     }
   ]);
   const [activeRoom, setActiveRoom] = useState<Room | null>(null);
-  const [joinedCharacter, setJoinedCharacter] = useState<Character | null>(null); // ゲーム参加中のキャラ
+  const [joinedCharacter, setJoinedCharacter] = useState<Character | null>(null);
 
   // ロビーチャット
   const [lobbyMessages, setLobbyMessages] = useState<LobbyMessage[]>([
@@ -115,20 +112,49 @@ export default function Home() {
   const [isLoading, setIsLoading] = useState(false);
 
   const activeScenario = scenarios.find((s) => s.id === selectedScenarioId) || scenarios[0];
-  // 選択中のシナリオの中から、選択中のキャラクターを探す
-  const activeChar = activeScenario.presetCharacters.find((c) => c.id === selectedCharId) || activeScenario.presetCharacters[0];
 
-  // --- ダイスでステータスを自動生成 (シナリオ編集時用) ---
+  // ==========================================
+  // 追加・修正した関数群
+  // ==========================================
+
+  // 1. ロビーチャット送信関数（これが抜けていました）
+  const handleSendLobby = () => {
+    if (!lobbyInput.trim()) return;
+    setLobbyMessages((prev) => [...prev, {
+      id: `lmsg_${Date.now()}`, 
+      senderName: "プレイヤー", // ロビーではキャラ未選択のため
+      text: lobbyInput,
+      time: new Date().toLocaleTimeString('ja-JP', { hour: '2-digit', minute: '2-digit' })
+    }]);
+    setLobbyInput("");
+  };
+
+  // 2. ルーム作成関数（キャラ依存を無くし、GMとして立てるように修正）
+  const handleCreateRoom = () => {
+    const newRoom: Room = {
+      id: `room_${Date.now()}`, 
+      scenario: activeScenario, 
+      hostName: "GM", 
+      status: "recruiting",
+    };
+    setRooms([newRoom, ...rooms]);
+    setLobbyMessages(prev => [...prev, {
+      id: `lmsg_${Date.now()}_sys`, senderName: "システム",
+      text: `【募集開始】「${activeScenario.title}」の募集が開始されました！`,
+      time: new Date().toLocaleTimeString('ja-JP', { hour: '2-digit', minute: '2-digit' })
+    }]);
+  };
+
+  // ==========================================
+
   const handleRollStatsForEditingChar = () => {
     if (!editingScenario || editingCharIndex === null) return;
-    
     const roll3d6x5 = () => {
       const d1 = Math.floor(Math.random() * 6) + 1;
       const d2 = Math.floor(Math.random() * 6) + 1;
       const d3 = Math.floor(Math.random() * 6) + 1;
       return (d1 + d2 + d3) * 5;
     };
-
     const str = roll3d6x5();
     const dex = roll3d6x5();
     const int = roll3d6x5();
@@ -146,26 +172,6 @@ export default function Home() {
     setEditingScenario({ ...editingScenario, presetCharacters: newChars });
   };
 
-  // --- ルーム操作 ---
-  const handleCreateRoom = () => {
-    if (!activeChar) {
-      alert("キャラクターを選択してください。");
-      return;
-    }
-    const newRoom: Room = {
-      id: `room_${Date.now()}`, scenario: activeScenario, hostName: activeChar.name, status: "recruiting",
-    };
-    setRooms([newRoom, ...rooms]);
-    setLobbyMessages(prev => [...prev, {
-      id: `lmsg_${Date.now()}_sys`, senderName: "システム",
-      text: `【募集開始】「${activeScenario.title}」の募集が開始されました！`,
-      time: new Date().toLocaleTimeString('ja-JP', { hour: '2-digit', minute: '2-digit' })
-    }]);
-    
-    // 部屋を立てた本人はそのまま入室する
-    handleJoinRoom(newRoom, activeChar);
-  };
-
   const handleJoinRoom = (room: Room, character: Character) => {
     setActiveRoom(room);
     setJoinedCharacter(character);
@@ -179,7 +185,6 @@ export default function Home() {
     setCurrentView("game");
   };
 
-  // --- セッション内チャット送信 ---
   const handleSend = () => {
     if (!input.trim() || isLoading || !activeRoom || !joinedCharacter) return;
     const userMsg: Message = { sender: "player", text: input, type: msgType };
@@ -206,7 +211,6 @@ export default function Home() {
     }]);
   };
 
-  // --- 保存処理 ---
   const saveScenario = () => {
     if (!editingScenario) return;
     if (editingScenario.id) {
@@ -286,7 +290,7 @@ export default function Home() {
                   ))}
                 </div>
                 <div className="flex gap-2">
-                  <input type="text" value={lobbyInput} onChange={(e) => setLobbyInput(e.target.value)} onKeyDown={(e) => e.key === "Enter" && handleSendLobby()} placeholder="匿名プレイヤーとして送信..." className="flex-1 bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-emerald-500" />
+                  <input type="text" value={lobbyInput} onChange={(e) => setLobbyInput(e.target.value)} onKeyDown={(e) => e.key === "Enter" && handleSendLobby()} placeholder="メッセージを入力..." className="flex-1 bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-emerald-500" />
                   <button onClick={handleSendLobby} className="bg-emerald-600 hover:bg-emerald-500 text-white px-4 py-2 rounded-lg text-sm font-bold transition">送信</button>
                 </div>
               </div>
@@ -324,11 +328,7 @@ export default function Home() {
                       ) : (
                         <div className="space-y-2">
                           {activeScenario.presetCharacters.map((char) => (
-                            <div 
-                              key={char.id} 
-                              onClick={() => setSelectedCharId(char.id)}
-                              className={`flex gap-3 p-2 rounded-lg border cursor-pointer transition ${selectedCharId === char.id ? "bg-emerald-900/40 border-emerald-500" : "bg-slate-900 border-slate-700 hover:border-slate-500"}`}
-                            >
+                            <div key={char.id} className="flex gap-3 p-2 rounded-lg border border-slate-700 bg-slate-900">
                               <img src={char.imageUrl || NO_IMAGE_CHAR} alt={char.name} className="w-12 h-12 object-cover rounded border border-slate-600" />
                               <div className="flex-1">
                                 <p className="text-sm font-bold text-white">{char.name}</p>
