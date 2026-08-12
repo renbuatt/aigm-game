@@ -12,7 +12,13 @@ type Character = {
   personality: string;
   hp: number;
   san: number;
-  str: number;
+  // 6大ステータス
+  str: number; // Strength (筋力)
+  dex: number; // Dexterity (器用さ・敏捷)
+  int: number; // Intelligence (知力)
+  con: number; // Constitution (耐久力・体力)
+  wis: number; // Wisdom (叡智・意志)
+  cha: number; // Charisma (魅力)
 };
 
 type Scenario = {
@@ -38,7 +44,6 @@ type Message = {
   type?: "ic" | "ooc" | "system";
 };
 
-// ロビーチャット用の型
 type LobbyMessage = {
   id: string;
   senderName: string;
@@ -51,7 +56,10 @@ export default function Home() {
 
   // --- データ管理 ---
   const [characters, setCharacters] = useState<Character[]>([
-    { id: "c1", name: "探索者A", job: "私立探偵", personality: "冷静沈着だが、金には汚い", hp: 12, san: 65, str: 50 },
+    { 
+      id: "c1", name: "探索者A", job: "私立探偵", personality: "冷静沈着だが、金には汚い", 
+      hp: 12, san: 65, str: 60, dex: 70, int: 75, con: 60, wis: 65, cha: 50 
+    },
   ]);
   const [editingChar, setEditingChar] = useState<Character | null>(null);
   const [selectedCharId, setSelectedCharId] = useState<string>("c1");
@@ -80,11 +88,10 @@ export default function Home() {
   ]);
   const [activeRoom, setActiveRoom] = useState<Room | null>(null);
 
-  // --- ロビーチャット管理 ---
+  // ロビーチャット
   const [lobbyMessages, setLobbyMessages] = useState<LobbyMessage[]>([
     { 
-      id: "lmsg_sys", 
-      senderName: "システム", 
+      id: "lmsg_sys", senderName: "システム", 
       text: "ロビーへようこそ！ここで他のプレイヤーと雑談したり、セッションの相談ができます。", 
       time: new Date().toLocaleTimeString('ja-JP', { hour: '2-digit', minute: '2-digit' }) 
     }
@@ -100,33 +107,53 @@ export default function Home() {
   const activeChar = characters.find((c) => c.id === selectedCharId) || characters[0];
   const activeScenario = scenarios.find((s) => s.id === selectedScenarioId) || scenarios[0];
 
+  // --- ダイスでステータスを自動生成 ---
+  const handleRollCharacterStats = () => {
+    if (!editingChar) return;
+    
+    // 3d6 * 5 のTRPG基準計算
+    const roll3d6x5 = () => {
+      const d1 = Math.floor(Math.random() * 6) + 1;
+      const d2 = Math.floor(Math.random() * 6) + 1;
+      const d3 = Math.floor(Math.random() * 6) + 1;
+      return (d1 + d2 + d3) * 5;
+    };
+
+    const str = roll3d6x5();
+    const dex = roll3d6x5();
+    const int = roll3d6x5();
+    const con = roll3d6x5();
+    const wis = roll3d6x5();
+    const cha = roll3d6x5();
+    
+    // HP = (STR + CON) / 10, SAN = WIS
+    const hp = Math.floor((str + con) / 10);
+    const san = wis;
+
+    setEditingChar({
+      ...editingChar,
+      str, dex, int, con, wis, cha, hp, san
+    });
+  };
+
   // --- ロビーチャット送信 ---
   const handleSendLobby = () => {
     if (!lobbyInput.trim()) return;
-    const newMsg: LobbyMessage = {
-      id: `lmsg_${Date.now()}`,
-      senderName: activeChar.name, // 選択中のキャラ名をプレイヤー名として使用
-      text: lobbyInput,
+    setLobbyMessages((prev) => [...prev, {
+      id: `lmsg_${Date.now()}`, senderName: activeChar.name, text: lobbyInput,
       time: new Date().toLocaleTimeString('ja-JP', { hour: '2-digit', minute: '2-digit' })
-    };
-    setLobbyMessages((prev) => [...prev, newMsg]);
+    }]);
     setLobbyInput("");
   };
 
   // --- ルーム操作 ---
   const handleCreateRoom = () => {
     const newRoom: Room = {
-      id: `room_${Date.now()}`,
-      scenario: activeScenario,
-      hostName: activeChar.name,
-      status: "recruiting",
+      id: `room_${Date.now()}`, scenario: activeScenario, hostName: activeChar.name, status: "recruiting",
     };
     setRooms([newRoom, ...rooms]);
-    
-    // 部屋を立てたことをロビーチャットにも自動通知
     setLobbyMessages(prev => [...prev, {
-      id: `lmsg_${Date.now()}_sys`,
-      senderName: "システム",
+      id: `lmsg_${Date.now()}_sys`, senderName: "システム",
       text: `【募集開始】${activeChar.name}さんが「${activeScenario.title}」の募集を開始しました！`,
       time: new Date().toLocaleTimeString('ja-JP', { hour: '2-digit', minute: '2-digit' })
     }]);
@@ -147,18 +174,15 @@ export default function Home() {
   // --- セッション内チャット送信 ---
   const handleSend = () => {
     if (!input.trim() || isLoading || !activeRoom) return;
-
     const userMsg: Message = { sender: "player", text: input, type: msgType };
     setMessages((prev) => [...prev, userMsg]);
     setInput("");
     setIsLoading(true);
 
     setTimeout(() => {
-      const replyText =
-        msgType === "ic"
-          ? `AI GM「『${userMsg.text}』ですね。シナリオ設定（NPC: ${activeRoom.scenario.npcList ? "あり" : "なし"}）を加味して描写します…」`
+      const replyText = msgType === "ic"
+          ? `AI GM「『${userMsg.text}』ですね。シナリオ設定を加味して描写します…」`
           : `AI GM (OOC)「了解しました: ${userMsg.text}」`;
-
       setMessages((prev) => [...prev, { sender: "gm", text: replyText, type: msgType }]);
       setIsLoading(false);
     }, 1000);
@@ -211,10 +235,7 @@ export default function Home() {
           </header>
 
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-            
-            {/* 左側：募集掲示板 ＆ ロビーチャット */}
             <div className="lg:col-span-2 flex flex-col gap-6">
-              
               {/* 募集中のセッション掲示板 */}
               <div>
                 <h2 className="text-xl font-bold text-blue-400 flex items-center gap-2 mb-4">🌐 現在募集中のセッション</h2>
@@ -228,17 +249,12 @@ export default function Home() {
                         <span className="bg-slate-900 px-2 py-0.5 rounded border border-slate-700">ホスト: {room.hostName}</span>
                       </div>
                       <p className="text-sm text-slate-300 mb-4 line-clamp-2">{room.scenario.tags}</p>
-                      <button
-                        onClick={() => handleJoinRoom(room)}
-                        className="w-full bg-blue-600/20 hover:bg-blue-600 text-blue-400 hover:text-white border border-blue-500/50 hover:border-blue-500 font-bold py-2 rounded-lg transition"
-                      >
+                      <button onClick={() => handleJoinRoom(room)} className="w-full bg-blue-600/20 hover:bg-blue-600 text-blue-400 hover:text-white border border-blue-500/50 hover:border-blue-500 font-bold py-2 rounded-lg transition">
                         この部屋に参加する (選択中のキャラ: {activeChar.name})
                       </button>
                     </div>
                   ))}
-                  {rooms.length === 0 && (
-                    <p className="text-slate-500 text-center py-10">現在募集中の部屋はありません。</p>
-                  )}
+                  {rooms.length === 0 && <p className="text-slate-500 text-center py-10">現在募集中の部屋はありません。</p>}
                 </div>
               </div>
 
@@ -249,79 +265,52 @@ export default function Home() {
                   {lobbyMessages.map((msg) => (
                     <div key={msg.id} className="text-sm leading-relaxed">
                       <span className="text-xs text-slate-500">[{msg.time}] </span>
-                      <span className={`font-bold ${msg.senderName === 'システム' ? 'text-amber-400' : 'text-emerald-300'}`}>
-                        {msg.senderName}: 
-                      </span>
+                      <span className={`font-bold ${msg.senderName === 'システム' ? 'text-amber-400' : 'text-emerald-300'}`}>{msg.senderName}: </span>
                       <span className="text-slate-200 ml-1">{msg.text}</span>
                     </div>
                   ))}
                 </div>
                 <div className="flex gap-2">
-                  <input
-                    type="text"
-                    value={lobbyInput}
-                    onChange={(e) => setLobbyInput(e.target.value)}
-                    onKeyDown={(e) => e.key === "Enter" && handleSendLobby()}
-                    placeholder="ロビーにいる全員へメッセージを送信..."
-                    className="flex-1 bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-emerald-500"
-                  />
-                  <button
-                    onClick={handleSendLobby}
-                    className="bg-emerald-600 hover:bg-emerald-500 text-white px-4 py-2 rounded-lg text-sm font-bold transition"
-                  >
-                    送信
-                  </button>
+                  <input type="text" value={lobbyInput} onChange={(e) => setLobbyInput(e.target.value)} onKeyDown={(e) => e.key === "Enter" && handleSendLobby()} placeholder="ロビーにいる全員へメッセージを送信..." className="flex-1 bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-emerald-500" />
+                  <button onClick={handleSendLobby} className="bg-emerald-600 hover:bg-emerald-500 text-white px-4 py-2 rounded-lg text-sm font-bold transition">送信</button>
                 </div>
               </div>
-
             </div>
 
             {/* 右側：自分のデータ管理＆部屋立て */}
             <div className="space-y-6">
-              {/* キャラクター選択 */}
               <div className="bg-slate-800 border border-slate-700 rounded-xl p-4">
                 <div className="flex justify-between items-center mb-3">
                   <h2 className="text-sm font-bold text-emerald-400">👤 参加キャラクター</h2>
-                  <button onClick={() => { setEditingChar({ id: "", name: "", job: "", personality: "", hp: 10, san: 50, str: 50 }); setCurrentView("characterEdit"); }} className="text-[10px] bg-slate-700 px-2 py-1 rounded hover:bg-slate-600">＋ 新規</button>
+                  <button onClick={() => { setEditingChar({ id: "", name: "", job: "", personality: "", hp: 10, san: 50, str: 50, dex: 50, int: 50, con: 50, wis: 50, cha: 50 }); setCurrentView("characterEdit"); }} className="text-[10px] bg-slate-700 px-2 py-1 rounded hover:bg-slate-600">＋ 新規</button>
                 </div>
-                <select 
-                  value={selectedCharId} 
-                  onChange={(e) => setSelectedCharId(e.target.value)}
-                  className="w-full bg-slate-900 border border-slate-700 rounded-lg p-2 text-sm text-white focus:border-emerald-500 outline-none mb-2"
-                >
+                <select value={selectedCharId} onChange={(e) => setSelectedCharId(e.target.value)} className="w-full bg-slate-900 border border-slate-700 rounded-lg p-2 text-sm text-white focus:border-emerald-500 outline-none mb-2">
                   {characters.map(c => <option key={c.id} value={c.id}>{c.name} ({c.job})</option>)}
                 </select>
-                <div className="text-xs text-slate-400 flex justify-between">
-                  <span>HP:{activeChar?.hp} / SAN:{activeChar?.san}</span>
-                  <button onClick={() => { setEditingChar(activeChar); setCurrentView("characterEdit"); }} className="underline hover:text-white">編集</button>
+                <div className="text-xs text-slate-400 flex flex-col gap-1 mb-2">
+                  <div className="flex justify-between"><span>HP: {activeChar?.hp}</span><span>SAN: {activeChar?.san}</span></div>
+                  <div className="grid grid-cols-3 gap-1 mt-1 opacity-70">
+                    <span>STR: {activeChar?.str}</span><span>DEX: {activeChar?.dex}</span><span>INT: {activeChar?.int}</span>
+                    <span>CON: {activeChar?.con}</span><span>WIS: {activeChar?.wis}</span><span>CHA: {activeChar?.cha}</span>
+                  </div>
                 </div>
+                <div className="text-right"><button onClick={() => { setEditingChar(activeChar); setCurrentView("characterEdit"); }} className="text-xs underline hover:text-white">編集</button></div>
               </div>
 
-              {/* シナリオ管理＆部屋立て */}
               <div className="bg-slate-800 border border-slate-700 rounded-xl p-4">
                 <div className="flex justify-between items-center mb-3">
                   <h2 className="text-sm font-bold text-amber-400">📜 自分で部屋を立てる (GM)</h2>
                   <button onClick={() => { setEditingScenario({ id: "", title: "", system: "", tags: "", setting: "", npcList: "", plot: "" }); setCurrentView("scenarioEdit"); }} className="text-[10px] bg-slate-700 px-2 py-1 rounded hover:bg-slate-600">＋ 新規シナリオ</button>
                 </div>
-                <select 
-                  value={selectedScenarioId} 
-                  onChange={(e) => setSelectedScenarioId(e.target.value)}
-                  className="w-full bg-slate-900 border border-slate-700 rounded-lg p-2 text-sm text-white focus:border-amber-500 outline-none mb-3"
-                >
+                <select value={selectedScenarioId} onChange={(e) => setSelectedScenarioId(e.target.value)} className="w-full bg-slate-900 border border-slate-700 rounded-lg p-2 text-sm text-white focus:border-amber-500 outline-none mb-3">
                   {scenarios.map(s => <option key={s.id} value={s.id}>{s.title}</option>)}
                 </select>
                 <div className="text-xs text-slate-400 text-right mb-4">
                   <button onClick={() => { setEditingScenario(activeScenario); setCurrentView("scenarioEdit"); }} className="underline hover:text-white">シナリオを編集</button>
                 </div>
-                <button
-                  onClick={handleCreateRoom}
-                  className="w-full bg-amber-600 hover:bg-amber-500 text-white font-bold py-3 rounded-lg transition shadow-lg shadow-amber-900/50"
-                >
-                  このシナリオで募集を開始
-                </button>
+                <button onClick={handleCreateRoom} className="w-full bg-amber-600 hover:bg-amber-500 text-white font-bold py-3 rounded-lg transition shadow-lg shadow-amber-900/50">このシナリオで募集を開始</button>
               </div>
             </div>
-
           </div>
         </div>
       )}
@@ -329,36 +318,16 @@ export default function Home() {
       {/* ==================== 2. シナリオ作成・編集画面 ==================== */}
       {currentView === "scenarioEdit" && editingScenario && (
         <div className="flex-1 flex flex-col items-center p-6 max-w-3xl mx-auto w-full overflow-y-auto custom-scrollbar">
-          <h2 className="text-2xl font-bold text-amber-400 mb-6 w-full">
-            {editingScenario.id ? "シナリオ編集" : "シナリオ新規作成"}
-          </h2>
+          <h2 className="text-2xl font-bold text-amber-400 mb-6 w-full">{editingScenario.id ? "シナリオ編集" : "シナリオ新規作成"}</h2>
           <div className="w-full bg-slate-800 border border-slate-700 rounded-xl p-5 space-y-5">
-            <div>
-              <label className="text-sm font-semibold text-amber-200 block mb-1">シナリオタイトル</label>
-              <input type="text" value={editingScenario.title} onChange={(e) => setEditingScenario({ ...editingScenario, title: e.target.value })} className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white focus:border-amber-500 outline-none" />
-            </div>
+            <div><label className="text-sm font-semibold text-amber-200 block mb-1">シナリオタイトル</label><input type="text" value={editingScenario.title} onChange={(e) => setEditingScenario({ ...editingScenario, title: e.target.value })} className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white focus:border-amber-500 outline-none" /></div>
             <div className="grid grid-cols-2 gap-4">
-              <div>
-                <label className="text-sm font-semibold text-amber-200 block mb-1">システム (ルール)</label>
-                <input type="text" placeholder="例: クトゥルフ6版, エモクロア" value={editingScenario.system} onChange={(e) => setEditingScenario({ ...editingScenario, system: e.target.value })} className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white focus:border-amber-500 outline-none" />
-              </div>
-              <div>
-                <label className="text-sm font-semibold text-amber-200 block mb-1">タグ (傾向・難易度)</label>
-                <input type="text" placeholder="例: クローズド, 戦闘あり" value={editingScenario.tags} onChange={(e) => setEditingScenario({ ...editingScenario, tags: e.target.value })} className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white focus:border-amber-500 outline-none" />
-              </div>
+              <div><label className="text-sm font-semibold text-amber-200 block mb-1">システム (ルール)</label><input type="text" value={editingScenario.system} onChange={(e) => setEditingScenario({ ...editingScenario, system: e.target.value })} className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white focus:border-amber-500 outline-none" /></div>
+              <div><label className="text-sm font-semibold text-amber-200 block mb-1">タグ (傾向・難易度)</label><input type="text" value={editingScenario.tags} onChange={(e) => setEditingScenario({ ...editingScenario, tags: e.target.value })} className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white focus:border-amber-500 outline-none" /></div>
             </div>
-            <div>
-              <label className="text-sm font-semibold text-amber-200 block mb-1">世界観・システム設定</label>
-              <textarea value={editingScenario.setting} onChange={(e) => setEditingScenario({ ...editingScenario, setting: e.target.value })} className="w-full h-20 bg-slate-900 border border-slate-700 rounded-lg p-3 text-sm text-white focus:border-amber-500 outline-none" />
-            </div>
-            <div>
-              <label className="text-sm font-semibold text-amber-200 block mb-1">NPC一覧・設定</label>
-              <textarea placeholder="名前・性格・秘密などを記述" value={editingScenario.npcList} onChange={(e) => setEditingScenario({ ...editingScenario, npcList: e.target.value })} className="w-full h-24 bg-slate-900 border border-slate-700 rounded-lg p-3 text-sm text-white focus:border-amber-500 outline-none" />
-            </div>
-            <div>
-              <label className="text-sm font-semibold text-amber-200 block mb-1">プロット・シナリオ進行</label>
-              <textarea value={editingScenario.plot} onChange={(e) => setEditingScenario({ ...editingScenario, plot: e.target.value })} className="w-full h-40 bg-slate-900 border border-slate-700 rounded-lg p-3 text-sm text-white focus:border-amber-500 outline-none" />
-            </div>
+            <div><label className="text-sm font-semibold text-amber-200 block mb-1">世界観・システム設定</label><textarea value={editingScenario.setting} onChange={(e) => setEditingScenario({ ...editingScenario, setting: e.target.value })} className="w-full h-20 bg-slate-900 border border-slate-700 rounded-lg p-3 text-sm text-white focus:border-amber-500 outline-none" /></div>
+            <div><label className="text-sm font-semibold text-amber-200 block mb-1">NPC一覧・設定</label><textarea value={editingScenario.npcList} onChange={(e) => setEditingScenario({ ...editingScenario, npcList: e.target.value })} className="w-full h-24 bg-slate-900 border border-slate-700 rounded-lg p-3 text-sm text-white focus:border-amber-500 outline-none" /></div>
+            <div><label className="text-sm font-semibold text-amber-200 block mb-1">プロット・シナリオ進行</label><textarea value={editingScenario.plot} onChange={(e) => setEditingScenario({ ...editingScenario, plot: e.target.value })} className="w-full h-40 bg-slate-900 border border-slate-700 rounded-lg p-3 text-sm text-white focus:border-amber-500 outline-none" /></div>
             <div className="flex gap-3 pt-4 border-t border-slate-700">
               <button onClick={() => setCurrentView("lobby")} className="flex-1 bg-slate-700 hover:bg-slate-600 text-white font-semibold py-3 rounded-lg transition">キャンセル</button>
               <button onClick={saveScenario} className="flex-1 bg-amber-600 hover:bg-amber-500 text-white font-semibold py-3 rounded-lg transition">保存する</button>
@@ -369,27 +338,42 @@ export default function Home() {
 
       {/* ==================== 3. キャラクター作成・編集画面 ==================== */}
       {currentView === "characterEdit" && editingChar && (
-        <div className="flex-1 flex flex-col items-center justify-center p-6 max-w-md mx-auto w-full">
+        <div className="flex-1 flex flex-col items-center justify-center p-6 max-w-2xl mx-auto w-full overflow-y-auto">
           <h2 className="text-2xl font-bold text-emerald-400 mb-6 w-full">{editingChar.id ? "キャラクター編集" : "キャラクター新規作成"}</h2>
-          <div className="w-full bg-slate-800 border border-slate-700 rounded-xl p-5 space-y-4">
-            <div>
-              <label className="text-xs text-slate-400 block mb-1">名前</label>
-              <input type="text" value={editingChar.name} onChange={(e) => setEditingChar({ ...editingChar, name: e.target.value })} className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white focus:border-emerald-500 outline-none" />
+          <div className="w-full bg-slate-800 border border-slate-700 rounded-xl p-5 space-y-5">
+            
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div><label className="text-xs text-slate-400 block mb-1">名前</label><input type="text" value={editingChar.name} onChange={(e) => setEditingChar({ ...editingChar, name: e.target.value })} className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white focus:border-emerald-500 outline-none" /></div>
+              <div><label className="text-xs text-slate-400 block mb-1">職業</label><input type="text" value={editingChar.job} onChange={(e) => setEditingChar({ ...editingChar, job: e.target.value })} className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white focus:border-emerald-500 outline-none" /></div>
             </div>
-            <div>
-              <label className="text-xs text-slate-400 block mb-1">職業</label>
-              <input type="text" value={editingChar.job} onChange={(e) => setEditingChar({ ...editingChar, job: e.target.value })} className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white focus:border-emerald-500 outline-none" />
+            
+            <div><label className="text-xs text-slate-400 block mb-1">性格・特徴</label><textarea value={editingChar.personality} onChange={(e) => setEditingChar({ ...editingChar, personality: e.target.value })} className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white h-20 focus:border-emerald-500 outline-none" /></div>
+            
+            {/* ステータス入力＆ダイスボタンエリア */}
+            <div className="bg-slate-900/50 border border-slate-700 p-4 rounded-lg">
+              <div className="flex justify-between items-center mb-3">
+                <label className="text-sm font-bold text-emerald-400">パラメーター</label>
+                <button onClick={handleRollCharacterStats} className="bg-purple-600 hover:bg-purple-500 text-white text-xs font-bold px-3 py-1.5 rounded flex items-center gap-1 transition">
+                  🎲 ダイスで一括生成
+                </button>
+              </div>
+              
+              <div className="grid grid-cols-3 md:grid-cols-6 gap-3 mb-4">
+                <div><label className="text-[10px] text-slate-400 block mb-1">STR (筋力)</label><input type="number" value={editingChar.str} onChange={(e) => setEditingChar({ ...editingChar, str: Number(e.target.value) })} className="w-full bg-slate-900 border border-slate-700 rounded p-1.5 text-sm text-white text-center focus:border-emerald-500 outline-none" /></div>
+                <div><label className="text-[10px] text-slate-400 block mb-1">DEX (敏捷)</label><input type="number" value={editingChar.dex} onChange={(e) => setEditingChar({ ...editingChar, dex: Number(e.target.value) })} className="w-full bg-slate-900 border border-slate-700 rounded p-1.5 text-sm text-white text-center focus:border-emerald-500 outline-none" /></div>
+                <div><label className="text-[10px] text-slate-400 block mb-1">INT (知力)</label><input type="number" value={editingChar.int} onChange={(e) => setEditingChar({ ...editingChar, int: Number(e.target.value) })} className="w-full bg-slate-900 border border-slate-700 rounded p-1.5 text-sm text-white text-center focus:border-emerald-500 outline-none" /></div>
+                <div><label className="text-[10px] text-slate-400 block mb-1">CON (体力)</label><input type="number" value={editingChar.con} onChange={(e) => setEditingChar({ ...editingChar, con: Number(e.target.value) })} className="w-full bg-slate-900 border border-slate-700 rounded p-1.5 text-sm text-white text-center focus:border-emerald-500 outline-none" /></div>
+                <div><label className="text-[10px] text-slate-400 block mb-1">WIS (意志)</label><input type="number" value={editingChar.wis} onChange={(e) => setEditingChar({ ...editingChar, wis: Number(e.target.value) })} className="w-full bg-slate-900 border border-slate-700 rounded p-1.5 text-sm text-white text-center focus:border-emerald-500 outline-none" /></div>
+                <div><label className="text-[10px] text-slate-400 block mb-1">CHA (魅力)</label><input type="number" value={editingChar.cha} onChange={(e) => setEditingChar({ ...editingChar, cha: Number(e.target.value) })} className="w-full bg-slate-900 border border-slate-700 rounded p-1.5 text-sm text-white text-center focus:border-emerald-500 outline-none" /></div>
+              </div>
+              
+              <div className="grid grid-cols-2 gap-4 border-t border-slate-700 pt-3">
+                <div><label className="text-[10px] text-slate-400 block mb-1">HP (耐久値)</label><input type="number" value={editingChar.hp} onChange={(e) => setEditingChar({ ...editingChar, hp: Number(e.target.value) })} className="w-full bg-slate-900 border border-slate-700 rounded p-2 text-sm text-white text-center focus:border-emerald-500 outline-none" /></div>
+                <div><label className="text-[10px] text-slate-400 block mb-1">SAN (正気度)</label><input type="number" value={editingChar.san} onChange={(e) => setEditingChar({ ...editingChar, san: Number(e.target.value) })} className="w-full bg-slate-900 border border-slate-700 rounded p-2 text-sm text-white text-center focus:border-emerald-500 outline-none" /></div>
+              </div>
             </div>
-            <div>
-              <label className="text-xs text-slate-400 block mb-1">性格・特徴</label>
-              <textarea value={editingChar.personality} onChange={(e) => setEditingChar({ ...editingChar, personality: e.target.value })} className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white h-20 focus:border-emerald-500 outline-none" />
-            </div>
-            <div className="grid grid-cols-3 gap-3">
-              <div><label className="text-xs text-slate-400 block mb-1">HP</label><input type="number" value={editingChar.hp} onChange={(e) => setEditingChar({ ...editingChar, hp: Number(e.target.value) })} className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white text-center focus:border-emerald-500 outline-none" /></div>
-              <div><label className="text-xs text-slate-400 block mb-1">SAN</label><input type="number" value={editingChar.san} onChange={(e) => setEditingChar({ ...editingChar, san: Number(e.target.value) })} className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white text-center focus:border-emerald-500 outline-none" /></div>
-              <div><label className="text-xs text-slate-400 block mb-1">STR</label><input type="number" value={editingChar.str} onChange={(e) => setEditingChar({ ...editingChar, str: Number(e.target.value) })} className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white text-center focus:border-emerald-500 outline-none" /></div>
-            </div>
-            <div className="flex gap-3 mt-4">
+
+            <div className="flex gap-3 pt-2">
               <button onClick={() => setCurrentView("lobby")} className="flex-1 bg-slate-700 hover:bg-slate-600 text-white font-semibold py-2.5 rounded-lg transition">キャンセル</button>
               <button onClick={saveCharacter} className="flex-1 bg-emerald-600 hover:bg-emerald-500 text-white font-semibold py-2.5 rounded-lg transition">保存する</button>
             </div>
@@ -411,9 +395,10 @@ export default function Home() {
               </div>
             </div>
             <div className="flex items-center gap-2">
-              <button onClick={() => rollDice(activeChar.san, "SAN")} className="bg-cyan-700 hover:bg-cyan-600 text-white text-xs px-2.5 py-1.5 rounded font-medium">SAN ({activeChar.san})</button>
-              <button onClick={() => rollDice(50, "目星")} className="bg-purple-700 hover:bg-purple-600 text-white text-xs px-2.5 py-1.5 rounded font-medium">目星 (50)</button>
-              <button onClick={() => rollDice(activeChar.str, "STR")} className="bg-amber-700 hover:bg-amber-600 text-white text-xs px-2.5 py-1.5 rounded font-medium">STR ({activeChar.str})</button>
+              <button onClick={() => rollDice(activeChar.san, "SAN")} className="bg-cyan-700 hover:bg-cyan-600 text-white text-xs px-2 py-1 rounded font-medium">SAN ({activeChar.san})</button>
+              <button onClick={() => rollDice(activeChar.str, "STR")} className="bg-red-700 hover:bg-red-600 text-white text-xs px-2 py-1 rounded font-medium">STR ({activeChar.str})</button>
+              <button onClick={() => rollDice(activeChar.dex, "DEX")} className="bg-green-700 hover:bg-green-600 text-white text-xs px-2 py-1 rounded font-medium">DEX ({activeChar.dex})</button>
+              <button onClick={() => rollDice(activeChar.int, "INT")} className="bg-blue-700 hover:bg-blue-600 text-white text-xs px-2 py-1 rounded font-medium">INT ({activeChar.int})</button>
             </div>
           </header>
 
