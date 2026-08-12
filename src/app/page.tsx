@@ -1,9 +1,9 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { createClient } from "@supabase/supabase-js"; // ★追加: Supabase連携ツール
+import { createClient } from "@supabase/supabase-js";
 
-// --- ★追加: Supabaseクライアントの準備 ---
+// --- Supabaseクライアントの準備 ---
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || "";
 const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || "";
 const supabase = createClient(supabaseUrl, supabaseAnonKey);
@@ -11,12 +11,7 @@ const supabase = createClient(supabaseUrl, supabaseAnonKey);
 // --- 型定義 ---
 type ViewState = "login" | "lobby" | "scenarioEdit" | "game";
 
-type UserProfile = {
-  id: string;
-  handleName: string;
-  avatarUrl: string;
-  bio: string;
-};
+type UserProfile = { id: string; handleName: string; avatarUrl: string; bio: string; };
 
 type Character = {
   id: string; name: string; job: string; personality: string; imageUrl: string;
@@ -50,23 +45,12 @@ export default function Home() {
   const [isEditingProfile, setIsEditingProfile] = useState(false);
   const [editProfileData, setEditProfileData] = useState<UserProfile | null>(null);
 
-  // --- ゲームデータ管理（仮データ） ---
-  const [scenarios, setScenarios] = useState<Scenario[]>([
-    {
-      id: "s1", title: "チュートリアル：閉ざされた部屋", system: "オリジナルクトゥルフ", tags: "クローズド / 謎解き",
-      setting: "現代日本。探索者は見知らぬ部屋で目を覚ます。", npcList: "【謎の少女】部屋の隅で震えている。",
-      plot: "1. 導入: 廃屋で目を覚ます。\n2. 探索: 少女と会話し、鍵と日記を発見。\n3. 結末: 脱出。",
-      imageUrl: "https://images.unsplash.com/photo-1518709268805-4e9042af9f23?auto=format&fit=crop&w=400&q=80",
-      presetCharacters: [
-        { id: "c1", name: "探索者A", job: "私立探偵", personality: "冷静沈着", imageUrl: "https://images.unsplash.com/photo-1500648767791-00dcc994a43e?auto=format&fit=crop&w=200&q=80", hp: 12, san: 65, str: 60, dex: 70, int: 75, con: 60, wis: 65, cha: 50 },
-        { id: "c2", name: "探索者B", job: "学生", personality: "無鉄砲", imageUrl: "https://images.unsplash.com/photo-1599566150163-29194dcaad36?auto=format&fit=crop&w=200&q=80", hp: 10, san: 70, str: 40, dex: 60, int: 80, con: 50, wis: 70, cha: 65 }
-      ]
-    }
-  ]);
+  // --- ゲームデータ管理 ---
+  const [scenarios, setScenarios] = useState<Scenario[]>([]);
   const [editingScenario, setEditingScenario] = useState<Scenario | null>(null);
   const [editingCharIndex, setEditingCharIndex] = useState<number | null>(null);
-  const [selectedScenarioId, setSelectedScenarioId] = useState<string>("s1");
-  const [rooms, setRooms] = useState<Room[]>([{ id: "room_dummy_1", scenario: scenarios[0], hostName: "ベテランGM", status: "recruiting" }]);
+  const [selectedScenarioId, setSelectedScenarioId] = useState<string>("");
+  const [rooms, setRooms] = useState<Room[]>([]);
   const [activeRoom, setActiveRoom] = useState<Room | null>(null);
   const [joinedCharacter, setJoinedCharacter] = useState<Character | null>(null);
   const [lobbyMessages, setLobbyMessages] = useState<LobbyMessage[]>([{ id: "lmsg_sys", senderName: "システム", text: "ロビーへようこそ！", time: new Date().toLocaleTimeString('ja-JP', { hour: '2-digit', minute: '2-digit' }), isSystem: true }]);
@@ -79,49 +63,66 @@ export default function Home() {
   const activeScenario = scenarios.find((s) => s.id === selectedScenarioId) || scenarios[0];
 
   // ==========================================
-  // ★ 本物の認証処理 (Supabase連携)
+  // ★ Supabase データ取得処理
   // ==========================================
   
-  // 画面を開いた時に、すでにログインしているかチェック
+  // シナリオ一覧を取得
+  const fetchScenarios = async () => {
+    const { data, error } = await supabase.from('scenarios').select('*').order('id', { ascending: false });
+    if (data && data.length > 0) {
+      const formatted = data.map((d: any) => ({
+        id: d.id, title: d.title, system: d.system, tags: d.tags, setting: d.setting,
+        npcList: d.npc_list, plot: d.plot, imageUrl: d.image_url, presetCharacters: d.preset_characters || []
+      }));
+      setScenarios(formatted);
+      setSelectedScenarioId(formatted[0].id);
+    }
+  };
+
+  // ユーザープロフィールを取得（なければ作成）
+  const fetchProfile = async (userId: string, emailStr: string) => {
+    const { data, error } = await supabase.from('profiles').select('*').eq('id', userId).single();
+    if (data) {
+      setCurrentUser({ id: data.id, handleName: data.handle_name, avatarUrl: data.avatar_url, bio: data.bio });
+    } else {
+      // 初回ログイン時はプロフィールを作成
+      const newProfile = { id: userId, handle_name: emailStr.split("@")[0], avatar_url: DEFAULT_AVATAR, bio: "よろしくお願いします。" };
+      await supabase.from('profiles').insert(newProfile);
+      setCurrentUser({ id: userId, handleName: newProfile.handle_name, avatarUrl: newProfile.avatar_url, bio: newProfile.bio });
+    }
+    setCurrentView("lobby");
+  };
+
+  // 初期ロード時のセッション確認
   useEffect(() => {
-    const checkSession = async () => {
+    const initApp = async () => {
+      await fetchScenarios();
       const { data: { session } } = await supabase.auth.getSession();
       if (session?.user) {
-        setCurrentUser({
-          id: session.user.id,
-          handleName: session.user.email?.split("@")[0] || "プレイヤー",
-          avatarUrl: DEFAULT_AVATAR,
-          bio: "よろしくお願いします。",
-        });
-        setCurrentView("lobby");
+        await fetchProfile(session.user.id, session.user.email || "プレイヤー");
       }
     };
-    checkSession();
+    initApp();
   }, []);
 
-  // メールアドレスでの登録・ログイン
+  // ==========================================
+  // ★ 認証処理
+  // ==========================================
   const handleEmailAuth = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!email || !password) return;
     setAuthLoading(true);
-
     try {
       if (isLoginMode) {
-        // ログイン処理
         const { data, error } = await supabase.auth.signInWithPassword({ email, password });
         if (error) throw error;
-        if (data.user) {
-          setCurrentUser({ id: data.user.id, handleName: email.split("@")[0], avatarUrl: DEFAULT_AVATAR, bio: "よろしくお願いします。" });
-          setCurrentView("lobby");
-        }
+        if (data.user) await fetchProfile(data.user.id, email);
       } else {
-        // 新規登録処理
         const { data, error } = await supabase.auth.signUp({ email, password });
         if (error) throw error;
         if (data.user) {
           alert("アカウントを作成しました！");
-          setCurrentUser({ id: data.user.id, handleName: email.split("@")[0], avatarUrl: DEFAULT_AVATAR, bio: "新しく登録しました！" });
-          setCurrentView("lobby");
+          await fetchProfile(data.user.id, email);
         }
       }
     } catch (error: any) {
@@ -131,18 +132,13 @@ export default function Home() {
     }
   };
 
-  // Googleログイン（Supabase標準機能）
   const handleGoogleAuth = async () => {
     setAuthLoading(true);
-    // ※GoogleログインはSupabase側の追加設定（Google Cloud設定）が必要なため、設定完了まではエラーになります
     const { error } = await supabase.auth.signInWithOAuth({ provider: 'google' });
-    if (error) {
-      alert("Googleログインの設定が未完了です。まずはメールアドレスでお試しください。");
-    }
+    if (error) alert("Googleログインの設定が未完了です。");
     setAuthLoading(false);
   };
 
-  // ログアウト
   const handleLogout = async () => {
     await supabase.auth.signOut();
     setCurrentUser(null);
@@ -150,10 +146,56 @@ export default function Home() {
   };
 
   // ==========================================
-  // ゲームロジック
+  // ★ Supabase データ保存処理
   // ==========================================
-  const saveProfile = () => { if(editProfileData) setCurrentUser(editProfileData); setIsEditingProfile(false); };
   
+  // プロフィールの保存
+  const saveProfile = async () => {
+    if (!editProfileData || !currentUser) return;
+    const { error } = await supabase.from('profiles').upsert({
+      id: currentUser.id,
+      handle_name: editProfileData.handleName,
+      avatar_url: editProfileData.avatarUrl,
+      bio: editProfileData.bio
+    });
+    if (!error) {
+      setCurrentUser(editProfileData);
+      setIsEditingProfile(false);
+    } else {
+      alert("プロフィールの保存に失敗しました。");
+    }
+  };
+
+  // シナリオの保存
+  const saveScenario = async () => {
+    if (!editingScenario) return;
+    const dbData = {
+      title: editingScenario.title,
+      system: editingScenario.system,
+      tags: editingScenario.tags,
+      setting: editingScenario.setting,
+      npc_list: editingScenario.npcList,
+      plot: editingScenario.plot,
+      image_url: editingScenario.imageUrl,
+      preset_characters: editingScenario.presetCharacters
+    };
+
+    if (editingScenario.id && !editingScenario.id.startsWith('s')) {
+      // 既存シナリオの更新
+      await supabase.from('scenarios').update(dbData).eq('id', editingScenario.id);
+    } else {
+      // 新規シナリオの追加
+      await supabase.from('scenarios').insert(dbData);
+    }
+    
+    await fetchScenarios(); // 最新のリストを再取得
+    setCurrentView("lobby");
+  };
+
+
+  // ==========================================
+  // ゲームロジック (変更なし)
+  // ==========================================
   const handleSendLobby = () => {
     if (!lobbyInput.trim() || !currentUser) return;
     setLobbyMessages((prev) => [...prev, { id: `lmsg_${Date.now()}`, senderName: currentUser.handleName, text: lobbyInput, time: new Date().toLocaleTimeString('ja-JP', { hour: '2-digit', minute: '2-digit' }) }]);
@@ -161,7 +203,7 @@ export default function Home() {
   };
 
   const handleCreateRoom = () => {
-    if (!currentUser) return;
+    if (!currentUser || !activeScenario) return;
     const newRoom: Room = { id: `room_${Date.now()}`, scenario: activeScenario, hostName: currentUser.handleName, status: "recruiting" };
     setRooms([newRoom, ...rooms]);
     setLobbyMessages(prev => [...prev, { id: `lmsg_${Date.now()}_sys`, senderName: "システム", text: `【募集開始】${currentUser.handleName}さんが「${activeScenario.title}」の募集を開始しました！`, time: new Date().toLocaleTimeString('ja-JP', { hour: '2-digit', minute: '2-digit' }), isSystem: true }]);
@@ -200,13 +242,6 @@ export default function Home() {
     setMessages((prev) => [...prev, { sender: "player", text: `🎲 ${label} (≦ ${targetValue}) ➔ 出目: ${res} 【${res <= targetValue ? "成功" : "失敗"}】`, type: "ic" }]);
   };
 
-  const saveScenario = () => {
-    if (!editingScenario) return;
-    if (editingScenario.id) { setScenarios(scenarios.map(s => s.id === editingScenario.id ? editingScenario : s)); } 
-    else { const id = `s${Date.now()}`; setScenarios([...scenarios, { ...editingScenario, id }]); setSelectedScenarioId(id); }
-    setCurrentView("lobby");
-  };
-
   return (
     <main className="h-screen bg-slate-900 text-slate-100 flex flex-col font-sans">
       
@@ -216,16 +251,13 @@ export default function Home() {
           <div className="bg-slate-800 border border-slate-700 rounded-2xl p-8 w-full max-w-md shadow-2xl">
             <h1 className="text-3xl font-extrabold text-emerald-400 mb-2 text-center">AI GM MORPG</h1>
             <p className="text-slate-400 text-sm text-center mb-8">本物のデータベースへ接続中...</p>
-
             <div className="space-y-4 mb-6">
               <button onClick={handleGoogleAuth} disabled={authLoading} className="w-full flex items-center justify-center gap-3 bg-white hover:bg-slate-100 text-slate-800 font-bold py-3 rounded-xl transition disabled:opacity-50">
                 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 48 48" className="w-5 h-5"><path fill="#FFC107" d="M43.611,20.083H42V20H24v8h11.303c-1.649,4.657-6.08,8-11.303,8c-6.627,0-12-5.373-12-12c0-6.627,5.373-12,12-12c3.059,0,5.842,1.154,7.961,3.039l5.657-5.657C34.046,6.053,29.268,4,24,4C12.955,4,4,12.955,4,24c0,11.045,8.955,20,20,20c11.045,0,20-8.955,20-20C44,22.659,43.862,21.35,43.611,20.083z"/><path fill="#FF3D00" d="M6.306,14.691l6.571,4.819C14.655,15.108,18.961,12,24,12c3.059,0,5.842,1.154,7.961,3.039l5.657-5.657C34.046,6.053,29.268,4,24,4C16.318,4,9.656,8.337,6.306,14.691z"/><path fill="#4CAF50" d="M24,44c5.166,0,9.86-1.977,13.409-5.192l-6.19-5.238C29.211,35.091,26.715,36,24,36c-5.202,0-9.619-3.317-11.283-7.946l-6.522,5.025C9.505,39.556,16.227,44,24,44z"/><path fill="#1976D2" d="M43.611,20.083H42V20H24v8h11.303c-0.792,2.237-2.231,4.166-4.087,5.571c0.001-0.001,0.002-0.001,0.003-0.002l6.19,5.238C36.971,39.205,44,34,44,24C44,22.659,43.862,21.35,43.611,20.083z"/></svg>
                 Googleで続ける
               </button>
             </div>
-
             <div className="flex items-center gap-3 mb-6"><div className="h-px bg-slate-700 flex-1"></div><span className="text-xs text-slate-500 font-medium">またはメールアドレス</span><div className="h-px bg-slate-700 flex-1"></div></div>
-
             <form onSubmit={handleEmailAuth} className="space-y-4">
               <div><label className="text-xs text-slate-400 block mb-1">メールアドレス</label><input type="email" value={email} onChange={e => setEmail(e.target.value)} required className="w-full bg-slate-900 border border-slate-700 rounded-lg px-4 py-3 text-sm text-white focus:border-emerald-500 outline-none transition" placeholder="mail@example.com" /></div>
               <div><label className="text-xs text-slate-400 block mb-1">パスワード</label><input type="password" value={password} onChange={e => setPassword(e.target.value)} required className="w-full bg-slate-900 border border-slate-700 rounded-lg px-4 py-3 text-sm text-white focus:border-emerald-500 outline-none transition" placeholder="6文字以上" minLength={6} /></div>
@@ -233,7 +265,6 @@ export default function Home() {
                 {authLoading ? "処理中..." : isLoginMode ? "ログイン" : "新規登録してはじめる"}
               </button>
             </form>
-
             <div className="text-center mt-6">
               <button onClick={() => setIsLoginMode(!isLoginMode)} type="button" className="text-sm text-emerald-400 hover:text-emerald-300 underline">
                 {isLoginMode ? "アカウントをお持ちでない場合は新規登録" : "すでにアカウントをお持ちの方はこちら (ログイン)"}
@@ -304,29 +335,35 @@ export default function Home() {
 
               <div className="bg-slate-800 border border-slate-700 rounded-xl p-4 flex flex-col h-[520px]">
                 <div className="flex justify-between items-center mb-3"><h2 className="text-sm font-bold text-amber-400">📜 シナリオライブラリ</h2><button onClick={() => { setEditingScenario({ id: "", title: "", system: "", tags: "", setting: "", npcList: "", plot: "", imageUrl: "", presetCharacters: [] }); setCurrentView("scenarioEdit"); }} className="text-[10px] bg-slate-700 px-2 py-1 rounded hover:bg-slate-600">＋ 新規作成</button></div>
-                <select value={selectedScenarioId} onChange={(e) => setSelectedScenarioId(e.target.value)} className="w-full bg-slate-900 border border-slate-700 rounded-lg p-2 text-sm text-white focus:border-amber-500 outline-none mb-4 font-bold">
-                  {scenarios.map(s => <option key={s.id} value={s.id}>{s.title}</option>)}
-                </select>
-                {activeScenario && (
-                  <div className="flex-1 flex flex-col overflow-y-auto pr-2 custom-scrollbar gap-4">
-                    <div>
-                      <img src={activeScenario.imageUrl || NO_IMAGE_SCENARIO} alt="Package" className="w-full h-32 object-cover rounded-lg border border-slate-700 mb-2 shadow-lg" />
-                      <div className="text-xs text-slate-400 text-right mb-2"><button onClick={() => { setEditingScenario(activeScenario); setCurrentView("scenarioEdit"); }} className="underline hover:text-white">このシナリオを編集</button></div>
-                      <p className="text-xs bg-slate-900 p-2 rounded border border-slate-700 text-slate-300 line-clamp-3 mb-4">{activeScenario.setting}</p>
-                    </div>
-                    <div>
-                      <h3 className="text-sm font-bold text-emerald-400 mb-2 border-b border-slate-700 pb-1">👤 選択可能キャラクター (HO)</h3>
-                      {activeScenario.presetCharacters.length === 0 ? (<p className="text-xs text-slate-500">キャラクターが登録されていません。</p>) : (
-                        <div className="space-y-2">
-                          {activeScenario.presetCharacters.map((char) => (
-                            <div key={char.id} className="flex gap-3 p-2 rounded-lg border border-slate-700 bg-slate-900 items-center"><img src={char.imageUrl || NO_IMAGE_CHAR} alt={char.name} className="w-10 h-10 object-cover rounded-full border border-slate-600" /><div className="flex-1"><p className="text-sm font-bold text-white">{char.name}</p><p className="text-[10px] text-slate-400">{char.job}</p></div></div>
-                          ))}
+                {scenarios.length === 0 ? (
+                  <p className="text-xs text-slate-500 text-center py-4">シナリオがありません。新規作成してください。</p>
+                ) : (
+                  <>
+                    <select value={selectedScenarioId} onChange={(e) => setSelectedScenarioId(e.target.value)} className="w-full bg-slate-900 border border-slate-700 rounded-lg p-2 text-sm text-white focus:border-amber-500 outline-none mb-4 font-bold">
+                      {scenarios.map(s => <option key={s.id} value={s.id}>{s.title}</option>)}
+                    </select>
+                    {activeScenario && (
+                      <div className="flex-1 flex flex-col overflow-y-auto pr-2 custom-scrollbar gap-4">
+                        <div>
+                          <img src={activeScenario.imageUrl || NO_IMAGE_SCENARIO} alt="Package" className="w-full h-32 object-cover rounded-lg border border-slate-700 mb-2 shadow-lg" />
+                          <div className="text-xs text-slate-400 text-right mb-2"><button onClick={() => { setEditingScenario(activeScenario); setCurrentView("scenarioEdit"); }} className="underline hover:text-white">このシナリオを編集</button></div>
+                          <p className="text-xs bg-slate-900 p-2 rounded border border-slate-700 text-slate-300 line-clamp-3 mb-4">{activeScenario.setting}</p>
                         </div>
-                      )}
-                    </div>
-                  </div>
+                        <div>
+                          <h3 className="text-sm font-bold text-emerald-400 mb-2 border-b border-slate-700 pb-1">👤 選択可能キャラクター (HO)</h3>
+                          {activeScenario.presetCharacters.length === 0 ? (<p className="text-xs text-slate-500">キャラクターが登録されていません。</p>) : (
+                            <div className="space-y-2">
+                              {activeScenario.presetCharacters.map((char) => (
+                                <div key={char.id} className="flex gap-3 p-2 rounded-lg border border-slate-700 bg-slate-900 items-center"><img src={char.imageUrl || NO_IMAGE_CHAR} alt={char.name} className="w-10 h-10 object-cover rounded-full border border-slate-600" /><div className="flex-1"><p className="text-sm font-bold text-white">{char.name}</p><p className="text-[10px] text-slate-400">{char.job}</p></div></div>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    )}
+                    <button onClick={handleCreateRoom} disabled={!activeScenario || activeScenario.presetCharacters.length === 0} className="w-full bg-amber-600 hover:bg-amber-500 disabled:bg-slate-700 text-white font-bold py-4 mt-4 rounded-xl transition shadow-lg shadow-amber-900/50">自分がGMとして募集を開始</button>
+                  </>
                 )}
-                <button onClick={handleCreateRoom} disabled={!activeScenario || activeScenario.presetCharacters.length === 0} className="w-full bg-amber-600 hover:bg-amber-500 disabled:bg-slate-700 text-white font-bold py-4 mt-4 rounded-xl transition shadow-lg shadow-amber-900/50">自分がGMとして募集を開始</button>
               </div>
             </div>
           </div>
