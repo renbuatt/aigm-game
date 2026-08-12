@@ -110,7 +110,8 @@ export default function Home() {
     if (data) {
       setCurrentUser({ id: data.id, handleName: data.handle_name, avatarUrl: data.avatar_url, bio: data.bio });
     } else {
-      const newProfile = { id: userId, handle_name: emailStr.split("@")[0], avatarUrl: DEFAULT_AVATAR, bio: "よろしくお願いします。" };
+      // ★ エラー修正箇所：avatar_url をプロパティ名に指定
+      const newProfile = { id: userId, handle_name: emailStr.split("@")[0], avatar_url: DEFAULT_AVATAR, bio: "よろしくお願いします。" };
       await supabase.from('profiles').insert(newProfile);
       setCurrentUser({ id: userId, handleName: newProfile.handle_name, avatarUrl: newProfile.avatar_url, bio: newProfile.bio });
     }
@@ -364,7 +365,6 @@ export default function Home() {
                 )}
               </div>
 
-              {/* ★ シナリオ選択＆部屋立てUI の改修 */}
               <div className="bg-slate-800 border border-slate-700 rounded-xl p-4 flex flex-col h-[500px]">
                 <div className="flex justify-between items-center mb-3">
                   <h2 className="text-sm font-bold text-amber-400">📜 シナリオを立てる</h2>
@@ -385,7 +385,6 @@ export default function Home() {
                         <div className="text-xs text-slate-400 text-right"><button onClick={() => { setEditingScenario(activeScenario); setCurrentView("scenarioEdit"); }} className="underline hover:text-white">このシナリオを編集</button></div>
                         <p className="text-xs bg-slate-900 p-2 rounded border border-slate-700 text-slate-300 line-clamp-2">{activeScenario.setting}</p>
                         
-                        {/* ★ 部屋作成時に自分が使うキャラクターを選ぶUI */}
                         <div className="mt-2 p-3 bg-slate-900 border border-slate-700 rounded-lg">
                           <label className="text-[11px] text-emerald-400 font-bold block mb-2">▼ あなたが使用するキャラクター</label>
                           <select value={hostCharId} onChange={(e) => setHostCharId(e.target.value)} className="w-full bg-slate-800 border border-slate-600 rounded p-2 text-xs text-white outline-none mb-3">
@@ -411,7 +410,6 @@ export default function Home() {
       )}
 
       {/* ==================== 2. シナリオ編集画面 ==================== */}
-      {/* 前回と同じためコード省略せずにそのまま配置 */}
       {currentView === "scenarioEdit" && editingScenario && (
         <div className="flex-1 flex flex-col items-center p-6 max-w-4xl mx-auto w-full overflow-y-auto custom-scrollbar">
           <h2 className="text-2xl font-bold text-amber-400 mb-6 w-full">{editingScenario.id ? "シナリオ・セット編集" : "シナリオ・セット新規作成"}</h2>
@@ -531,8 +529,8 @@ export default function Home() {
               </div>
             </div>
             <div className="flex items-center gap-2">
-              {/* ホスト専用の強制分割ボタン (シーンが存在しない古い部屋でも一応出せるように条件緩和) */}
-              {currentUser.handleName === activeRoom.host_name && (activeRoom.scenes?.length || 0) <= 1 && (
+              {/* ★ エラー修正箇所：activeRoom.scenes が存在するか安全に判定 */}
+              {currentUser.handleName === activeRoom.host_name && (activeRoom.scenes && activeRoom.scenes.length <= 1) && (
                 <button onClick={() => setIsSplitModalOpen(true)} className="bg-red-900/50 hover:bg-red-800/80 border border-red-500/50 text-red-300 text-[10px] px-2 py-1.5 rounded mr-4">
                   [開発] 強制分割
                 </button>
