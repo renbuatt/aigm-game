@@ -3,9 +3,8 @@
 import { useState } from "react";
 
 // --- 型定義 ---
-type ViewState = "lobby" | "scenarioEdit" | "game";
+type ViewState = "login" | "lobby" | "scenarioEdit" | "game"; // ★ "login" を追加
 
-// ★新規追加: ログイン中のユーザー情報
 type UserProfile = {
   id: string;
   handleName: string;
@@ -44,7 +43,7 @@ type Scenario = {
 type Room = {
   id: string;
   scenario: Scenario;
-  hostName: string; // ここにユーザーのハンドルネームが入るようになります
+  hostName: string;
   status: "recruiting" | "playing";
 };
 
@@ -67,18 +66,18 @@ const NO_IMAGE_CHAR = "https://images.unsplash.com/photo-1544502062-f82887f03d1c
 const DEFAULT_AVATAR = "https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&w=150&q=80";
 
 export default function Home() {
-  const [currentView, setCurrentView] = useState<ViewState>("lobby");
+  // ★ 初期画面を "login" に変更
+  const [currentView, setCurrentView] = useState<ViewState>("login");
 
-  // --- ★ユーザーデータ管理 ---
-  // ※次回ここでSupabase等のログインユーザー情報を読み込む形になります
-  const [currentUser, setCurrentUser] = useState<UserProfile>({
-    id: "u_guest_123",
-    handleName: "ゲストプレイヤー",
-    avatarUrl: DEFAULT_AVATAR,
-    bio: "TRPG初心者です。主にクトゥルフを遊びたいです！よろしくお願いします。",
-  });
+  // --- ★ 認証（ログイン・登録）用のステート ---
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [isLoginMode, setIsLoginMode] = useState(true); // true:ログイン, false:新規登録
+
+  // --- ユーザーデータ管理 ---
+  const [currentUser, setCurrentUser] = useState<UserProfile | null>(null);
   const [isEditingProfile, setIsEditingProfile] = useState(false);
-  const [editProfileData, setEditProfileData] = useState<UserProfile>(currentUser);
+  const [editProfileData, setEditProfileData] = useState<UserProfile | null>(null);
 
   // --- データ管理 ---
   const [scenarios, setScenarios] = useState<Scenario[]>([
@@ -135,10 +134,45 @@ export default function Home() {
   const activeScenario = scenarios.find((s) => s.id === selectedScenarioId) || scenarios[0];
 
   // ==========================================
+  // ★ 認証（ログイン・登録）のモック処理
+  // ==========================================
+  const handleEmailAuth = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!email || !password) return;
+    
+    // ※次回ここに本物のデータベース（Supabase等）の認証処理を入れます
+    const mockUser: UserProfile = {
+      id: `u_${Date.now()}`,
+      handleName: email.split("@")[0], // メールアドレスの@前を仮名前に
+      avatarUrl: DEFAULT_AVATAR,
+      bio: "新しく登録したプレイヤーです！よろしくお願いします。",
+    };
+    setCurrentUser(mockUser);
+    setCurrentView("lobby");
+  };
+
+  const handleGoogleAuth = () => {
+    // ※次回ここにGoogleログインの処理を入れます
+    const mockUser: UserProfile = {
+      id: `u_google_${Date.now()}`,
+      handleName: "Google ユーザー",
+      avatarUrl: DEFAULT_AVATAR,
+      bio: "Googleアカウントでログインしました！",
+    };
+    setCurrentUser(mockUser);
+    setCurrentView("lobby");
+  };
+
+  const handleLogout = () => {
+    setCurrentUser(null);
+    setCurrentView("login");
+  };
+
+  // ==========================================
   // プロフィール更新関数
   // ==========================================
   const saveProfile = () => {
-    setCurrentUser(editProfileData);
+    if(editProfileData) setCurrentUser(editProfileData);
     setIsEditingProfile(false);
   };
 
@@ -146,10 +180,10 @@ export default function Home() {
   // 各種アクション関数
   // ==========================================
   const handleSendLobby = () => {
-    if (!lobbyInput.trim()) return;
+    if (!lobbyInput.trim() || !currentUser) return;
     setLobbyMessages((prev) => [...prev, {
       id: `lmsg_${Date.now()}`, 
-      senderName: currentUser.handleName, // ★発言者がユーザーのハンドルネームに！
+      senderName: currentUser.handleName,
       text: lobbyInput,
       time: new Date().toLocaleTimeString('ja-JP', { hour: '2-digit', minute: '2-digit' })
     }]);
@@ -157,10 +191,11 @@ export default function Home() {
   };
 
   const handleCreateRoom = () => {
+    if (!currentUser) return;
     const newRoom: Room = {
       id: `room_${Date.now()}`, 
       scenario: activeScenario, 
-      hostName: currentUser.handleName, // ★ホスト名がユーザーのハンドルネームに！
+      hostName: currentUser.handleName, 
       status: "recruiting",
     };
     setRooms([newRoom, ...rooms]);
@@ -172,7 +207,6 @@ export default function Home() {
     }]);
   };
 
-  // 以下、既存の関数（変更なし）
   const handleRollStatsForEditingChar = () => {
     if (!editingScenario || editingCharIndex === null) return;
     const roll3d6x5 = () => {
@@ -199,6 +233,7 @@ export default function Home() {
   };
 
   const handleJoinRoom = (room: Room, character: Character) => {
+    if (!currentUser) return;
     setActiveRoom(room);
     setJoinedCharacter(character);
     setMessages([
@@ -212,7 +247,7 @@ export default function Home() {
   };
 
   const handleSend = () => {
-    if (!input.trim() || isLoading || !activeRoom || !joinedCharacter) return;
+    if (!input.trim() || isLoading || !activeRoom || !joinedCharacter || !currentUser) return;
     const userMsg: Message = { sender: "player", text: input, type: msgType };
     setMessages((prev) => [...prev, userMsg]);
     setInput("");
@@ -251,20 +286,66 @@ export default function Home() {
   return (
     <main className="h-screen bg-slate-900 text-slate-100 flex flex-col font-sans">
       
+      {/* ==================== 0. ログイン／新規登録画面 ==================== */}
+      {currentView === "login" && (
+        <div className="flex-1 flex flex-col items-center justify-center p-6 w-full">
+          <div className="bg-slate-800 border border-slate-700 rounded-2xl p-8 w-full max-w-md shadow-2xl">
+            <h1 className="text-3xl font-extrabold text-emerald-400 mb-2 text-center">AI GM MORPG</h1>
+            <p className="text-slate-400 text-sm text-center mb-8">次世代のオンラインTRPGセッションへ</p>
+
+            <div className="space-y-4 mb-6">
+              <button onClick={handleGoogleAuth} className="w-full flex items-center justify-center gap-3 bg-white hover:bg-slate-100 text-slate-800 font-bold py-3 rounded-xl transition">
+                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 48 48" className="w-5 h-5">
+                  <path fill="#FFC107" d="M43.611,20.083H42V20H24v8h11.303c-1.649,4.657-6.08,8-11.303,8c-6.627,0-12-5.373-12-12c0-6.627,5.373-12,12-12c3.059,0,5.842,1.154,7.961,3.039l5.657-5.657C34.046,6.053,29.268,4,24,4C12.955,4,4,12.955,4,24c0,11.045,8.955,20,20,20c11.045,0,20-8.955,20-20C44,22.659,43.862,21.35,43.611,20.083z"/>
+                  <path fill="#FF3D00" d="M6.306,14.691l6.571,4.819C14.655,15.108,18.961,12,24,12c3.059,0,5.842,1.154,7.961,3.039l5.657-5.657C34.046,6.053,29.268,4,24,4C16.318,4,9.656,8.337,6.306,14.691z"/>
+                  <path fill="#4CAF50" d="M24,44c5.166,0,9.86-1.977,13.409-5.192l-6.19-5.238C29.211,35.091,26.715,36,24,36c-5.202,0-9.619-3.317-11.283-7.946l-6.522,5.025C9.505,39.556,16.227,44,24,44z"/>
+                  <path fill="#1976D2" d="M43.611,20.083H42V20H24v8h11.303c-0.792,2.237-2.231,4.166-4.087,5.571c0.001-0.001,0.002-0.001,0.003-0.002l6.19,5.238C36.971,39.205,44,34,44,24C44,22.659,43.862,21.35,43.611,20.083z"/>
+                </svg>
+                Googleで続ける
+              </button>
+            </div>
+
+            <div className="flex items-center gap-3 mb-6">
+              <div className="h-px bg-slate-700 flex-1"></div>
+              <span className="text-xs text-slate-500 font-medium">またはメールアドレス</span>
+              <div className="h-px bg-slate-700 flex-1"></div>
+            </div>
+
+            <form onSubmit={handleEmailAuth} className="space-y-4">
+              <div>
+                <label className="text-xs text-slate-400 block mb-1">メールアドレス</label>
+                <input type="email" value={email} onChange={e => setEmail(e.target.value)} required className="w-full bg-slate-900 border border-slate-700 rounded-lg px-4 py-3 text-sm text-white focus:border-emerald-500 outline-none transition" placeholder="mail@example.com" />
+              </div>
+              <div>
+                <label className="text-xs text-slate-400 block mb-1">パスワード</label>
+                <input type="password" value={password} onChange={e => setPassword(e.target.value)} required className="w-full bg-slate-900 border border-slate-700 rounded-lg px-4 py-3 text-sm text-white focus:border-emerald-500 outline-none transition" placeholder="6文字以上" minLength={6} />
+              </div>
+              <button type="submit" className="w-full bg-emerald-600 hover:bg-emerald-500 text-white font-bold py-3 rounded-xl transition shadow-lg shadow-emerald-900/50 mt-2">
+                {isLoginMode ? "ログイン" : "新規登録してはじめる"}
+              </button>
+            </form>
+
+            <div className="text-center mt-6">
+              <button onClick={() => setIsLoginMode(!isLoginMode)} className="text-sm text-emerald-400 hover:text-emerald-300 underline">
+                {isLoginMode ? "アカウントをお持ちでない場合は新規登録" : "すでにアカウントをお持ちの方はこちら (ログイン)"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* ==================== 1. ロビー画面 ==================== */}
-      {currentView === "lobby" && (
+      {currentView === "lobby" && currentUser && (
         <div className="flex-1 flex flex-col p-6 max-w-7xl mx-auto w-full overflow-y-auto custom-scrollbar">
           
-          {/* ヘッダーエリア */}
           <header className="mb-6 flex justify-between items-end border-b border-slate-700 pb-4">
             <div>
               <h1 className="text-3xl font-extrabold text-emerald-400 mb-1">AI GM MORPG Lobby</h1>
               <p className="text-slate-400 text-sm">遊ぶシナリオとキャラクターを選んで、部屋を立てましょう。</p>
             </div>
-            {/* 次回実装のログインボタンのプレースホルダー */}
             <div className="text-right">
-               <button className="text-xs bg-slate-800 hover:bg-slate-700 border border-slate-600 px-3 py-1.5 rounded transition">
-                 ログイン / 登録 (次回実装)
+               <button onClick={handleLogout} className="text-xs text-slate-400 hover:text-white underline">
+                 ログアウト
                </button>
             </div>
           </header>
@@ -332,7 +413,7 @@ export default function Home() {
             {/* 右側：ユーザー情報 ＆ シナリオライブラリ */}
             <div className="space-y-6">
               
-              {/* ★ プレイヤー（ユーザー）プロフィールカード */}
+              {/* プレイヤー（ユーザー）プロフィールカード */}
               <div className="bg-slate-800 border border-slate-700 rounded-xl p-4 shadow-lg">
                 <div className="flex justify-between items-center mb-3 border-b border-slate-700 pb-2">
                   <h2 className="text-sm font-bold text-blue-400">👤 プレイヤー情報</h2>
@@ -341,20 +422,11 @@ export default function Home() {
                   )}
                 </div>
 
-                {isEditingProfile ? (
+                {isEditingProfile && editProfileData ? (
                   <div className="space-y-3">
-                    <div>
-                      <label className="text-xs text-slate-400 block mb-1">ハンドルネーム</label>
-                      <input type="text" value={editProfileData.handleName} onChange={(e) => setEditProfileData({...editProfileData, handleName: e.target.value})} className="w-full bg-slate-900 border border-slate-700 rounded p-1.5 text-sm text-white" />
-                    </div>
-                    <div>
-                      <label className="text-xs text-slate-400 block mb-1">アイコン画像URL</label>
-                      <input type="text" value={editProfileData.avatarUrl} onChange={(e) => setEditProfileData({...editProfileData, avatarUrl: e.target.value})} className="w-full bg-slate-900 border border-slate-700 rounded p-1.5 text-sm text-white" />
-                    </div>
-                    <div>
-                      <label className="text-xs text-slate-400 block mb-1">自己紹介</label>
-                      <textarea value={editProfileData.bio} onChange={(e) => setEditProfileData({...editProfileData, bio: e.target.value})} className="w-full h-16 bg-slate-900 border border-slate-700 rounded p-1.5 text-sm text-white" />
-                    </div>
+                    <div><label className="text-xs text-slate-400 block mb-1">ハンドルネーム</label><input type="text" value={editProfileData.handleName} onChange={(e) => setEditProfileData({...editProfileData, handleName: e.target.value})} className="w-full bg-slate-900 border border-slate-700 rounded p-1.5 text-sm text-white outline-none focus:border-blue-500" /></div>
+                    <div><label className="text-xs text-slate-400 block mb-1">アイコン画像URL</label><input type="text" value={editProfileData.avatarUrl} onChange={(e) => setEditProfileData({...editProfileData, avatarUrl: e.target.value})} className="w-full bg-slate-900 border border-slate-700 rounded p-1.5 text-sm text-white outline-none focus:border-blue-500" /></div>
+                    <div><label className="text-xs text-slate-400 block mb-1">自己紹介</label><textarea value={editProfileData.bio} onChange={(e) => setEditProfileData({...editProfileData, bio: e.target.value})} className="w-full h-16 bg-slate-900 border border-slate-700 rounded p-1.5 text-sm text-white outline-none focus:border-blue-500" /></div>
                     <div className="flex gap-2">
                       <button onClick={() => setIsEditingProfile(false)} className="flex-1 bg-slate-700 text-xs py-2 rounded">キャンセル</button>
                       <button onClick={saveProfile} className="flex-1 bg-blue-600 hover:bg-blue-500 font-bold text-xs py-2 rounded">保存</button>
@@ -423,7 +495,6 @@ export default function Home() {
       )}
 
       {/* ==================== 2. シナリオ＆キャラクター編集画面 (GMモード) ==================== */}
-      {/* (この部分は変更なしのためそのまま) */}
       {currentView === "scenarioEdit" && editingScenario && (
         <div className="flex-1 flex flex-col items-center p-6 max-w-4xl mx-auto w-full overflow-y-auto custom-scrollbar">
           <h2 className="text-2xl font-bold text-amber-400 mb-6 w-full">{editingScenario.id ? "シナリオ・セット編集" : "シナリオ・セット新規作成"}</h2>
@@ -432,11 +503,11 @@ export default function Home() {
             <div className="w-full bg-slate-800 border border-slate-700 rounded-xl p-5 space-y-4 shadow-2xl">
               <h3 className="text-lg font-bold text-emerald-400 mb-2 border-b border-slate-700 pb-2">キャラクター設定</h3>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div><label className="text-xs text-slate-400 block mb-1">名前</label><input type="text" value={editingScenario.presetCharacters[editingCharIndex].name} onChange={(e) => { const newC = [...editingScenario.presetCharacters]; newC[editingCharIndex].name = e.target.value; setEditingScenario({ ...editingScenario, presetCharacters: newC }); }} className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white" /></div>
-                <div><label className="text-xs text-slate-400 block mb-1">職業</label><input type="text" value={editingScenario.presetCharacters[editingCharIndex].job} onChange={(e) => { const newC = [...editingScenario.presetCharacters]; newC[editingCharIndex].job = e.target.value; setEditingScenario({ ...editingScenario, presetCharacters: newC }); }} className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white" /></div>
+                <div><label className="text-xs text-slate-400 block mb-1">名前</label><input type="text" value={editingScenario.presetCharacters[editingCharIndex].name} onChange={(e) => { const newC = [...editingScenario.presetCharacters]; newC[editingCharIndex].name = e.target.value; setEditingScenario({ ...editingScenario, presetCharacters: newC }); }} className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white outline-none focus:border-emerald-500" /></div>
+                <div><label className="text-xs text-slate-400 block mb-1">職業</label><input type="text" value={editingScenario.presetCharacters[editingCharIndex].job} onChange={(e) => { const newC = [...editingScenario.presetCharacters]; newC[editingCharIndex].job = e.target.value; setEditingScenario({ ...editingScenario, presetCharacters: newC }); }} className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white outline-none focus:border-emerald-500" /></div>
               </div>
-              <div><label className="text-xs text-slate-400 block mb-1">キャラクター画像URL</label><input type="text" placeholder="https://..." value={editingScenario.presetCharacters[editingCharIndex].imageUrl} onChange={(e) => { const newC = [...editingScenario.presetCharacters]; newC[editingCharIndex].imageUrl = e.target.value; setEditingScenario({ ...editingScenario, presetCharacters: newC }); }} className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white" /></div>
-              <div><label className="text-xs text-slate-400 block mb-1">性格・特徴 (ハンドアウト内容)</label><textarea value={editingScenario.presetCharacters[editingCharIndex].personality} onChange={(e) => { const newC = [...editingScenario.presetCharacters]; newC[editingCharIndex].personality = e.target.value; setEditingScenario({ ...editingScenario, presetCharacters: newC }); }} className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white h-20" /></div>
+              <div><label className="text-xs text-slate-400 block mb-1">キャラクター画像URL</label><input type="text" placeholder="https://..." value={editingScenario.presetCharacters[editingCharIndex].imageUrl} onChange={(e) => { const newC = [...editingScenario.presetCharacters]; newC[editingCharIndex].imageUrl = e.target.value; setEditingScenario({ ...editingScenario, presetCharacters: newC }); }} className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white outline-none focus:border-emerald-500" /></div>
+              <div><label className="text-xs text-slate-400 block mb-1">性格・特徴 (ハンドアウト内容)</label><textarea value={editingScenario.presetCharacters[editingCharIndex].personality} onChange={(e) => { const newC = [...editingScenario.presetCharacters]; newC[editingCharIndex].personality = e.target.value; setEditingScenario({ ...editingScenario, presetCharacters: newC }); }} className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white h-20 outline-none focus:border-emerald-500" /></div>
               
               <div className="bg-slate-900/50 border border-slate-700 p-4 rounded-lg">
                 <div className="flex justify-between items-center mb-3">
@@ -447,13 +518,13 @@ export default function Home() {
                   {['str', 'dex', 'int', 'con', 'wis', 'cha'].map((stat) => (
                     <div key={stat}>
                       <label className="text-[10px] text-slate-400 block mb-1 uppercase">{stat}</label>
-                      <input type="number" value={(editingScenario.presetCharacters[editingCharIndex] as any)[stat]} onChange={(e) => { const newC = [...editingScenario.presetCharacters]; (newC[editingCharIndex] as any)[stat] = Number(e.target.value); setEditingScenario({ ...editingScenario, presetCharacters: newC }); }} className="w-full bg-slate-900 border border-slate-700 rounded p-1.5 text-sm text-white text-center" />
+                      <input type="number" value={(editingScenario.presetCharacters[editingCharIndex] as any)[stat]} onChange={(e) => { const newC = [...editingScenario.presetCharacters]; (newC[editingCharIndex] as any)[stat] = Number(e.target.value); setEditingScenario({ ...editingScenario, presetCharacters: newC }); }} className="w-full bg-slate-900 border border-slate-700 rounded p-1.5 text-sm text-white text-center outline-none focus:border-emerald-500" />
                     </div>
                   ))}
                 </div>
                 <div className="grid grid-cols-2 gap-4 border-t border-slate-700 pt-3">
-                  <div><label className="text-[10px] text-slate-400 block mb-1">HP</label><input type="number" value={editingScenario.presetCharacters[editingCharIndex].hp} onChange={(e) => { const newC = [...editingScenario.presetCharacters]; newC[editingCharIndex].hp = Number(e.target.value); setEditingScenario({ ...editingScenario, presetCharacters: newC }); }} className="w-full bg-slate-900 border border-slate-700 rounded p-2 text-sm text-white text-center" /></div>
-                  <div><label className="text-[10px] text-slate-400 block mb-1">SAN</label><input type="number" value={editingScenario.presetCharacters[editingCharIndex].san} onChange={(e) => { const newC = [...editingScenario.presetCharacters]; newC[editingCharIndex].san = Number(e.target.value); setEditingScenario({ ...editingScenario, presetCharacters: newC }); }} className="w-full bg-slate-900 border border-slate-700 rounded p-2 text-sm text-white text-center" /></div>
+                  <div><label className="text-[10px] text-slate-400 block mb-1">HP</label><input type="number" value={editingScenario.presetCharacters[editingCharIndex].hp} onChange={(e) => { const newC = [...editingScenario.presetCharacters]; newC[editingCharIndex].hp = Number(e.target.value); setEditingScenario({ ...editingScenario, presetCharacters: newC }); }} className="w-full bg-slate-900 border border-slate-700 rounded p-2 text-sm text-white text-center outline-none focus:border-emerald-500" /></div>
+                  <div><label className="text-[10px] text-slate-400 block mb-1">SAN</label><input type="number" value={editingScenario.presetCharacters[editingCharIndex].san} onChange={(e) => { const newC = [...editingScenario.presetCharacters]; newC[editingCharIndex].san = Number(e.target.value); setEditingScenario({ ...editingScenario, presetCharacters: newC }); }} className="w-full bg-slate-900 border border-slate-700 rounded p-2 text-sm text-white text-center outline-none focus:border-emerald-500" /></div>
                 </div>
               </div>
               <button onClick={() => setEditingCharIndex(null)} className="w-full bg-emerald-600 hover:bg-emerald-500 text-white font-semibold py-3 rounded-lg transition mt-2">シナリオ編集に戻る</button>
@@ -462,15 +533,15 @@ export default function Home() {
             <div className="w-full grid grid-cols-1 md:grid-cols-2 gap-6">
               <div className="bg-slate-800 border border-slate-700 rounded-xl p-5 space-y-4">
                 <h3 className="text-lg font-bold text-amber-400 border-b border-slate-700 pb-2">基本設定</h3>
-                <div><label className="text-sm text-amber-200 block mb-1">シナリオタイトル</label><input type="text" value={editingScenario.title} onChange={(e) => setEditingScenario({ ...editingScenario, title: e.target.value })} className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white" /></div>
-                <div><label className="text-sm text-amber-200 block mb-1">パッケージ画像URL</label><input type="text" placeholder="https://..." value={editingScenario.imageUrl} onChange={(e) => setEditingScenario({ ...editingScenario, imageUrl: e.target.value })} className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white" /></div>
+                <div><label className="text-sm text-amber-200 block mb-1">シナリオタイトル</label><input type="text" value={editingScenario.title} onChange={(e) => setEditingScenario({ ...editingScenario, title: e.target.value })} className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white outline-none focus:border-amber-500" /></div>
+                <div><label className="text-sm text-amber-200 block mb-1">パッケージ画像URL</label><input type="text" placeholder="https://..." value={editingScenario.imageUrl} onChange={(e) => setEditingScenario({ ...editingScenario, imageUrl: e.target.value })} className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white outline-none focus:border-amber-500" /></div>
                 <div className="grid grid-cols-2 gap-4">
-                  <div><label className="text-sm text-amber-200 block mb-1">システム</label><input type="text" value={editingScenario.system} onChange={(e) => setEditingScenario({ ...editingScenario, system: e.target.value })} className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white" /></div>
-                  <div><label className="text-sm text-amber-200 block mb-1">タグ</label><input type="text" value={editingScenario.tags} onChange={(e) => setEditingScenario({ ...editingScenario, tags: e.target.value })} className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white" /></div>
+                  <div><label className="text-sm text-amber-200 block mb-1">システム</label><input type="text" value={editingScenario.system} onChange={(e) => setEditingScenario({ ...editingScenario, system: e.target.value })} className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white outline-none focus:border-amber-500" /></div>
+                  <div><label className="text-sm text-amber-200 block mb-1">タグ</label><input type="text" value={editingScenario.tags} onChange={(e) => setEditingScenario({ ...editingScenario, tags: e.target.value })} className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white outline-none focus:border-amber-500" /></div>
                 </div>
-                <div><label className="text-sm text-amber-200 block mb-1">世界観・設定</label><textarea value={editingScenario.setting} onChange={(e) => setEditingScenario({ ...editingScenario, setting: e.target.value })} className="w-full h-20 bg-slate-900 border border-slate-700 rounded-lg p-3 text-sm text-white" /></div>
-                <div><label className="text-sm text-amber-200 block mb-1">NPC一覧</label><textarea value={editingScenario.npcList} onChange={(e) => setEditingScenario({ ...editingScenario, npcList: e.target.value })} className="w-full h-20 bg-slate-900 border border-slate-700 rounded-lg p-3 text-sm text-white" /></div>
-                <div><label className="text-sm text-amber-200 block mb-1">プロット (AI用)</label><textarea value={editingScenario.plot} onChange={(e) => setEditingScenario({ ...editingScenario, plot: e.target.value })} className="w-full h-40 bg-slate-900 border border-slate-700 rounded-lg p-3 text-sm text-white" /></div>
+                <div><label className="text-sm text-amber-200 block mb-1">世界観・設定</label><textarea value={editingScenario.setting} onChange={(e) => setEditingScenario({ ...editingScenario, setting: e.target.value })} className="w-full h-20 bg-slate-900 border border-slate-700 rounded-lg p-3 text-sm text-white outline-none focus:border-amber-500" /></div>
+                <div><label className="text-sm text-amber-200 block mb-1">NPC一覧</label><textarea value={editingScenario.npcList} onChange={(e) => setEditingScenario({ ...editingScenario, npcList: e.target.value })} className="w-full h-20 bg-slate-900 border border-slate-700 rounded-lg p-3 text-sm text-white outline-none focus:border-amber-500" /></div>
+                <div><label className="text-sm text-amber-200 block mb-1">プロット (AI用)</label><textarea value={editingScenario.plot} onChange={(e) => setEditingScenario({ ...editingScenario, plot: e.target.value })} className="w-full h-40 bg-slate-900 border border-slate-700 rounded-lg p-3 text-sm text-white outline-none focus:border-amber-500" /></div>
               </div>
               
               <div className="space-y-4">
@@ -519,8 +590,7 @@ export default function Home() {
       )}
 
       {/* ==================== 3. ゲームセッション画面 ==================== */}
-      {/* (この部分は変更なしのためそのまま) */}
-      {currentView === "game" && activeRoom && joinedCharacter && (
+      {currentView === "game" && activeRoom && joinedCharacter && currentUser && (
         <div className="flex-1 flex flex-col max-w-5xl mx-auto w-full p-4 h-full">
           <header className="bg-slate-800 border border-slate-700 rounded-xl p-3 mb-3 flex justify-between items-center shadow-md">
             <div className="flex items-center gap-4">
