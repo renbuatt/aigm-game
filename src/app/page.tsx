@@ -15,18 +15,16 @@ type Character = {
   str: number;
 };
 
-// GMモードの項目を大幅に拡張
 type Scenario = {
   id: string;
   title: string;
-  system: string; // プレイするシステム (例: クトゥルフ神話TRPG)
-  tags: string;   // 傾向タグ (例: クローズド, ホラー, 初心者歓迎)
+  system: string;
+  tags: string;
   setting: string;
-  npcList: string;// 登場するNPCの設定
+  npcList: string;
   plot: string;
 };
 
-// 募集中の部屋（MO箱）データ
 type Room = {
   id: string;
   scenario: Scenario;
@@ -38,6 +36,14 @@ type Message = {
   sender: "player" | "gm";
   text: string;
   type?: "ic" | "ooc" | "system";
+};
+
+// ロビーチャット用の型
+type LobbyMessage = {
+  id: string;
+  senderName: string;
+  text: string;
+  time: string;
 };
 
 export default function Home() {
@@ -64,7 +70,6 @@ export default function Home() {
   const [editingScenario, setEditingScenario] = useState<Scenario | null>(null);
   const [selectedScenarioId, setSelectedScenarioId] = useState<string>("s1");
 
-  // 募集中の部屋リスト（ダミーデータを1つ入れておく）
   const [rooms, setRooms] = useState<Room[]>([
     {
       id: "room_dummy_1",
@@ -75,6 +80,17 @@ export default function Home() {
   ]);
   const [activeRoom, setActiveRoom] = useState<Room | null>(null);
 
+  // --- ロビーチャット管理 ---
+  const [lobbyMessages, setLobbyMessages] = useState<LobbyMessage[]>([
+    { 
+      id: "lmsg_sys", 
+      senderName: "システム", 
+      text: "ロビーへようこそ！ここで他のプレイヤーと雑談したり、セッションの相談ができます。", 
+      time: new Date().toLocaleTimeString('ja-JP', { hour: '2-digit', minute: '2-digit' }) 
+    }
+  ]);
+  const [lobbyInput, setLobbyInput] = useState("");
+
   // セッション情報
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState("");
@@ -84,20 +100,38 @@ export default function Home() {
   const activeChar = characters.find((c) => c.id === selectedCharId) || characters[0];
   const activeScenario = scenarios.find((s) => s.id === selectedScenarioId) || scenarios[0];
 
+  // --- ロビーチャット送信 ---
+  const handleSendLobby = () => {
+    if (!lobbyInput.trim()) return;
+    const newMsg: LobbyMessage = {
+      id: `lmsg_${Date.now()}`,
+      senderName: activeChar.name, // 選択中のキャラ名をプレイヤー名として使用
+      text: lobbyInput,
+      time: new Date().toLocaleTimeString('ja-JP', { hour: '2-digit', minute: '2-digit' })
+    };
+    setLobbyMessages((prev) => [...prev, newMsg]);
+    setLobbyInput("");
+  };
+
   // --- ルーム操作 ---
-  // 新しく部屋を立てる
   const handleCreateRoom = () => {
     const newRoom: Room = {
       id: `room_${Date.now()}`,
       scenario: activeScenario,
-      hostName: activeChar.name, // 本来はプレイヤーアカウント名
+      hostName: activeChar.name,
       status: "recruiting",
     };
     setRooms([newRoom, ...rooms]);
-    alert(`部屋「${activeScenario.title}」を募集開始しました！掲示板に表示されます。`);
+    
+    // 部屋を立てたことをロビーチャットにも自動通知
+    setLobbyMessages(prev => [...prev, {
+      id: `lmsg_${Date.now()}_sys`,
+      senderName: "システム",
+      text: `【募集開始】${activeChar.name}さんが「${activeScenario.title}」の募集を開始しました！`,
+      time: new Date().toLocaleTimeString('ja-JP', { hour: '2-digit', minute: '2-digit' })
+    }]);
   };
 
-  // 部屋に参加してゲーム画面へ
   const handleJoinRoom = (room: Room) => {
     setActiveRoom(room);
     setMessages([
@@ -110,7 +144,7 @@ export default function Home() {
     setCurrentView("game");
   };
 
-  // --- チャット送信 ---
+  // --- セッション内チャット送信 ---
   const handleSend = () => {
     if (!input.trim() || isLoading || !activeRoom) return;
 
@@ -166,9 +200,9 @@ export default function Home() {
   return (
     <main className="h-screen bg-slate-900 text-slate-100 flex flex-col font-sans">
       
-      {/* ==================== 1. ロビー画面（募集掲示板） ==================== */}
+      {/* ==================== 1. ロビー画面 ==================== */}
       {currentView === "lobby" && (
-        <div className="flex-1 flex flex-col p-6 max-w-6xl mx-auto w-full overflow-y-auto">
+        <div className="flex-1 flex flex-col p-6 max-w-6xl mx-auto w-full overflow-y-auto custom-scrollbar">
           <header className="mb-6 flex justify-between items-end border-b border-slate-700 pb-4">
             <div>
               <h1 className="text-3xl font-extrabold text-emerald-400 mb-1">AI GM MORPG Lobby</h1>
@@ -178,32 +212,68 @@ export default function Home() {
 
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
             
-            {/* 左側：募集中のセッション掲示板 */}
-            <div className="lg:col-span-2 space-y-4">
-              <h2 className="text-xl font-bold text-blue-400 flex items-center gap-2">🌐 現在募集中のセッション</h2>
-              <div className="space-y-4">
-                {rooms.map((room) => (
-                  <div key={room.id} className="bg-slate-800 border border-slate-700 rounded-xl p-5 hover:border-blue-500 transition relative overflow-hidden group">
-                    <div className="absolute top-0 right-0 bg-blue-600 text-white text-[10px] font-bold px-3 py-1 rounded-bl-lg">募集中</div>
-                    <h3 className="text-lg font-bold text-white mb-1">{room.scenario.title}</h3>
-                    <div className="flex gap-2 text-xs text-slate-400 mb-3">
-                      <span className="bg-slate-900 px-2 py-0.5 rounded border border-slate-700">システム: {room.scenario.system}</span>
-                      <span className="bg-slate-900 px-2 py-0.5 rounded border border-slate-700">ホスト: {room.hostName}</span>
+            {/* 左側：募集掲示板 ＆ ロビーチャット */}
+            <div className="lg:col-span-2 flex flex-col gap-6">
+              
+              {/* 募集中のセッション掲示板 */}
+              <div>
+                <h2 className="text-xl font-bold text-blue-400 flex items-center gap-2 mb-4">🌐 現在募集中のセッション</h2>
+                <div className="space-y-4 max-h-[400px] overflow-y-auto pr-2 custom-scrollbar">
+                  {rooms.map((room) => (
+                    <div key={room.id} className="bg-slate-800 border border-slate-700 rounded-xl p-5 hover:border-blue-500 transition relative overflow-hidden group">
+                      <div className="absolute top-0 right-0 bg-blue-600 text-white text-[10px] font-bold px-3 py-1 rounded-bl-lg">募集中</div>
+                      <h3 className="text-lg font-bold text-white mb-1">{room.scenario.title}</h3>
+                      <div className="flex gap-2 text-xs text-slate-400 mb-3">
+                        <span className="bg-slate-900 px-2 py-0.5 rounded border border-slate-700">システム: {room.scenario.system}</span>
+                        <span className="bg-slate-900 px-2 py-0.5 rounded border border-slate-700">ホスト: {room.hostName}</span>
+                      </div>
+                      <p className="text-sm text-slate-300 mb-4 line-clamp-2">{room.scenario.tags}</p>
+                      <button
+                        onClick={() => handleJoinRoom(room)}
+                        className="w-full bg-blue-600/20 hover:bg-blue-600 text-blue-400 hover:text-white border border-blue-500/50 hover:border-blue-500 font-bold py-2 rounded-lg transition"
+                      >
+                        この部屋に参加する (選択中のキャラ: {activeChar.name})
+                      </button>
                     </div>
-                    <p className="text-sm text-slate-300 mb-4 line-clamp-2">{room.scenario.tags}</p>
-                    
-                    <button
-                      onClick={() => handleJoinRoom(room)}
-                      className="w-full bg-blue-600/20 hover:bg-blue-600 text-blue-400 hover:text-white border border-blue-500/50 hover:border-blue-500 font-bold py-2 rounded-lg transition"
-                    >
-                      この部屋に参加する (選択中のキャラ: {activeChar.name})
-                    </button>
-                  </div>
-                ))}
-                {rooms.length === 0 && (
-                  <p className="text-slate-500 text-center py-10">現在募集中の部屋はありません。</p>
-                )}
+                  ))}
+                  {rooms.length === 0 && (
+                    <p className="text-slate-500 text-center py-10">現在募集中の部屋はありません。</p>
+                  )}
+                </div>
               </div>
+
+              {/* ロビーチャットエリア */}
+              <div className="bg-slate-800 border border-slate-700 rounded-xl p-4 flex flex-col h-64 shadow-inner">
+                <h2 className="text-sm font-bold text-emerald-400 mb-3 flex items-center gap-2">💬 グローバルロビーチャット</h2>
+                <div className="flex-1 overflow-y-auto space-y-2 mb-3 pr-2 custom-scrollbar">
+                  {lobbyMessages.map((msg) => (
+                    <div key={msg.id} className="text-sm leading-relaxed">
+                      <span className="text-xs text-slate-500">[{msg.time}] </span>
+                      <span className={`font-bold ${msg.senderName === 'システム' ? 'text-amber-400' : 'text-emerald-300'}`}>
+                        {msg.senderName}: 
+                      </span>
+                      <span className="text-slate-200 ml-1">{msg.text}</span>
+                    </div>
+                  ))}
+                </div>
+                <div className="flex gap-2">
+                  <input
+                    type="text"
+                    value={lobbyInput}
+                    onChange={(e) => setLobbyInput(e.target.value)}
+                    onKeyDown={(e) => e.key === "Enter" && handleSendLobby()}
+                    placeholder="ロビーにいる全員へメッセージを送信..."
+                    className="flex-1 bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-emerald-500"
+                  />
+                  <button
+                    onClick={handleSendLobby}
+                    className="bg-emerald-600 hover:bg-emerald-500 text-white px-4 py-2 rounded-lg text-sm font-bold transition"
+                  >
+                    送信
+                  </button>
+                </div>
+              </div>
+
             </div>
 
             {/* 右側：自分のデータ管理＆部屋立て */}
