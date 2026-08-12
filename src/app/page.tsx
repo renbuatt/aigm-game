@@ -262,11 +262,9 @@ export default function Home() {
     ]);
   };
 
-  // ★ パーティーを1つのシーン（メインルーム）に合流させる機能
   const executeMergeParty = async () => {
     if(!activeRoom || !activeRoom.scenario) return;
     
-    // 全キャラクターのIDを集める
     const allMembers = activeRoom.scenario.presetCharacters.map(c => c.id);
     const mainScene: Scene = {
       id: `scene_main_${Date.now()}`,
@@ -274,13 +272,9 @@ export default function Home() {
       memberIds: allMembers
     };
     
-    // DB更新
     await supabase.from('rooms').update({ scenes: [mainScene] }).eq('id', activeRoom.id);
-    
-    // ローカル状態更新
     setActiveRoom({...activeRoom, scenes: [mainScene]});
 
-    // システムメッセージ投下（※将来的にここにAIの要約文をくっつけます！）
     setMessages(prev => [
       ...prev,
       { 
@@ -546,17 +540,18 @@ export default function Home() {
             </div>
             <div className="flex items-center gap-2">
               
-              {/* ★ シーン数に応じて「強制分割」と「合流」ボタンを切り替える */}
-              {currentUser.handleName === activeRoom.host_name && (
-                (activeRoom.scenes && activeRoom.scenes.length <= 1) ? (
-                  <button onClick={() => setIsSplitModalOpen(true)} className="bg-red-900/50 hover:bg-red-800/80 border border-red-500/50 text-red-300 text-[10px] px-2 py-1.5 rounded mr-4">
-                    [開発] 強制分割
-                  </button>
-                ) : (
-                  <button onClick={executeMergeParty} className="bg-amber-900/50 hover:bg-amber-800/80 border border-amber-500/50 text-amber-300 text-[10px] px-2 py-1.5 rounded mr-4 shadow-lg shadow-amber-900/50">
-                    [開発] メインへ合流
-                  </button>
-                )
+              {/* ★ 強制分割: シーンが1つのとき ＆ ホスト限定 */}
+              {activeRoom.scenes && activeRoom.scenes.length <= 1 && currentUser.handleName === activeRoom.host_name && (
+                <button onClick={() => setIsSplitModalOpen(true)} className="bg-red-900/50 hover:bg-red-800/80 border border-red-500/50 text-red-300 text-[10px] px-2 py-1.5 rounded mr-4">
+                  [開発] 強制分割
+                </button>
+              )}
+
+              {/* ★ メインへ合流: シーンが複数のとき ＆ (ホスト or チームリーダー) */}
+              {activeRoom.scenes && activeRoom.scenes.length > 1 && (currentUser.handleName === activeRoom.host_name || myScene.leaderId === joinedCharacter.id) && (
+                <button onClick={executeMergeParty} className="bg-amber-900/50 hover:bg-amber-800/80 border border-amber-500/50 text-amber-300 text-[10px] px-2 py-1.5 rounded mr-4 shadow-lg shadow-amber-900/50">
+                  [開発] メインへ合流
+                </button>
               )}
 
               <button onClick={() => rollDice(joinedCharacter.san, "SAN")} className="bg-cyan-700 hover:bg-cyan-600 text-white text-xs px-2 py-1 rounded font-medium">SAN ({joinedCharacter.san})</button>
