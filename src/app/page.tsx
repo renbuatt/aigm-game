@@ -94,6 +94,9 @@ export default function Home() {
   const [banAppeals, setBanAppeals] = useState<BanAppeal[]>([]);
   const [appealText, setAppealText] = useState("");
 
+  // ★ ユーザー検索用ステート
+  const [userSearchQuery, setUserSearchQuery] = useState("");
+
   const activeScenario = scenarios.find((s) => s.id === selectedScenarioId) || scenarios[0];
   const defaultScene: Scene = { id: "scene_main", name: "メインルーム", memberIds: [] };
   const myScene = activeRoom?.scenes?.find(s => joinedCharacter && s.memberIds.includes(joinedCharacter.id)) || activeRoom?.scenes?.[0] || defaultScene;
@@ -200,7 +203,6 @@ export default function Home() {
     } catch (error: any) { alert("エラーが発生しました: " + error.message); } finally { setAuthLoading(false); }
   };
 
-  // ★ 消えていたGoogleログイン処理を復活
   const handleGoogleAuth = async () => {
     setAuthLoading(true);
     const { error } = await supabase.auth.signInWithOAuth({ provider: 'google' });
@@ -453,9 +455,23 @@ export default function Home() {
 
             {/* ユーザー管理 */}
             <div className="bg-slate-900 border border-slate-700 rounded-xl p-5 space-y-4">
-              <h3 className="font-bold text-white mb-1">ユーザー管理＆治安維持</h3>
-              <div className="max-h-[400px] overflow-y-auto space-y-3 custom-scrollbar pr-2">
-                {allUsers.map(user => (
+              <h3 className="font-bold text-white mb-3">ユーザー管理＆治安維持</h3>
+
+              {/* ★ ユーザー検索窓 */}
+              <input 
+                type="text" 
+                placeholder="ユーザー名、メールアドレス、Discord IDで検索..." 
+                value={userSearchQuery} 
+                onChange={(e) => setUserSearchQuery(e.target.value)} 
+                className="w-full bg-slate-800 border border-slate-600 rounded-lg p-3 text-sm text-white focus:outline-none focus:border-emerald-500 mb-2 shadow-inner" 
+              />
+
+              <div className="max-h-[500px] overflow-y-auto space-y-3 custom-scrollbar pr-2">
+                {allUsers.filter(u => 
+                  u.handleName.toLowerCase().includes(userSearchQuery.toLowerCase()) || 
+                  (u.email && u.email.toLowerCase().includes(userSearchQuery.toLowerCase())) || 
+                  (u.discordId && u.discordId.toLowerCase().includes(userSearchQuery.toLowerCase()))
+                ).map(user => (
                   <div key={user.id} className={`flex flex-col md:flex-row justify-between items-start md:items-center bg-slate-800 p-4 rounded-lg border ${user.isBanned ? 'border-red-500/50 bg-red-950/20' : 'border-slate-700'}`}>
                     <div className="flex items-center gap-3 mb-3 md:mb-0">
                       <img src={user.avatarUrl} className="w-10 h-10 rounded-full object-cover" />
@@ -570,7 +586,6 @@ export default function Home() {
               <button type="submit" disabled={authLoading} className="w-full bg-emerald-600 hover:bg-emerald-500 text-white font-bold py-3 rounded-xl">{isLoginMode ? "ログイン" : "新規登録してはじめる"}</button>
             </form>
 
-            {/* ★ 消えていたGoogleログインボタンを復活 */}
             <div className="mt-4">
               <button onClick={handleGoogleAuth} disabled={authLoading} className="w-full bg-white text-slate-800 font-bold py-3 rounded-xl flex items-center justify-center gap-2 hover:bg-slate-200 transition">
                 <svg className="w-5 h-5" viewBox="0 0 24 24">
@@ -583,7 +598,6 @@ export default function Home() {
               </button>
             </div>
 
-            {/* ★ 消えていた新規登録切り替えトグルを復活 */}
             <div className="text-center mt-6">
               <button onClick={() => setIsLoginMode(!isLoginMode)} type="button" className="text-sm text-emerald-400 hover:text-emerald-300 underline">
                 {isLoginMode ? "新規登録はこちら" : "ログインはこちら"}
@@ -601,7 +615,6 @@ export default function Home() {
               <h1 className="text-3xl font-extrabold text-emerald-400 mb-1">AI GM MORPG Lobby</h1>
             </div>
             <div className="flex items-center gap-4">
-              {/* ★ 受信箱ボタン */}
               <button onClick={() => setShowMailbox(true)} className="relative text-slate-300 hover:text-white p-2 text-xl">
                 ✉️
                 {unreadCount > 0 && <span className="absolute top-0 right-0 bg-red-500 text-white text-[9px] font-bold px-1.5 py-0.5 rounded-full">{unreadCount}</span>}
