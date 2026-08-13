@@ -94,7 +94,6 @@ export default function Home() {
   const [banAppeals, setBanAppeals] = useState<BanAppeal[]>([]);
   const [appealText, setAppealText] = useState("");
 
-  // ★ ユーザー検索用ステート
   const [userSearchQuery, setUserSearchQuery] = useState("");
 
   const activeScenario = scenarios.find((s) => s.id === selectedScenarioId) || scenarios[0];
@@ -358,17 +357,16 @@ export default function Home() {
     setActiveRoom(null); setJoinedCharacter(null); await fetchData(); setCurrentView("lobby");
   };
 
-  // ==========================================
-  // レンダリング
-  // ==========================================
   const unreadCount = myNotifications.filter(n => !n.isRead).length;
 
   return (
-    <main className="h-screen bg-slate-900 text-slate-100 flex flex-col font-sans">
+    // ★大元の枠に overflow-hidden を追加し、ページ全体が伸びるのを防ぎます
+    <main className="h-screen w-full bg-slate-900 text-slate-100 flex flex-col font-sans overflow-hidden">
       
       {/* ==================== 0. アカウント停止画面 ==================== */}
       {currentView === "banned" && (
-        <div className="flex-1 flex flex-col items-center justify-center p-6 w-full overflow-y-auto custom-scrollbar">
+        // ★各画面の親枠に min-h-0 を追加し、子要素のスクロールを強制させます
+        <div className="flex-1 flex flex-col items-center justify-center p-6 w-full overflow-y-auto min-h-0">
           <div className="bg-slate-800 border border-red-700/50 rounded-2xl p-8 w-full max-w-lg shadow-2xl space-y-6 relative mt-10">
             <div className="flex justify-between items-center border-b border-slate-700 pb-4">
               <h1 className="text-3xl font-extrabold text-red-500">⛔ アカウント利用停止</h1>
@@ -397,7 +395,7 @@ export default function Home() {
 
       {/* ==================== 0. メンテナンス画面 ==================== */}
       {currentView === "maintenance" && (
-        <div className="flex-1 flex flex-col items-center justify-center p-6 w-full">
+        <div className="flex-1 flex flex-col items-center justify-center p-6 w-full min-h-0 overflow-y-auto">
           <div className="bg-slate-800 border border-slate-700 rounded-2xl p-8 w-full max-w-md shadow-2xl text-center space-y-6">
             <h1 className="text-4xl font-extrabold text-amber-500 mb-2">🚧 メンテナンス中</h1>
             <p className="text-slate-300 text-sm leading-relaxed">現在システムメンテナンスを行っております。</p>
@@ -408,9 +406,9 @@ export default function Home() {
 
       {/* ==================== 0. 管理画面 ==================== */}
       {currentView === "admin" && currentUser?.isAdmin && (
-        <div className="flex-1 flex flex-col p-6 w-full overflow-y-auto max-w-5xl mx-auto custom-scrollbar">
-          <div className="bg-slate-800 border border-slate-700 rounded-2xl p-8 w-full shadow-2xl space-y-6 relative overflow-hidden">
-            <div className="absolute top-0 left-0 w-full h-2 bg-red-600"></div>
+        <div className="flex-1 flex flex-col p-6 w-full overflow-y-auto min-h-0 max-w-5xl mx-auto">
+          <div className="bg-slate-800 border border-slate-700 rounded-2xl p-8 w-full shadow-2xl space-y-6 relative">
+            <div className="absolute top-0 left-0 w-full h-2 bg-red-600 rounded-t-2xl"></div>
             <div className="flex justify-between items-center mb-6">
               <h1 className="text-2xl font-extrabold text-red-400 flex items-center gap-2">⚙️ システム管理画面</h1>
               <button onClick={() => setCurrentView("lobby")} className="text-xs text-slate-400 hover:text-white underline">← ロビーに戻る</button>
@@ -426,10 +424,11 @@ export default function Home() {
               </button>
             </div>
 
-            {/* ★ 調査依頼（異議申し立て）リスト */}
+            {/* 調査依頼リスト */}
             <div className="bg-slate-900 border border-slate-700 rounded-xl p-5 space-y-4">
               <h3 className="font-bold text-white mb-1">🚨 調査依頼（BAN異議申し立て）</h3>
-              <div className="max-h-60 overflow-y-auto space-y-2 custom-scrollbar pr-2">
+              {/* ★ 高さを固定し、常にスクロールバーを表示 */}
+              <div className="h-[250px] overflow-y-scroll space-y-2 pr-2 border border-slate-700/50 p-2 rounded-lg bg-slate-900/50">
                 {banAppeals.filter(a => a.status === 'appealing').map(appeal => {
                   const u = allUsers.find(user => user.id === appeal.userId);
                   return (
@@ -456,8 +455,6 @@ export default function Home() {
             {/* ユーザー管理 */}
             <div className="bg-slate-900 border border-slate-700 rounded-xl p-5 space-y-4">
               <h3 className="font-bold text-white mb-3">ユーザー管理＆治安維持</h3>
-
-              {/* ★ ユーザー検索窓 */}
               <input 
                 type="text" 
                 placeholder="ユーザー名、メールアドレス、Discord IDで検索..." 
@@ -465,9 +462,8 @@ export default function Home() {
                 onChange={(e) => setUserSearchQuery(e.target.value)} 
                 className="w-full bg-slate-800 border border-slate-600 rounded-lg p-3 text-sm text-white focus:outline-none focus:border-emerald-500 mb-2 shadow-inner" 
               />
-
-              {/* ★ 管理画面ユーザー一覧のスクロール */}
-              <div className="max-h-[500px] overflow-y-auto space-y-3 custom-scrollbar pr-2 border border-slate-700/50 p-2 rounded-lg bg-slate-900/50">
+              {/* ★ 高さを固定し、常にスクロールバーを表示 */}
+              <div className="h-[400px] overflow-y-scroll space-y-3 pr-2 border border-slate-700/50 p-2 rounded-lg bg-slate-900/50">
                 {allUsers.filter(u => 
                   u.handleName.toLowerCase().includes(userSearchQuery.toLowerCase()) || 
                   (u.email && u.email.toLowerCase().includes(userSearchQuery.toLowerCase())) || 
@@ -552,7 +548,8 @@ export default function Home() {
               <h3 className="text-xl font-bold text-white flex items-center gap-2">✉️ 受信箱</h3>
               <button onClick={() => setShowMailbox(false)} className="text-slate-400 hover:text-white font-bold text-xl">×</button>
             </div>
-            <div className="flex-1 overflow-y-auto space-y-3 custom-scrollbar pr-2">
+            {/* ★ 高さを固定し、常にスクロールバーを表示 */}
+            <div className="h-[400px] overflow-y-scroll space-y-3 pr-2">
               {myNotifications.length === 0 ? (
                 <p className="text-sm text-slate-500 text-center py-8">現在お知らせはありません。</p>
               ) : (
@@ -577,7 +574,7 @@ export default function Home() {
 
       {/* ==================== 0. ログイン／新規登録 ==================== */}
       {currentView === "login" && (
-        <div className="flex-1 flex flex-col items-center justify-center p-6 w-full">
+        <div className="flex-1 flex flex-col items-center justify-center p-6 w-full min-h-0 overflow-y-auto">
           <div className="bg-slate-800 border border-slate-700 rounded-2xl p-8 w-full max-w-md shadow-2xl">
             <h1 className="text-3xl font-extrabold text-emerald-400 mb-2 text-center">AI GM MORPG</h1>
             <p className="text-slate-400 text-sm text-center mb-8">ログインして冒険を始める</p>
@@ -610,7 +607,7 @@ export default function Home() {
 
       {/* ==================== 1. ロビー画面 ==================== */}
       {currentView === "lobby" && currentUser && (
-        <div className="flex-1 flex flex-col p-6 max-w-7xl mx-auto w-full overflow-y-auto custom-scrollbar">
+        <div className="flex-1 flex flex-col p-6 max-w-7xl mx-auto w-full min-h-0 overflow-y-auto">
           <header className="mb-6 flex justify-between items-end border-b border-slate-700 pb-4">
             <div>
               <h1 className="text-3xl font-extrabold text-emerald-400 mb-1">AI GM MORPG Lobby</h1>
@@ -632,12 +629,13 @@ export default function Home() {
 
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
             
-            {/* ★ ロビー画面の部屋リストのスクロール */}
+            {/* ★ ロビー画面の部屋リスト */}
             <div className="lg:col-span-2 flex flex-col gap-4">
               <h2 className="text-xl font-bold text-blue-400">🌐 募集中のセッション</h2>
-              <div className="max-h-[600px] overflow-y-auto space-y-4 custom-scrollbar pr-2">
+              {/* ★ 高さを固定し、常にスクロールバーを表示 */}
+              <div className="h-[500px] overflow-y-scroll space-y-4 pr-2 border border-slate-700/50 p-2 rounded-lg bg-slate-900/50">
                 {rooms.length === 0 ? (
-                  <p className="text-slate-400 text-sm p-4 bg-slate-800 rounded-xl border border-slate-700">現在募集中のセッションはありません。</p>
+                  <p className="text-slate-400 text-sm p-4 text-center">現在募集中のセッションはありません。</p>
                 ) : (
                   rooms.map((room) => {
                     const scRating = room.scenario?.ratingCount ? (room.scenario.ratingSum / room.scenario.ratingCount).toFixed(1) : "未評価";
@@ -724,7 +722,7 @@ export default function Home() {
 
       {/* ==================== 2. シナリオ編集 ==================== */}
       {currentView === "scenarioEdit" && editingScenario && (
-        <div className="flex-1 flex flex-col items-center p-6 max-w-4xl mx-auto w-full overflow-y-auto custom-scrollbar">
+        <div className="flex-1 flex flex-col items-center p-6 max-w-4xl mx-auto w-full min-h-0 overflow-y-auto">
           <h2 className="text-2xl font-bold text-amber-400 mb-6 w-full">{editingScenario.id ? "シナリオ・セット編集" : "シナリオ・セット新規作成"}</h2>
           {editingCharIndex !== null ? (
             <div className="w-full bg-slate-800 border border-slate-700 rounded-xl p-5 space-y-4 shadow-2xl">
@@ -778,7 +776,7 @@ export default function Home() {
 
       {/* ==================== 3. ゲームセッション画面 ==================== */}
       {currentView === "game" && activeRoom && joinedCharacter && currentUser && myScene && (
-        <div className="flex-1 flex flex-col max-w-5xl mx-auto w-full p-4 h-full relative">
+        <div className="flex-1 flex flex-col max-w-5xl mx-auto w-full p-4 min-h-0 relative">
           <header className="bg-slate-800 border border-slate-700 rounded-xl p-3 mb-3 flex justify-between items-center shadow-md">
             <div className="flex items-center gap-4">
               <div className="flex flex-col">
@@ -803,7 +801,8 @@ export default function Home() {
             </div>
           </header>
 
-          <div className="flex-1 overflow-y-auto space-y-3 p-4 bg-slate-800/80 rounded-xl border border-slate-700 mb-3">
+          {/* ★ 高さを固定し、常にスクロールバーを表示 */}
+          <div className="flex-1 overflow-y-scroll space-y-3 p-4 bg-slate-800/80 rounded-xl border border-slate-700 mb-3 min-h-0">
             {messages.map((msg, index) => (
               <div key={index} className={`p-3 rounded-xl max-w-[85%] ${msg.sender === "gm" ? "bg-slate-700/90 border-l-4 border-emerald-500 mr-auto text-slate-100" : "bg-blue-600/90 ml-auto text-right text-white"}`}>
                 <p className="text-sm whitespace-pre-wrap">{msg.text}</p>
@@ -815,7 +814,7 @@ export default function Home() {
 
       {/* ==================== 4. リザルト・評価画面 ==================== */}
       {currentView === "evaluation" && activeRoom && (
-        <div className="flex-1 flex flex-col items-center justify-center p-6 w-full">
+        <div className="flex-1 flex flex-col items-center justify-center p-6 w-full min-h-0 overflow-y-auto">
           <div className="bg-slate-800 border border-slate-700 rounded-2xl p-8 w-full max-w-lg shadow-2xl space-y-6">
             <h1 className="text-2xl font-extrabold text-amber-400 text-center border-b border-slate-700 pb-4">セッション終了！お疲れ様でした</h1>
             <p className="text-sm text-slate-400 text-center">次回のプレイをより良くするため、評価にご協力ください。</p>
