@@ -100,7 +100,6 @@ export default function Home() {
   const defaultScene: Scene = { id: "scene_main", name: "メインルーム", memberIds: [] };
   const myScene = activeRoom?.scenes?.find(s => joinedCharacter && s.memberIds.includes(joinedCharacter.id)) || activeRoom?.scenes?.[0] || defaultScene;
 
-  // ★ 自分がホストで、まだ終了していない部屋があるかチェック
   const myActiveRoom = rooms.find(r => currentUser && r.host_id === currentUser.id && r.status !== 'finished');
 
   // ==========================================
@@ -312,14 +311,35 @@ export default function Home() {
   // ロビー機能・ゲーム進行処理
   // ==========================================
   const handleCreateRoom = async () => {
-    if (!currentUser || !activeScenario || !hostCharId) return;
+    // ★エラー時に明確にポップアップを出します
+    if (!currentUser || !activeScenario || !hostCharId) {
+      alert("エラー: シナリオまたはキャラクターが選択されていません。");
+      return;
+    }
     const initialScenes: Scene[] = [{ id: `scene_main_${Date.now()}`, name: "メインルーム", memberIds: activeScenario.presetCharacters.map(c => c.id) }];
-    const { data, error } = await supabase.from('rooms').insert({ scenario_id: activeScenario.id, host_name: currentUser.handleName, host_id: currentUser.id, status: "recruiting", scenes: initialScenes }).select().single();
-    if (!error && data) {
+    
+    const { data, error } = await supabase.from('rooms').insert({ 
+      scenario_id: activeScenario.id, 
+      host_name: currentUser.handleName, 
+      host_id: currentUser.id, 
+      status: "recruiting", 
+      scenes: initialScenes 
+    }).select().single();
+    
+    if (error) {
+      alert("データベースエラーが発生し、入室できませんでした: " + error.message);
+      return;
+    }
+    
+    if (data) {
       await fetchData();
       const newRoom: Room = { id: data.id, scenario_id: data.scenario_id, scenario: activeScenario, host_name: data.host_name, host_id: data.host_id, status: data.status, scenes: data.scenes };
       const hostChar = activeScenario.presetCharacters.find(c => c.id === hostCharId);
-      if (hostChar) handleJoinRoom(newRoom, hostChar);
+      if (hostChar) {
+        handleJoinRoom(newRoom, hostChar);
+      } else {
+        alert("選択したキャラクターが見つかりません。");
+      }
     }
   };
 
@@ -342,6 +362,28 @@ export default function Home() {
     await supabase.from('rooms').update({ status: 'finished' }).eq('id', activeRoom.id);
     setMessages(prev => [...prev, { sender: "gm", text: `【システム】セッションが終了しました。お疲れ様でした！評価画面へ移動します...`, type: "system", sceneId: myScene.id }]);
     setTimeout(() => { setCurrentView("evaluation"); }, 3000);
+  };
+
+  // ★チャット送信用関数（復活！）
+  const handleSend = () => {
+    if (!input.trim() || isLoading || !activeRoom || !joinedCharacter || !currentUser || !myScene) return;
+    const userMsg: Message = { sender: "player", text: input, type: msgType, sceneId: myScene.id };
+    setMessages((prev) => [...prev, userMsg]);
+    setInput(""); setIsLoading(true);
+    
+    // （※AI連動までの仮処理）
+    setTimeout(() => {
+      const replyText = msgType === "ic" ? `AI GM「（${myScene.name}にて）行動を処理します…」` : `AI GM (OOC)「了解しました: ${userMsg.text}」`;
+      setMessages((prev) => [...prev, { sender: "gm", text: replyText, type: msgType, sceneId: myScene.id }]);
+      setIsLoading(false);
+    }, 1000);
+  };
+
+  // ★ダイスロール関数（復活！）
+  const rollDice = (targetValue: number, label: string) => {
+    if(!myScene) return;
+    const res = Math.floor(Math.random() * 100) + 1;
+    setMessages((prev) => [...prev, { sender: "player", text: `🎲 ${label} (≦ ${targetValue}) ➔ 出目: ${res} 【${res <= targetValue ? "成功" : "失敗"}】`, type: "ic", sceneId: myScene.id }]);
   };
 
   const submitEvaluation = async () => {
@@ -645,11 +687,10 @@ export default function Home() {
                           <h3 className="text-lg font-bold text-white mb-1 flex items-center gap-2">
                             {room.scenario?.title}
                             {isWarning && <span className="text-[10px] bg-red-600 text-white px-2 py-0.5 rounded animate-pulse">⚠️ 注意: 評価が低めです</span>}
-                            {room.host_id === currentUser.id && <span className="text-[10px] bg-amber-600 text-white px-2 py-0.5 rounded ml-auto">あなたがホスト</span>}
                           </h3>
                           <div className="text-xs text-slate-400 mb-2">ホスト: {room.host_name} | シナリオ評価: ★ {scRating}</div>
-                          <select className="bg-slate-900 border border-slate-700 rounded p-1 text-xs text-white" onChange={(e) => { const char = room.scenario?.presetCharacters.find(c => c.id === e.target.value); if(char) handleJoinRoom(room, char); }} defaultValue="">
-                            <option value="" disabled>キャラクターを選択して入室/復帰...</option>
+                          <select className="bg-slate-900 border border-slate-700 rounded p-1 text-xs text-white" onChange={(e) => { const char = room.scenario?.presetCharacters.find(c => c.id === e.target.value); if(char) handleJoinRoom(room, char); }} value="">
+                            <option value="" disabled>参加するキャラクターを選択して入室/復帰...</option>
                             {room.scenario?.presetCharacters.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
                           </select>
                         </div>
@@ -715,6 +756,7 @@ export default function Home() {
                   </select>
                   {activeScenario && (
                     <div>
+                      {/* ★ キャラクター未選択時はボタンを無効化 */}
                       {activeScenario.presetCharacters.length === 0 ? (
                         <div className="bg-red-900/30 border border-red-500/50 p-3 rounded text-center">
                           <p className="text-[10px] text-red-400">※キャラクターが登録されていません。<br/>「＋ 新規作成（編集）」から追加してください。</p>
@@ -725,7 +767,6 @@ export default function Home() {
                             <option value="" disabled>自分のキャラクターを選択...</option>
                             {activeScenario.presetCharacters.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
                           </select>
-                          {/* ★ キャラクター未選択時はボタンを無効化 */}
                           <button onClick={handleCreateRoom} disabled={!hostCharId} className="w-full bg-amber-600 hover:bg-amber-500 disabled:bg-slate-600 disabled:cursor-not-allowed text-white font-bold py-2 rounded transition">部屋を立てて入室</button>
                           {!hostCharId && <p className="text-[10px] text-amber-500/80 text-center mt-2">※入室するには自分のキャラクターを選択してください</p>}
                         </>
@@ -798,7 +839,9 @@ export default function Home() {
         <div className="flex-1 flex flex-col max-w-5xl mx-auto w-full p-4 min-h-0 relative">
           <header className="bg-slate-800 border border-slate-700 rounded-xl p-3 mb-3 flex justify-between items-center shadow-md">
             <div className="flex items-center gap-4">
-              <div className="flex flex-col">
+              {/* ★ロビーに戻るボタン（復活） */}
+              <button onClick={() => setCurrentView("lobby")} className="text-xs text-slate-400 hover:text-white underline">← 退出する</button>
+              <div className="flex flex-col ml-4">
                 <span className="text-[10px] text-blue-400 font-bold border border-blue-500/50 bg-blue-900/30 px-2 py-0.5 rounded w-fit mb-1">ROOM: {activeRoom.scenario?.title} ({activeRoom.status})</span>
                 <span className="text-sm font-bold text-white flex items-center gap-2">
                   <img src={joinedCharacter.imageUrl || NO_IMAGE_CHAR} className="w-5 h-5 rounded-full" /> {joinedCharacter.name}
@@ -807,13 +850,17 @@ export default function Home() {
             </div>
             
             <div className="flex items-center gap-2">
+              {/* ★ダイスボタン（復活） */}
+              <button onClick={() => rollDice(joinedCharacter.san, "SAN")} className="bg-cyan-700 hover:bg-cyan-600 text-white text-xs px-2 py-1 rounded font-medium">SAN ({joinedCharacter.san})</button>
+              <button onClick={() => rollDice(joinedCharacter.str, "STR")} className="bg-red-700 hover:bg-red-600 text-white text-xs px-2 py-1 rounded font-medium">STR ({joinedCharacter.str})</button>
+
               {currentUser.handleName === activeRoom.host_name && (
                 <>
                   {activeRoom.status === "recruiting" && (
-                    <button onClick={startGame} className="bg-emerald-600 hover:bg-emerald-500 text-white text-[10px] font-bold px-3 py-1.5 rounded mr-2 animate-pulse shadow-lg shadow-emerald-900/50">▶ ゲーム開始 (AI起動)</button>
+                    <button onClick={startGame} className="bg-emerald-600 hover:bg-emerald-500 text-white text-[10px] font-bold px-3 py-1.5 rounded mr-2 animate-pulse shadow-lg shadow-emerald-900/50 ml-4">▶ ゲーム開始 (AI起動)</button>
                   )}
                   {activeRoom.status === "playing" && (
-                    <button onClick={endGame} className="bg-red-600 hover:bg-red-500 text-white text-[10px] font-bold px-3 py-1.5 rounded mr-2 shadow-lg shadow-red-900/50">■ ゲーム終了＆評価へ</button>
+                    <button onClick={endGame} className="bg-red-600 hover:bg-red-500 text-white text-[10px] font-bold px-3 py-1.5 rounded mr-2 shadow-lg shadow-red-900/50 ml-4">■ ゲーム終了＆評価へ</button>
                   )}
                 </>
               )}
@@ -823,9 +870,23 @@ export default function Home() {
           <div className="flex-1 overflow-y-scroll space-y-3 p-4 bg-slate-800/80 rounded-xl border border-slate-700 mb-3 min-h-0">
             {messages.map((msg, index) => (
               <div key={index} className={`p-3 rounded-xl max-w-[85%] ${msg.sender === "gm" ? "bg-slate-700/90 border-l-4 border-emerald-500 mr-auto text-slate-100" : "bg-blue-600/90 ml-auto text-right text-white"}`}>
+                <span className="text-[10px] opacity-60 block mb-1">{msg.sender === "gm" ? "AI GM" : joinedCharacter.name} {msg.type && `[${msg.type.toUpperCase()}]`}</span>
                 <p className="text-sm whitespace-pre-wrap">{msg.text}</p>
               </div>
             ))}
+            {isLoading && <div className="text-xs text-emerald-400 animate-pulse flex items-center gap-2"><span>AI GMが処理中...</span></div>}
+          </div>
+
+          {/* ★チャット入力欄（完全復活！！） */}
+          <div className="bg-slate-800 border border-slate-700 rounded-xl p-3 flex flex-col gap-2">
+            <div className="flex items-center gap-4 text-xs">
+              <label className="flex items-center gap-1 cursor-pointer"><input type="radio" name="msgType" value="ic" checked={msgType === "ic"} onChange={() => setMsgType("ic")} className="accent-blue-500"/><span className="text-blue-400 font-semibold">行動宣言 (IC)</span></label>
+              <label className="flex items-center gap-1 cursor-pointer"><input type="radio" name="msgType" value="ooc" checked={msgType === "ooc"} onChange={() => setMsgType("ooc")} className="accent-slate-400"/><span className="text-slate-400">雑談 (OOC)</span></label>
+            </div>
+            <div className="flex gap-2">
+              <input type="text" value={input} onChange={(e) => setInput(e.target.value)} onKeyDown={(e) => e.key === "Enter" && handleSend()} placeholder="行動を入力..." className="flex-1 bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-blue-500" />
+              <button onClick={handleSend} disabled={isLoading} className="bg-blue-600 hover:bg-blue-500 text-white px-5 py-2 rounded-lg text-sm font-semibold transition disabled:opacity-50">送信</button>
+            </div>
           </div>
         </div>
       )}
