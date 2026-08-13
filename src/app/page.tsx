@@ -429,7 +429,7 @@ export default function Home() {
             {/* ★ 調査依頼（異議申し立て）リスト */}
             <div className="bg-slate-900 border border-slate-700 rounded-xl p-5 space-y-4">
               <h3 className="font-bold text-white mb-1">🚨 調査依頼（BAN異議申し立て）</h3>
-              <div className="h-60 overflow-y-auto space-y-2 custom-scrollbar pr-2">
+              <div className="max-h-60 overflow-y-auto space-y-2 custom-scrollbar pr-2">
                 {banAppeals.filter(a => a.status === 'appealing').map(appeal => {
                   const u = allUsers.find(user => user.id === appeal.userId);
                   return (
@@ -466,8 +466,8 @@ export default function Home() {
                 className="w-full bg-slate-800 border border-slate-600 rounded-lg p-3 text-sm text-white focus:outline-none focus:border-emerald-500 mb-2 shadow-inner" 
               />
 
-              {/* ★ 高さを固定（h-[400px]）して確実にスクロールさせる */}
-              <div className="h-[400px] overflow-y-auto space-y-3 custom-scrollbar pr-2 border border-slate-700/50 p-2 rounded-lg bg-slate-900/50">
+              {/* ★ 管理画面ユーザー一覧のスクロール */}
+              <div className="max-h-[500px] overflow-y-auto space-y-3 custom-scrollbar pr-2 border border-slate-700/50 p-2 rounded-lg bg-slate-900/50">
                 {allUsers.filter(u => 
                   u.handleName.toLowerCase().includes(userSearchQuery.toLowerCase()) || 
                   (u.email && u.email.toLowerCase().includes(userSearchQuery.toLowerCase())) || 
@@ -631,29 +631,37 @@ export default function Home() {
           </header>
 
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-            <div className="lg:col-span-2 space-y-4">
+            
+            {/* ★ ロビー画面の部屋リストのスクロール */}
+            <div className="lg:col-span-2 flex flex-col gap-4">
               <h2 className="text-xl font-bold text-blue-400">🌐 募集中のセッション</h2>
-              {rooms.map((room) => {
-                const scRating = room.scenario?.ratingCount ? (room.scenario.ratingSum / room.scenario.ratingCount).toFixed(1) : "未評価";
-                const isWarning = room.scenario?.ratingCount && (room.scenario.ratingSum / room.scenario.ratingCount) < 3.0;
+              <div className="max-h-[600px] overflow-y-auto space-y-4 custom-scrollbar pr-2">
+                {rooms.length === 0 ? (
+                  <p className="text-slate-400 text-sm p-4 bg-slate-800 rounded-xl border border-slate-700">現在募集中のセッションはありません。</p>
+                ) : (
+                  rooms.map((room) => {
+                    const scRating = room.scenario?.ratingCount ? (room.scenario.ratingSum / room.scenario.ratingCount).toFixed(1) : "未評価";
+                    const isWarning = room.scenario?.ratingCount && (room.scenario.ratingSum / room.scenario.ratingCount) < 3.0;
 
-                return (
-                  <div key={room.id} className={`bg-slate-800 border rounded-xl p-4 flex gap-4 ${isWarning ? 'border-red-500/50 bg-red-950/20' : 'border-slate-700 hover:border-blue-500'}`}>
-                    <img src={room.scenario?.imageUrl || NO_IMAGE_SCENARIO} className="w-24 h-24 object-cover rounded" />
-                    <div className="flex-1">
-                      <h3 className="text-lg font-bold text-white mb-1 flex items-center gap-2">
-                        {room.scenario?.title}
-                        {isWarning && <span className="text-[10px] bg-red-600 text-white px-2 py-0.5 rounded animate-pulse">⚠️ 注意: 評価が低めです</span>}
-                      </h3>
-                      <div className="text-xs text-slate-400 mb-2">ホスト: {room.host_name} | シナリオ評価: ★ {scRating}</div>
-                      <select className="bg-slate-900 border border-slate-700 rounded p-1 text-xs text-white" onChange={(e) => { const char = room.scenario?.presetCharacters.find(c => c.id === e.target.value); if(char) handleJoinRoom(room, char); }} defaultValue="">
-                        <option value="" disabled>参加するキャラクターを選択...</option>
-                        {room.scenario?.presetCharacters.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
-                      </select>
-                    </div>
-                  </div>
-                )
-              })}
+                    return (
+                      <div key={room.id} className={`bg-slate-800 border rounded-xl p-4 flex gap-4 ${isWarning ? 'border-red-500/50 bg-red-950/20' : 'border-slate-700 hover:border-blue-500'}`}>
+                        <img src={room.scenario?.imageUrl || NO_IMAGE_SCENARIO} className="w-24 h-24 object-cover rounded" />
+                        <div className="flex-1">
+                          <h3 className="text-lg font-bold text-white mb-1 flex items-center gap-2">
+                            {room.scenario?.title}
+                            {isWarning && <span className="text-[10px] bg-red-600 text-white px-2 py-0.5 rounded animate-pulse">⚠️ 注意: 評価が低めです</span>}
+                          </h3>
+                          <div className="text-xs text-slate-400 mb-2">ホスト: {room.host_name} | シナリオ評価: ★ {scRating}</div>
+                          <select className="bg-slate-900 border border-slate-700 rounded p-1 text-xs text-white" onChange={(e) => { const char = room.scenario?.presetCharacters.find(c => c.id === e.target.value); if(char) handleJoinRoom(room, char); }} defaultValue="">
+                            <option value="" disabled>参加するキャラクターを選択...</option>
+                            {room.scenario?.presetCharacters.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+                          </select>
+                        </div>
+                      </div>
+                    )
+                  })
+                )}
+              </div>
             </div>
 
             <div className="space-y-6">
