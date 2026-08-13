@@ -89,7 +89,6 @@ export default function Home() {
   const [warningTitle, setWarningTitle] = useState("");
   const [warningText, setWarningText] = useState("");
 
-  // ★ BAN用ステート
   const [banTargetUser, setBanTargetUser] = useState<UserProfile | null>(null);
   const [banReason, setBanReason] = useState("");
   const [banAppeals, setBanAppeals] = useState<BanAppeal[]>([]);
@@ -208,6 +207,23 @@ export default function Home() {
     if (!error) { setCurrentUser(editProfileData); setIsEditingProfile(false); }
   };
 
+  // ★ シナリオ保存関数
+  const saveScenario = async () => {
+    if (!editingScenario) return;
+    const dbData = { 
+      title: editingScenario.title, system: editingScenario.system, tags: editingScenario.tags, setting: editingScenario.setting, 
+      npc_list: editingScenario.npcList, plot: editingScenario.plot, image_url: editingScenario.imageUrl, preset_characters: editingScenario.presetCharacters,
+      rating_sum: editingScenario.ratingSum, rating_count: editingScenario.ratingCount
+    };
+    if (editingScenario.id && !editingScenario.id.startsWith('s')) {
+      await supabase.from('scenarios').update(dbData).eq('id', editingScenario.id);
+    } else {
+      await supabase.from('scenarios').insert(dbData);
+    }
+    await fetchData();
+    setCurrentView("lobby");
+  };
+
   // ==========================================
   // 管理画面処理 (BAN・通知)
   // ==========================================
@@ -281,7 +297,7 @@ export default function Home() {
   };
 
   // ==========================================
-  // ロビー機能・ゲーム進行処理 (省略なし)
+  // ロビー機能・ゲーム進行処理
   // ==========================================
   const handleCreateRoom = async () => {
     if (!currentUser || !activeScenario || !hostCharId) return;
@@ -633,7 +649,10 @@ export default function Home() {
               <div className="bg-slate-800 border border-slate-700 rounded-xl p-4 flex flex-col">
                 <div className="flex justify-between items-center mb-3">
                   <h2 className="text-sm font-bold text-amber-400">📜 シナリオを立てる</h2>
-                  <button onClick={() => { setEditingScenario({ id: "", title: "", system: "", tags: "", setting: "", npcList: "", plot: "", imageUrl: "", presetCharacters: [] }); setCurrentView("scenarioEdit"); }} className="text-[10px] bg-slate-700 px-2 py-1 rounded hover:bg-slate-600">＋ 新規作成</button>
+                  <button onClick={() => { 
+                    setEditingScenario({ id: "", title: "", system: "", tags: "", setting: "", npcList: "", plot: "", imageUrl: "", presetCharacters: [], ratingSum: 0, ratingCount: 0 }); 
+                    setCurrentView("scenarioEdit"); 
+                  }} className="text-[10px] bg-slate-700 px-2 py-1 rounded hover:bg-slate-600">＋ 新規作成</button>
                 </div>
                 <select value={selectedScenarioId} onChange={(e) => setSelectedScenarioId(e.target.value)} className="w-full bg-slate-900 border border-slate-700 rounded p-2 text-sm text-white mb-4">
                   {scenarios.map(s => <option key={s.id} value={s.id}>{s.title}</option>)}
@@ -653,7 +672,7 @@ export default function Home() {
         </div>
       )}
 
-      {/* ==================== 2. シナリオ編集 (省略せず全保持) ==================== */}
+      {/* ==================== 2. シナリオ編集 ==================== */}
       {currentView === "scenarioEdit" && editingScenario && (
         <div className="flex-1 flex flex-col items-center p-6 max-w-4xl mx-auto w-full overflow-y-auto custom-scrollbar">
           <h2 className="text-2xl font-bold text-amber-400 mb-6 w-full">{editingScenario.id ? "シナリオ・セット編集" : "シナリオ・セット新規作成"}</h2>
