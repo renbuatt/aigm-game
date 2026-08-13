@@ -29,12 +29,12 @@ type Character = {
   hp: number; san: number; str: number; dex: number; int: number; con: number; wis: number; cha: number;
 };
 
-// ★ playLimit (購入時に付与されるチケット回数) を追加
+// ★ giftLimit (プレゼント時に付与するチケット回数) を追加
 type Scenario = {
   id: string; title: string; system: string; tags: string; setting: string;
   npcList: string; plot: string; imageUrl: string; presetCharacters: Character[];
   ratingSum: number; ratingCount: number;
-  authorId?: string; price?: number; playLimit?: number;
+  authorId?: string; price?: number; playLimit?: number; giftLimit?: number;
   purchasedTickets?: Record<string, number>;
 };
 
@@ -68,6 +68,7 @@ export default function Home() {
   const [editingCharIndex, setEditingCharIndex] = useState<number | null>(null);
   
   const [selectedScenarioId, setSelectedScenarioId] = useState<string>("");
+  const [shopScenarioId, setShopScenarioId] = useState<string>(""); 
   
   const [hostCharId, setHostCharId] = useState<string>("");
   const [grantUserId, setGrantUserId] = useState("");
@@ -100,8 +101,8 @@ export default function Home() {
 
   const [userSearchQuery, setUserSearchQuery] = useState("");
 
-  // ★ 自分が作者、またはチケットを持っているシナリオだけをリスト化
   const myScenarios = scenarios.filter(s => s.authorId === currentUser?.id || (s.purchasedTickets && currentUser && s.purchasedTickets[currentUser.id] > 0));
+  const shopScenarios = scenarios.filter(s => s.authorId !== currentUser?.id);
 
   const activeScenario = myScenarios.find((s) => s.id === selectedScenarioId) || myScenarios[0];
   const defaultScene: Scene = { id: "scene_main", name: "メインルーム", memberIds: [] };
@@ -126,7 +127,7 @@ export default function Home() {
         id: d.id, title: d.title, system: d.system, tags: d.tags, setting: d.setting,
         npcList: d.npc_list, plot: d.plot, imageUrl: d.image_url, presetCharacters: d.preset_characters || [],
         ratingSum: d.rating_sum || 0, ratingCount: d.rating_count || 0,
-        authorId: d.author_id, price: d.price || 500, playLimit: d.play_limit || 1,
+        authorId: d.author_id, price: d.price || 500, playLimit: d.play_limit || 1, giftLimit: d.gift_limit || 1,
         purchasedTickets: d.purchased_tickets || {} 
       }));
       setScenarios(loadedScenarios);
@@ -218,7 +219,8 @@ export default function Home() {
       author_id: currentUser.id,
       purchased_tickets: editingScenario.purchasedTickets || {},
       price: editingScenario.price || 500,
-      play_limit: editingScenario.playLimit || 1
+      play_limit: editingScenario.playLimit || 1,
+      gift_limit: editingScenario.giftLimit || 1 // ★保存
     };
     if (editingScenario.id && !editingScenario.id.startsWith('s')) {
       await supabase.from('scenarios').update(dbData).eq('id', editingScenario.id);
@@ -229,15 +231,12 @@ export default function Home() {
     setCurrentView("lobby");
   };
 
-  // ★ 決済システムを考慮した購入フロー（評価画面から呼ばれる）
   const handleBuyInEvaluation = async () => {
     if (!activeRoom || !activeRoom.scenario || !currentUser) return;
     const scenario = activeRoom.scenario;
 
     if (scenario.price && scenario.price > 0) {
-      if (!confirm(`【決済システムへ遷移します】\n金額: ${scenario.price} G\n（※現在はデモのため、OKを押すと決済完了として処理を進めます。）`)) {
-        return;
-      }
+      if (!confirm(`【決済システムへ遷移します】\n金額: ${scenario.price} G\n（※現在はデモのため、OKを押すと決済完了として処理を進めます。）`)) return;
     }
 
     const currentTickets = scenario.purchasedTickets || {};
@@ -253,24 +252,43 @@ export default function Home() {
     }
   };
 
+  const buyScenario = async (scenario: Scenario) => {
+    if (!currentUser) return;
+    if (confirm(`「${scenario.title}」のプレイチケットを ${scenario.price || 500} G で購入しますか？\n（※現在はテスト用のデモ決済です）`)) {
+      const currentTickets = scenario.purchasedTickets || {};
+      const addLimit = scenario.playLimit || 1;
+      const newTickets = { ...currentTickets, [currentUser.id]: (currentTickets[currentUser.id] || 0) + addLimit };
+      
+      const { error } = await supabase.from('scenarios').update({ purchased_tickets: newTickets }).eq('id', scenario.id);
+      if (!error) {
+        alert(`プレイチケット（${addLimit}回分）の購入が完了しました！\n「マイ・シナリオ」から部屋を立てることができます。`);
+        setShopScenarioId("");
+        await fetchData();
+      } else { alert("エラーが発生しました: " + error.message); }
+    }
+  };
+
   // ★ チケットプレゼント機能
   const handleGiftTicket = async () => {
     if (!activeScenario || !grantUserId || !currentUser) return;
     const isAuthor = activeScenario.authorId === currentUser.id;
+    // ★ 作者なら自身で設定した付与回数、それ以外は1回分（自分のチケットを譲渡）
+    const giftAmount = isAuthor ? (activeScenario.giftLimit || 1) : 1;
+
     const currentTickets = activeScenario.purchasedTickets || {};
     let myTickets = currentTickets[currentUser.id] || 0;
 
-    if (!isAuthor && myTickets <= 0) {
+    if (!isAuthor && myTickets < giftAmount) {
       alert("プレゼントするチケットがありません。"); return;
     }
 
     const newTickets = { ...currentTickets };
-    if (!isAuthor) newTickets[currentUser.id] = myTickets - 1; // 自分が作者でない場合はチケット消費
-    newTickets[grantUserId] = (newTickets[grantUserId] || 0) + 1; // 相手に付与
+    if (!isAuthor) newTickets[currentUser.id] = myTickets - giftAmount;
+    newTickets[grantUserId] = (newTickets[grantUserId] || 0) + giftAmount;
 
     const { error } = await supabase.from('scenarios').update({ purchased_tickets: newTickets }).eq('id', activeScenario.id);
     if (!error) {
-      alert("対象のユーザーにプレイチケットを1回分プレゼントしました！");
+      alert(`対象のユーザーにプレイチケットを ${giftAmount} 回分プレゼントしました！`);
       setGrantUserId("");
       await fetchData();
     } else { alert("エラーが発生しました: " + error.message); }
@@ -488,6 +506,7 @@ export default function Home() {
           </header>
 
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+            {/* 部屋リスト（★誰でも無条件に参加可能！） */}
             <div className="lg:col-span-2 flex flex-col gap-4">
               <h2 className="text-xl font-bold text-blue-400">🌐 募集中のセッション</h2>
               <div className="h-[500px] overflow-y-scroll space-y-4 pr-2 border border-slate-700/50 p-2 rounded-lg bg-slate-900/50">
@@ -510,6 +529,7 @@ export default function Home() {
             </div>
 
             <div className="space-y-6">
+              {/* プレイヤー情報 */}
               <div className="bg-slate-800 border border-slate-700 rounded-xl p-4 shadow-lg">
                 <div className="flex justify-between items-center mb-3"><h2 className="text-sm font-bold text-blue-400">👤 プレイヤー情報</h2>{!isEditingProfile && <button onClick={() => { setEditProfileData(currentUser); setIsEditingProfile(true); }} className="text-[10px] bg-slate-700 px-2 py-1 rounded">編集</button>}</div>
                 {isEditingProfile && editProfileData ? (
@@ -536,52 +556,75 @@ export default function Home() {
                   <p className="text-sm font-bold text-amber-400 mb-2">進行中のセッションがあります</p>
                 </div>
               ) : (
-                <div className="bg-slate-800 border border-slate-700 rounded-xl p-4 flex flex-col shadow-lg border-t-2 border-t-emerald-500">
-                  <div className="flex justify-between items-center mb-3">
-                    <h2 className="text-sm font-bold text-emerald-400">📜 マイ・シナリオ</h2>
-                    <button onClick={() => { setEditingScenario({ id: "", title: "", system: "", tags: "", setting: "", npcList: "", plot: "", imageUrl: "", presetCharacters: [], ratingSum: 0, ratingCount: 0 }); setCurrentView("scenarioEdit"); }} className="text-[10px] bg-slate-700 px-2 py-1 rounded hover:bg-slate-600">＋ 新規作成</button>
-                  </div>
+                <>
+                  {/* ★ マイ・シナリオから部屋を立てる（所有分のみ表示） */}
+                  <div className="bg-slate-800 border border-slate-700 rounded-xl p-4 flex flex-col shadow-lg border-t-2 border-t-emerald-500">
+                    <div className="flex justify-between items-center mb-3">
+                      <h2 className="text-sm font-bold text-emerald-400">📜 マイ・シナリオ</h2>
+                      <button onClick={() => { setEditingScenario({ id: "", title: "", system: "", tags: "", setting: "", npcList: "", plot: "", imageUrl: "", presetCharacters: [], ratingSum: 0, ratingCount: 0, price: 500, playLimit: 1, giftLimit: 1 }); setCurrentView("scenarioEdit"); }} className="text-[10px] bg-slate-700 px-2 py-1 rounded hover:bg-slate-600">＋ 新規作成</button>
+                    </div>
 
-                  {myScenarios.length === 0 ? (
-                    <p className="text-xs text-slate-400 mt-2 text-center p-2 bg-slate-900 rounded border border-slate-700/50">所有しているシナリオがありません。<br/>誰かのセッションを遊んだ後、購入できます。</p>
-                  ) : (
-                    <>
-                      <select value={selectedScenarioId} onChange={(e) => setSelectedScenarioId(e.target.value)} className="w-full bg-slate-900 border border-slate-700 rounded p-2 text-sm text-white mb-4">
-                        {myScenarios.map(s => {
-                          const isAuthor = s.authorId === currentUser?.id;
-                          const ticketCount = isAuthor ? "∞" : (s.purchasedTickets?.[currentUser?.id] || 0);
-                          return <option key={s.id} value={s.id}>{s.title} (プレイ権: {ticketCount} 回)</option>
-                        })}
-                      </select>
-                      
-                      {activeScenario && (
-                        <div className="pt-3 border-t border-slate-700">
-                          {activeScenario.presetCharacters.length === 0 ? (
-                            <div className="bg-red-900/30 border border-red-500/50 p-3 rounded text-center"><p className="text-[10px] text-red-400">※キャラクターが登録されていません</p></div>
-                          ) : (
-                            <>
-                              <select value={hostCharId} onChange={(e) => setHostCharId(e.target.value)} className="w-full bg-slate-800 border border-slate-600 rounded p-2 text-xs text-white mb-3">
-                                <option value="" disabled>自分のキャラクターを選択...</option>
-                                {activeScenario.presetCharacters.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
-                              </select>
-                              <button onClick={handleCreateRoom} disabled={!hostCharId} className="w-full bg-emerald-600 hover:bg-emerald-500 disabled:bg-slate-600 text-white font-bold py-2 rounded">部屋を立てて入室 {activeScenario.authorId !== currentUser.id && "(-1 回)"}</button>
-                            </>
-                          )}
+                    {myScenarios.length === 0 ? (
+                      <p className="text-xs text-slate-400 mt-2 text-center p-2 bg-slate-900 rounded border border-slate-700/50">所有しているシナリオがありません。<br/>誰かのセッションを遊んだ後、購入できます。</p>
+                    ) : (
+                      <>
+                        <select value={selectedScenarioId} onChange={(e) => setSelectedScenarioId(e.target.value)} className="w-full bg-slate-900 border border-slate-700 rounded p-2 text-sm text-white mb-4">
+                          {myScenarios.map(s => {
+                            const isAuthor = s.authorId === currentUser?.id;
+                            const ticketCount = isAuthor ? "∞" : (s.purchasedTickets?.[currentUser?.id] || 0);
+                            return <option key={s.id} value={s.id}>{s.title} (プレイ権: {ticketCount} 回)</option>
+                          })}
+                        </select>
+                        
+                        {activeScenario && (
+                          <div className="pt-3 border-t border-slate-700">
+                            {activeScenario.presetCharacters.length === 0 ? (
+                              <div className="bg-red-900/30 border border-red-500/50 p-3 rounded text-center"><p className="text-[10px] text-red-400">※キャラクターが登録されていません</p></div>
+                            ) : (
+                              <>
+                                <select value={hostCharId} onChange={(e) => setHostCharId(e.target.value)} className="w-full bg-slate-800 border border-slate-600 rounded p-2 text-xs text-white mb-3">
+                                  <option value="" disabled>自分のキャラクターを選択...</option>
+                                  {activeScenario.presetCharacters.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+                                </select>
+                                <button onClick={handleCreateRoom} disabled={!hostCharId} className="w-full bg-emerald-600 hover:bg-emerald-500 disabled:bg-slate-600 text-white font-bold py-2 rounded">部屋を立てて入室 {activeScenario.authorId !== currentUser.id && "(-1 回)"}</button>
+                              </>
+                            )}
 
-                          {/* ★ チケット・プレゼント機能 */}
-                          <div className="mt-4 bg-slate-900 p-3 rounded-lg border border-slate-700">
-                            <p className="text-xs text-emerald-400 font-bold mb-1">🎁 プレイ権をプレゼント</p>
-                            <p className="text-[10px] text-slate-400 mb-2">{activeScenario.authorId === currentUser.id ? "あなたは作者なので無制限に渡せます" : "あなたのチケットを1回分消費して渡します"}</p>
-                            <div className="flex gap-2">
-                              <input type="text" value={grantUserId} onChange={e=>setGrantUserId(e.target.value)} placeholder="相手のIDをペースト" className="flex-1 bg-slate-800 border border-slate-600 rounded p-1.5 text-xs text-white" />
-                              <button onClick={handleGiftTicket} disabled={!grantUserId} className="bg-emerald-600 hover:bg-emerald-500 disabled:bg-slate-600 text-white text-[10px] px-3 py-1.5 rounded font-bold">1回分渡す</button>
+                            {/* ★ チケット・プレゼント機能 */}
+                            <div className="mt-4 bg-slate-900 p-3 rounded-lg border border-slate-700">
+                              <p className="text-xs text-emerald-400 font-bold mb-1">🎁 プレイ権をプレゼント</p>
+                              <p className="text-[10px] text-slate-400 mb-2">
+                                {activeScenario.authorId === currentUser.id 
+                                  ? `あなたは作者なので「${activeScenario.giftLimit || 1}回分」を無制限に渡せます` 
+                                  : "あなたのチケットを1回分消費して渡します"}
+                              </p>
+                              <div className="flex gap-2">
+                                <input type="text" value={grantUserId} onChange={e=>setGrantUserId(e.target.value)} placeholder="相手のIDをペースト" className="flex-1 bg-slate-800 border border-slate-600 rounded p-1.5 text-xs text-white" />
+                                <button onClick={handleGiftTicket} disabled={!grantUserId} className="bg-emerald-600 hover:bg-emerald-500 disabled:bg-slate-600 text-white text-[10px] px-3 py-1.5 rounded font-bold">
+                                  {activeScenario.authorId === currentUser.id ? `${activeScenario.giftLimit || 1}回分渡す` : "1回分渡す"}
+                                </button>
+                              </div>
                             </div>
                           </div>
-                        </div>
-                      )}
-                    </>
-                  )}
-                </div>
+                        )}
+                      </>
+                    )}
+                  </div>
+
+                  {/* ★ シナリオショップ（未所持・チケット追加用） */}
+                  <div className="bg-slate-800 border border-slate-700 rounded-xl p-4 flex flex-col mt-4 shadow-lg border-t-2 border-t-amber-500">
+                    <h2 className="text-sm font-bold text-amber-400 mb-3">🛒 シナリオショップ</h2>
+                    <select value={shopScenarioId} onChange={(e) => setShopScenarioId(e.target.value)} className="w-full bg-slate-900 border border-slate-700 rounded p-2 text-sm text-white mb-3">
+                      <option value="" disabled>シナリオを探す...</option>
+                      {shopScenarios.map(s => <option key={s.id} value={s.id}>{s.title}</option>)}
+                    </select>
+                    {shopScenarioId && (
+                      <button onClick={() => { const target = scenarios.find(s => s.id === shopScenarioId); if(target) buyScenario(target); }} className="w-full bg-amber-600 hover:bg-amber-500 text-white font-bold py-2 rounded shadow-lg shadow-amber-900/50 transition">
+                        チケット購入（{scenarios.find(s => s.id === shopScenarioId)?.price || 500} G / {scenarios.find(s => s.id === shopScenarioId)?.playLimit || 1}回分）
+                      </button>
+                    )}
+                  </div>
+                </>
               )}
             </div>
           </div>
@@ -619,10 +662,11 @@ export default function Home() {
                 <h3 className="text-lg font-bold text-amber-400 border-b border-slate-700 pb-2">基本設定</h3>
                 <div><label className="text-sm text-amber-200 block mb-1">シナリオタイトル</label><input type="text" value={editingScenario.title} onChange={(e) => setEditingScenario({ ...editingScenario, title: e.target.value })} className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white" /></div>
                 
-                {/* ★ シナリオ販売設定 */}
-                <div className="grid grid-cols-2 gap-4 mt-2">
-                  <div><label className="text-xs text-amber-200 block mb-1">販売価格 (G)</label><input type="number" min="0" value={editingScenario.price || 0} onChange={(e) => setEditingScenario({ ...editingScenario, price: Number(e.target.value) })} className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white" /></div>
-                  <div><label className="text-xs text-amber-200 block mb-1">購入時に付与するチケット (回数)</label><input type="number" min="1" value={editingScenario.playLimit || 1} onChange={(e) => setEditingScenario({ ...editingScenario, playLimit: Number(e.target.value) })} className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white" /></div>
+                {/* ★ シナリオ販売設定（プレゼント回数も追加） */}
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mt-2 bg-slate-900/50 p-3 rounded-lg border border-slate-700/50">
+                  <div><label className="text-[10px] text-amber-200 block mb-1">販売価格 (G)</label><input type="number" min="0" value={editingScenario.price || 0} onChange={(e) => setEditingScenario({ ...editingScenario, price: Number(e.target.value) })} className="w-full bg-slate-900 border border-slate-700 rounded p-2 text-sm text-white" /></div>
+                  <div><label className="text-[10px] text-amber-200 block mb-1">購入時の付与数 (回)</label><input type="number" min="1" value={editingScenario.playLimit || 1} onChange={(e) => setEditingScenario({ ...editingScenario, playLimit: Number(e.target.value) })} className="w-full bg-slate-900 border border-slate-700 rounded p-2 text-sm text-white" /></div>
+                  <div><label className="text-[10px] text-emerald-400 block mb-1">プレゼント時の付与数 (回)</label><input type="number" min="1" value={editingScenario.giftLimit || 1} onChange={(e) => setEditingScenario({ ...editingScenario, giftLimit: Number(e.target.value) })} className="w-full bg-slate-900 border border-slate-700 rounded p-2 text-sm text-white" /></div>
                 </div>
 
                 <div><label className="text-sm text-amber-200 block mb-1">プロット (AI用)</label><textarea value={editingScenario.plot} onChange={(e) => setEditingScenario({ ...editingScenario, plot: e.target.value })} className="w-full h-40 bg-slate-900 border border-slate-700 rounded-lg p-3 text-sm text-white" /></div>
