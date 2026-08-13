@@ -11,7 +11,7 @@ const supabase = createClient(supabaseUrl, supabaseAnonKey);
 // --- 型定義 ---
 type ViewState = "login" | "lobby" | "scenarioEdit" | "game";
 
-type UserProfile = { id: string; handleName: string; avatarUrl: string; bio: string; };
+type UserProfile = { id: string; handleName: string; avatarUrl: string; bio: string; discordId?: string; };
 
 type Character = {
   id: string; name: string; job: string; personality: string; imageUrl: string;
@@ -77,6 +77,24 @@ export default function Home() {
   const myScene = activeRoom?.scenes?.find(s => joinedCharacter && s.memberIds.includes(joinedCharacter.id)) || activeRoom?.scenes?.[0] || defaultScene;
 
   // ==========================================
+  // 画像アップロード共通処理
+  // ==========================================
+  const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>, folder: string): Promise<string | null> => {
+    if (!e.target.files || e.target.files.length === 0) return null;
+    const file = e.target.files[0];
+    const fileExt = file.name.split('.').pop();
+    const fileName = `${folder}/${Date.now()}_${Math.random().toString(36).substring(2, 9)}.${fileExt}`;
+
+    const { error } = await supabase.storage.from('images').upload(fileName, file);
+    if (error) {
+      alert("アップロード失敗: " + error.message);
+      return null;
+    }
+    const { data } = supabase.storage.from('images').getPublicUrl(fileName);
+    return data.publicUrl;
+  };
+
+  // ==========================================
   // Supabase データ取得処理
   // ==========================================
   const fetchData = async () => {
@@ -106,11 +124,11 @@ export default function Home() {
   const fetchProfile = async (userId: string, emailStr: string) => {
     const { data } = await supabase.from('profiles').select('*').eq('id', userId).single();
     if (data) {
-      setCurrentUser({ id: data.id, handleName: data.handle_name, avatarUrl: data.avatar_url, bio: data.bio });
+      setCurrentUser({ id: data.id, handleName: data.handle_name, avatarUrl: data.avatar_url, bio: data.bio, discordId: data.discord_id });
     } else {
-      const newProfile = { id: userId, handle_name: emailStr.split("@")[0], avatar_url: DEFAULT_AVATAR, bio: "よろしくお願いします。" };
+      const newProfile = { id: userId, handle_name: emailStr.split("@")[0], avatar_url: DEFAULT_AVATAR, bio: "よろしくお願いします。", discord_id: "" };
       await supabase.from('profiles').insert(newProfile);
-      setCurrentUser({ id: userId, handleName: newProfile.handle_name, avatarUrl: newProfile.avatar_url, bio: newProfile.bio });
+      setCurrentUser({ id: userId, handleName: newProfile.handle_name, avatarUrl: newProfile.avatar_url, bio: newProfile.bio, discordId: newProfile.discord_id });
     }
     setCurrentView("lobby");
   };
@@ -148,18 +166,14 @@ export default function Home() {
     } catch (error: any) { alert("エラーが発生しました: " + error.message); } finally { setAuthLoading(false); }
   };
 
-  const handleGoogleAuth = async () => {
-    setAuthLoading(true);
-    const { error } = await supabase.auth.signInWithOAuth({ provider: 'google' });
-    if (error) alert("Googleログインの設定が未完了です。");
-    setAuthLoading(false);
-  };
-
   const handleLogout = async () => { await supabase.auth.signOut(); setCurrentUser(null); setCurrentView("login"); };
 
   const saveProfile = async () => {
     if (!editProfileData || !currentUser) return;
-    const { error } = await supabase.from('profiles').upsert({ id: currentUser.id, handle_name: editProfileData.handleName, avatar_url: editProfileData.avatarUrl, bio: editProfileData.bio });
+    const { error } = await supabase.from('profiles').upsert({ 
+      id: currentUser.id, handle_name: editProfileData.handleName, 
+      avatar_url: editProfileData.avatarUrl, bio: editProfileData.bio, discord_id: editProfileData.discordId 
+    });
     if (!error) { setCurrentUser(editProfileData); setIsEditingProfile(false); }
   };
 
@@ -367,12 +381,28 @@ export default function Home() {
               <div className="bg-slate-800 border border-slate-700 rounded-xl p-4 shadow-lg">
                 <div className="flex justify-between items-center mb-3"><h2 className="text-sm font-bold text-blue-400">👤 プレイヤー情報</h2>{!isEditingProfile && (<button onClick={() => { setEditProfileData(currentUser); setIsEditingProfile(true); }} className="text-[10px] bg-slate-700 px-2 py-1 rounded hover:bg-slate-600">編集</button>)}</div>
                 {isEditingProfile && editProfileData ? (
-                  <div className="space-y-2">
-                    <input type="text" value={editProfileData.handleName} onChange={(e) => setEditProfileData({...editProfileData, handleName: e.target.value})} className="w-full bg-slate-900 border border-slate-700 rounded p-1.5 text-sm" />
+                  <div className="space-y-3">
+                    {/* ★ プロフィール画像アップロード */}
+                    <div className="flex items-center gap-3">
+                      <img src={editProfileData.avatarUrl || DEFAULT_AVATAR} className="w-10 h-10 rounded-full object-cover border border-slate-600" />
+                      <input type="file" accept="image/*" onChange={async (e) => { const url = await handleImageUpload(e, 'avatars'); if(url) setEditProfileData({...editProfileData, avatarUrl: url}); }} className="text-xs text-slate-400 file:mr-4 file:py-1 file:px-2 file:rounded-full file:border-0 file:text-xs file:font-semibold file:bg-blue-600 file:text-white hover:file:bg-blue-500" />
+                    </div>
+                    <div><label className="text-[10px] text-slate-400">名前</label><input type="text" value={editProfileData.handleName} onChange={(e) => setEditProfileData({...editProfileData, handleName: e.target.value})} className="w-full bg-slate-900 border border-slate-700 rounded p-1.5 text-sm" /></div>
+                    <div><label className="text-[10px] text-slate-400">Discord ID</label><input type="text" placeholder="username#1234" value={editProfileData.discordId || ""} onChange={(e) => setEditProfileData({...editProfileData, discordId: e.target.value})} className="w-full bg-slate-900 border border-slate-700 rounded p-1.5 text-sm" /></div>
+                    <div><label className="text-[10px] text-slate-400">自己紹介</label><textarea value={editProfileData.bio} onChange={(e) => setEditProfileData({...editProfileData, bio: e.target.value})} className="w-full bg-slate-900 border border-slate-700 rounded p-1.5 text-sm h-16 outline-none" /></div>
                     <button onClick={saveProfile} className="w-full bg-blue-600 font-bold text-xs py-2 rounded">保存</button>
                   </div>
                 ) : (
-                  <div className="flex gap-4 items-center"><img src={currentUser.avatarUrl} className="w-12 h-12 rounded-full object-cover" /><p className="font-bold text-white">{currentUser.handleName}</p></div>
+                  <div className="flex flex-col gap-2">
+                    <div className="flex gap-4 items-center">
+                      <img src={currentUser.avatarUrl} className="w-12 h-12 rounded-full object-cover" />
+                      <div>
+                        <p className="font-bold text-white">{currentUser.handleName}</p>
+                        {currentUser.discordId && <p className="text-[10px] text-indigo-400 flex items-center gap-1">Discord: {currentUser.discordId}</p>}
+                      </div>
+                    </div>
+                    {currentUser.bio && <p className="text-xs text-slate-400 bg-slate-900/50 p-2 rounded mt-2 border border-slate-700/50 whitespace-pre-wrap">{currentUser.bio}</p>}
+                  </div>
                 )}
               </div>
 
@@ -428,7 +458,16 @@ export default function Home() {
             <div className="w-full bg-slate-800 border border-slate-700 rounded-xl p-5 space-y-4 shadow-2xl">
               <h3 className="text-lg font-bold text-emerald-400 mb-2 border-b border-slate-700 pb-2">キャラクター設定</h3>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4"><div><label className="text-xs text-slate-400 block mb-1">名前</label><input type="text" value={editingScenario.presetCharacters[editingCharIndex].name} onChange={(e) => { const newC = [...editingScenario.presetCharacters]; newC[editingCharIndex].name = e.target.value; setEditingScenario({ ...editingScenario, presetCharacters: newC }); }} className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white outline-none focus:border-emerald-500" /></div><div><label className="text-xs text-slate-400 block mb-1">職業</label><input type="text" value={editingScenario.presetCharacters[editingCharIndex].job} onChange={(e) => { const newC = [...editingScenario.presetCharacters]; newC[editingCharIndex].job = e.target.value; setEditingScenario({ ...editingScenario, presetCharacters: newC }); }} className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white outline-none focus:border-emerald-500" /></div></div>
-              <div><label className="text-xs text-slate-400 block mb-1">キャラクター画像URL</label><input type="text" placeholder="https://..." value={editingScenario.presetCharacters[editingCharIndex].imageUrl} onChange={(e) => { const newC = [...editingScenario.presetCharacters]; newC[editingCharIndex].imageUrl = e.target.value; setEditingScenario({ ...editingScenario, presetCharacters: newC }); }} className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white outline-none focus:border-emerald-500" /></div>
+              
+              {/* ★ キャラクター画像アップロード */}
+              <div>
+                <label className="text-xs text-slate-400 block mb-1">キャラクター画像</label>
+                <div className="flex items-center gap-3">
+                  <img src={editingScenario.presetCharacters[editingCharIndex].imageUrl || NO_IMAGE_CHAR} className="w-12 h-12 object-cover rounded border border-slate-700" />
+                  <input type="file" accept="image/*" onChange={async (e) => { const url = await handleImageUpload(e, 'characters'); if(url) { const newC = [...editingScenario.presetCharacters]; newC[editingCharIndex].imageUrl = url; setEditingScenario({ ...editingScenario, presetCharacters: newC }); } }} className="text-xs text-slate-400 file:mr-4 file:py-1 file:px-2 file:rounded-full file:border-0 file:text-xs file:font-semibold file:bg-emerald-600/30 file:text-emerald-400 hover:file:bg-emerald-600/50" />
+                </div>
+              </div>
+
               <div><label className="text-xs text-slate-400 block mb-1">性格・特徴 (ハンドアウト内容)</label><textarea value={editingScenario.presetCharacters[editingCharIndex].personality} onChange={(e) => { const newC = [...editingScenario.presetCharacters]; newC[editingCharIndex].personality = e.target.value; setEditingScenario({ ...editingScenario, presetCharacters: newC }); }} className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white h-20 outline-none focus:border-emerald-500" /></div>
               <div className="bg-slate-900/50 border border-slate-700 p-4 rounded-lg">
                 <div className="flex justify-between items-center mb-3"><label className="text-sm font-bold text-emerald-400">パラメーター</label><button onClick={handleRollStatsForEditingChar} className="bg-purple-600 hover:bg-purple-500 text-white text-xs font-bold px-3 py-1.5 rounded transition">🎲 ダイスで一括生成</button></div>
@@ -442,7 +481,16 @@ export default function Home() {
               <div className="bg-slate-800 border border-slate-700 rounded-xl p-5 space-y-4">
                 <h3 className="text-lg font-bold text-amber-400 border-b border-slate-700 pb-2">基本設定</h3>
                 <div><label className="text-sm text-amber-200 block mb-1">シナリオタイトル</label><input type="text" value={editingScenario.title} onChange={(e) => setEditingScenario({ ...editingScenario, title: e.target.value })} className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white outline-none focus:border-amber-500" /></div>
-                <div><label className="text-sm text-amber-200 block mb-1">パッケージ画像URL</label><input type="text" placeholder="https://..." value={editingScenario.imageUrl} onChange={(e) => setEditingScenario({ ...editingScenario, imageUrl: e.target.value })} className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white outline-none focus:border-amber-500" /></div>
+                
+                {/* ★ パッケージ画像アップロード */}
+                <div>
+                  <label className="text-sm text-amber-200 block mb-1">パッケージ画像</label>
+                  <div className="flex flex-col gap-2">
+                    <img src={editingScenario.imageUrl || NO_IMAGE_SCENARIO} className="w-full h-32 object-cover rounded-lg border border-slate-700" />
+                    <input type="file" accept="image/*" onChange={async (e) => { const url = await handleImageUpload(e, 'scenarios'); if(url) setEditingScenario({ ...editingScenario, imageUrl: url }); }} className="text-xs text-slate-400 file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-xs file:font-semibold file:bg-amber-600/30 file:text-amber-400 hover:file:bg-amber-600/50 w-full" />
+                  </div>
+                </div>
+
                 <div className="grid grid-cols-2 gap-4"><div><label className="text-sm text-amber-200 block mb-1">システム</label><input type="text" value={editingScenario.system} onChange={(e) => setEditingScenario({ ...editingScenario, system: e.target.value })} className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white outline-none focus:border-amber-500" /></div><div><label className="text-sm text-amber-200 block mb-1">タグ</label><input type="text" value={editingScenario.tags} onChange={(e) => setEditingScenario({ ...editingScenario, tags: e.target.value })} className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white outline-none focus:border-amber-500" /></div></div>
                 <div><label className="text-sm text-amber-200 block mb-1">世界観・設定</label><textarea value={editingScenario.setting} onChange={(e) => setEditingScenario({ ...editingScenario, setting: e.target.value })} className="w-full h-20 bg-slate-900 border border-slate-700 rounded-lg p-3 text-sm text-white outline-none focus:border-amber-500" /></div>
                 <div><label className="text-sm text-amber-200 block mb-1">NPC一覧</label><textarea value={editingScenario.npcList} onChange={(e) => setEditingScenario({ ...editingScenario, npcList: e.target.value })} className="w-full h-20 bg-slate-900 border border-slate-700 rounded-lg p-3 text-sm text-white outline-none focus:border-amber-500" /></div>
