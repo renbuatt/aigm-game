@@ -429,7 +429,7 @@ export default function Home() {
             {/* ★ 調査依頼（異議申し立て）リスト */}
             <div className="bg-slate-900 border border-slate-700 rounded-xl p-5 space-y-4">
               <h3 className="font-bold text-white mb-1">🚨 調査依頼（BAN異議申し立て）</h3>
-              <div className="max-h-60 overflow-y-auto space-y-2 custom-scrollbar pr-2">
+              <div className="h-60 overflow-y-auto space-y-2 custom-scrollbar pr-2">
                 {banAppeals.filter(a => a.status === 'appealing').map(appeal => {
                   const u = allUsers.find(user => user.id === appeal.userId);
                   return (
@@ -466,7 +466,8 @@ export default function Home() {
                 className="w-full bg-slate-800 border border-slate-600 rounded-lg p-3 text-sm text-white focus:outline-none focus:border-emerald-500 mb-2 shadow-inner" 
               />
 
-              <div className="max-h-[500px] overflow-y-auto space-y-3 custom-scrollbar pr-2">
+              {/* ★ 高さを固定（h-[400px]）して確実にスクロールさせる */}
+              <div className="h-[400px] overflow-y-auto space-y-3 custom-scrollbar pr-2 border border-slate-700/50 p-2 rounded-lg bg-slate-900/50">
                 {allUsers.filter(u => 
                   u.handleName.toLowerCase().includes(userSearchQuery.toLowerCase()) || 
                   (u.email && u.email.toLowerCase().includes(userSearchQuery.toLowerCase())) || 
