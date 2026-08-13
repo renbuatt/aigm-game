@@ -100,6 +100,9 @@ export default function Home() {
   const defaultScene: Scene = { id: "scene_main", name: "メインルーム", memberIds: [] };
   const myScene = activeRoom?.scenes?.find(s => joinedCharacter && s.memberIds.includes(joinedCharacter.id)) || activeRoom?.scenes?.[0] || defaultScene;
 
+  // ★ 自分がホストで、まだ終了していない部屋があるかチェック
+  const myActiveRoom = rooms.find(r => currentUser && r.host_id === currentUser.id && r.status !== 'finished');
+
   // ==========================================
   // 画像アップロード・データ取得処理
   // ==========================================
@@ -360,12 +363,10 @@ export default function Home() {
   const unreadCount = myNotifications.filter(n => !n.isRead).length;
 
   return (
-    // ★大元の枠に overflow-hidden を追加し、ページ全体が伸びるのを防ぎます
     <main className="h-screen w-full bg-slate-900 text-slate-100 flex flex-col font-sans overflow-hidden">
       
       {/* ==================== 0. アカウント停止画面 ==================== */}
       {currentView === "banned" && (
-        // ★各画面の親枠に min-h-0 を追加し、子要素のスクロールを強制させます
         <div className="flex-1 flex flex-col items-center justify-center p-6 w-full overflow-y-auto min-h-0">
           <div className="bg-slate-800 border border-red-700/50 rounded-2xl p-8 w-full max-w-lg shadow-2xl space-y-6 relative mt-10">
             <div className="flex justify-between items-center border-b border-slate-700 pb-4">
@@ -427,7 +428,6 @@ export default function Home() {
             {/* 調査依頼リスト */}
             <div className="bg-slate-900 border border-slate-700 rounded-xl p-5 space-y-4">
               <h3 className="font-bold text-white mb-1">🚨 調査依頼（BAN異議申し立て）</h3>
-              {/* ★ 高さを固定し、常にスクロールバーを表示 */}
               <div className="h-[250px] overflow-y-scroll space-y-2 pr-2 border border-slate-700/50 p-2 rounded-lg bg-slate-900/50">
                 {banAppeals.filter(a => a.status === 'appealing').map(appeal => {
                   const u = allUsers.find(user => user.id === appeal.userId);
@@ -462,7 +462,6 @@ export default function Home() {
                 onChange={(e) => setUserSearchQuery(e.target.value)} 
                 className="w-full bg-slate-800 border border-slate-600 rounded-lg p-3 text-sm text-white focus:outline-none focus:border-emerald-500 mb-2 shadow-inner" 
               />
-              {/* ★ 高さを固定し、常にスクロールバーを表示 */}
               <div className="h-[400px] overflow-y-scroll space-y-3 pr-2 border border-slate-700/50 p-2 rounded-lg bg-slate-900/50">
                 {allUsers.filter(u => 
                   u.handleName.toLowerCase().includes(userSearchQuery.toLowerCase()) || 
@@ -548,8 +547,7 @@ export default function Home() {
               <h3 className="text-xl font-bold text-white flex items-center gap-2">✉️ 受信箱</h3>
               <button onClick={() => setShowMailbox(false)} className="text-slate-400 hover:text-white font-bold text-xl">×</button>
             </div>
-            {/* ★ 高さを固定し、常にスクロールバーを表示 */}
-            <div className="h-[400px] overflow-y-scroll space-y-3 pr-2">
+            <div className="h-[400px] overflow-y-scroll space-y-3 pr-2 border border-slate-700/50 p-2 rounded-lg bg-slate-900/50">
               {myNotifications.length === 0 ? (
                 <p className="text-sm text-slate-500 text-center py-8">現在お知らせはありません。</p>
               ) : (
@@ -632,7 +630,6 @@ export default function Home() {
             {/* ★ ロビー画面の部屋リスト */}
             <div className="lg:col-span-2 flex flex-col gap-4">
               <h2 className="text-xl font-bold text-blue-400">🌐 募集中のセッション</h2>
-              {/* ★ 高さを固定し、常にスクロールバーを表示 */}
               <div className="h-[500px] overflow-y-scroll space-y-4 pr-2 border border-slate-700/50 p-2 rounded-lg bg-slate-900/50">
                 {rooms.length === 0 ? (
                   <p className="text-slate-400 text-sm p-4 text-center">現在募集中のセッションはありません。</p>
@@ -648,10 +645,11 @@ export default function Home() {
                           <h3 className="text-lg font-bold text-white mb-1 flex items-center gap-2">
                             {room.scenario?.title}
                             {isWarning && <span className="text-[10px] bg-red-600 text-white px-2 py-0.5 rounded animate-pulse">⚠️ 注意: 評価が低めです</span>}
+                            {room.host_id === currentUser.id && <span className="text-[10px] bg-amber-600 text-white px-2 py-0.5 rounded ml-auto">あなたがホスト</span>}
                           </h3>
                           <div className="text-xs text-slate-400 mb-2">ホスト: {room.host_name} | シナリオ評価: ★ {scRating}</div>
                           <select className="bg-slate-900 border border-slate-700 rounded p-1 text-xs text-white" onChange={(e) => { const char = room.scenario?.presetCharacters.find(c => c.id === e.target.value); if(char) handleJoinRoom(room, char); }} defaultValue="">
-                            <option value="" disabled>参加するキャラクターを選択...</option>
+                            <option value="" disabled>キャラクターを選択して入室/復帰...</option>
                             {room.scenario?.presetCharacters.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
                           </select>
                         </div>
@@ -694,27 +692,48 @@ export default function Home() {
                 )}
               </div>
               
-              <div className="bg-slate-800 border border-slate-700 rounded-xl p-4 flex flex-col">
-                <div className="flex justify-between items-center mb-3">
-                  <h2 className="text-sm font-bold text-amber-400">📜 シナリオを立てる</h2>
-                  <button onClick={() => { 
-                    setEditingScenario({ id: "", title: "", system: "", tags: "", setting: "", npcList: "", plot: "", imageUrl: "", presetCharacters: [], ratingSum: 0, ratingCount: 0 }); 
-                    setCurrentView("scenarioEdit"); 
-                  }} className="text-[10px] bg-slate-700 px-2 py-1 rounded hover:bg-slate-600">＋ 新規作成</button>
+              {/* ★ すでに進行中の部屋がある場合の警告表示 */}
+              {myActiveRoom ? (
+                <div className="bg-slate-800 border border-slate-700 rounded-xl p-4 flex flex-col justify-center items-center h-48">
+                  <span className="text-3xl mb-2">🚪</span>
+                  <p className="text-sm font-bold text-amber-400 mb-2">進行中のセッションがあります</p>
+                  <p className="text-xs text-slate-400 text-center px-2">
+                    あなたは現在「{myActiveRoom.scenario?.title}」のホストです。<br/><br/>左の部屋リストからキャラクターを選択して、セッションに復帰してください。
+                  </p>
                 </div>
-                <select value={selectedScenarioId} onChange={(e) => setSelectedScenarioId(e.target.value)} className="w-full bg-slate-900 border border-slate-700 rounded p-2 text-sm text-white mb-4">
-                  {scenarios.map(s => <option key={s.id} value={s.id}>{s.title}</option>)}
-                </select>
-                {activeScenario && (
-                  <div>
-                    <select value={hostCharId} onChange={(e) => setHostCharId(e.target.value)} className="w-full bg-slate-800 border border-slate-600 rounded p-2 text-xs text-white mb-3">
-                      <option value="" disabled>自分のキャラクターを選択...</option>
-                      {activeScenario.presetCharacters.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
-                    </select>
-                    <button onClick={handleCreateRoom} className="w-full bg-amber-600 hover:bg-amber-500 text-white font-bold py-2 rounded">部屋を立てて入室</button>
+              ) : (
+                <div className="bg-slate-800 border border-slate-700 rounded-xl p-4 flex flex-col">
+                  <div className="flex justify-between items-center mb-3">
+                    <h2 className="text-sm font-bold text-amber-400">📜 シナリオを立てる</h2>
+                    <button onClick={() => { 
+                      setEditingScenario({ id: "", title: "", system: "", tags: "", setting: "", npcList: "", plot: "", imageUrl: "", presetCharacters: [], ratingSum: 0, ratingCount: 0 }); 
+                      setCurrentView("scenarioEdit"); 
+                    }} className="text-[10px] bg-slate-700 px-2 py-1 rounded hover:bg-slate-600">＋ 新規作成</button>
                   </div>
-                )}
-              </div>
+                  <select value={selectedScenarioId} onChange={(e) => setSelectedScenarioId(e.target.value)} className="w-full bg-slate-900 border border-slate-700 rounded p-2 text-sm text-white mb-4">
+                    {scenarios.map(s => <option key={s.id} value={s.id}>{s.title}</option>)}
+                  </select>
+                  {activeScenario && (
+                    <div>
+                      {activeScenario.presetCharacters.length === 0 ? (
+                        <div className="bg-red-900/30 border border-red-500/50 p-3 rounded text-center">
+                          <p className="text-[10px] text-red-400">※キャラクターが登録されていません。<br/>「＋ 新規作成（編集）」から追加してください。</p>
+                        </div>
+                      ) : (
+                        <>
+                          <select value={hostCharId} onChange={(e) => setHostCharId(e.target.value)} className="w-full bg-slate-800 border border-slate-600 rounded p-2 text-xs text-white mb-3">
+                            <option value="" disabled>自分のキャラクターを選択...</option>
+                            {activeScenario.presetCharacters.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+                          </select>
+                          {/* ★ キャラクター未選択時はボタンを無効化 */}
+                          <button onClick={handleCreateRoom} disabled={!hostCharId} className="w-full bg-amber-600 hover:bg-amber-500 disabled:bg-slate-600 disabled:cursor-not-allowed text-white font-bold py-2 rounded transition">部屋を立てて入室</button>
+                          {!hostCharId && <p className="text-[10px] text-amber-500/80 text-center mt-2">※入室するには自分のキャラクターを選択してください</p>}
+                        </>
+                      )}
+                    </div>
+                  )}
+                </div>
+              )}
             </div>
           </div>
         </div>
@@ -801,7 +820,6 @@ export default function Home() {
             </div>
           </header>
 
-          {/* ★ 高さを固定し、常にスクロールバーを表示 */}
           <div className="flex-1 overflow-y-scroll space-y-3 p-4 bg-slate-800/80 rounded-xl border border-slate-700 mb-3 min-h-0">
             {messages.map((msg, index) => (
               <div key={index} className={`p-3 rounded-xl max-w-[85%] ${msg.sender === "gm" ? "bg-slate-700/90 border-l-4 border-emerald-500 mr-auto text-slate-100" : "bg-blue-600/90 ml-auto text-right text-white"}`}>
