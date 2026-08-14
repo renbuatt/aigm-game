@@ -29,12 +29,14 @@ type Character = {
   hp: number; san: number; str: number; dex: number; int: number; con: number; wis: number; cha: number;
 };
 
+// ★ isBanned (一時非公開フラグ) を追加
 type Scenario = {
   id: string; title: string; system: string; tags: string; setting: string;
   npcList: string; plot: string; imageUrl: string; presetCharacters: Character[];
   ratingSum: number; ratingCount: number;
   authorId?: string; price?: number; playLimit?: number; giftLimit?: number;
   purchasedTickets?: Record<string, number>;
+  isBanned?: boolean;
 };
 
 type Scene = { id: string; name: string; memberIds: string[]; leaderId?: string; };
@@ -66,9 +68,9 @@ export default function Home() {
   const [editingScenario, setEditingScenario] = useState<Scenario | null>(null);
   const [editingCharIndex, setEditingCharIndex] = useState<number | null>(null);
   
+  const [selectedScenarioId, setSelectedScenarioId] = useState<string>("");
   const [shopScenarioId, setShopScenarioId] = useState<string>(""); 
   
-  // ★ リスト用の個別入力ステート
   const [charSelects, setCharSelects] = useState<Record<string, string>>({});
   const [giftInputs, setGiftInputs] = useState<Record<string, string>>({});
 
@@ -99,13 +101,21 @@ export default function Home() {
   const [appealText, setAppealText] = useState("");
 
   const [userSearchQuery, setUserSearchQuery] = useState("");
+  const [scenarioSearchQuery, setScenarioSearchQuery] = useState("");
 
-  const myScenarios = scenarios.filter(s => s.authorId === currentUser?.id || (s.purchasedTickets && currentUser && s.purchasedTickets[currentUser.id] > 0));
-  const shopScenarios = scenarios.filter(s => s.authorId !== currentUser?.id);
+  const [banTargetScenario, setBanTargetScenario] = useState<Scenario | null>(null);
+  const [scenarioBanReason, setScenarioBanReason] = useState("");
+
+  // ★ 非公開（BAN）されていないシナリオだけを一般ユーザー向けに抽出
+  const availableScenarios = scenarios.filter(s => !s.isBanned);
+  const myScenarios = availableScenarios.filter(s => s.authorId === currentUser?.id || (s.purchasedTickets && currentUser && s.purchasedTickets[currentUser.id] > 0));
+  const shopScenarios = availableScenarios.filter(s => s.authorId !== currentUser?.id);
+  
+  // ★ BANされたシナリオで立っている部屋もロビーから隠す
+  const availableRooms = rooms.filter(r => !r.scenario?.isBanned);
 
   const defaultScene: Scene = { id: "scene_main", name: "メインルーム", memberIds: [] };
   const myScene = activeRoom?.scenes?.find(s => joinedCharacter && s.memberIds.includes(joinedCharacter.id)) || activeRoom?.scenes?.[0] || defaultScene;
-
   const myActiveRoom = rooms.find(r => currentUser && r.host_id === currentUser.id && r.status !== 'finished');
 
   const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>, folder: string): Promise<string | null> => {
@@ -126,7 +136,8 @@ export default function Home() {
         npcList: d.npc_list, plot: d.plot, imageUrl: d.image_url, presetCharacters: d.preset_characters || [],
         ratingSum: d.rating_sum || 0, ratingCount: d.rating_count || 0,
         authorId: d.author_id, price: d.price || 500, playLimit: d.play_limit || 1, giftLimit: d.gift_limit || 1,
-        purchasedTickets: d.purchased_tickets || {} 
+        purchasedTickets: d.purchased_tickets || {},
+        isBanned: d.is_banned || false // ★ 取得
       }));
       setScenarios(loadedScenarios);
     }
@@ -208,21 +219,12 @@ export default function Home() {
     if (!error) { setCurrentUser(editProfileData); setIsEditingProfile(false); }
   };
 
-  // ★ シナリオの削除（テストデータの掃除用）
   const deleteScenario = async (id: string) => {
     if (!confirm("本当にこのシナリオを削除しますか？\n（※このシナリオで立てられた部屋も強制的に削除されます）")) return;
-    
-    // エラーを防ぐため、先に紐づく部屋を削除する
     await supabase.from('rooms').delete().eq('scenario_id', id);
-    // シナリオ本体を削除
     const { error } = await supabase.from('scenarios').delete().eq('id', id);
-    
-    if (error) {
-      alert("削除に失敗しました: " + error.message);
-    } else {
-      alert("シナリオを削除しました。");
-      await fetchData();
-    }
+    if (error) { alert("削除に失敗しました: " + error.message); } 
+    else { alert("シナリオを削除しました。"); await fetchData(); }
   };
 
   const saveScenario = async () => {
@@ -275,11 +277,8 @@ export default function Home() {
       const newTickets = { ...currentTickets, [currentUser.id]: (currentTickets[currentUser.id] || 0) + addLimit };
       
       const { error } = await supabase.from('scenarios').update({ purchased_tickets: newTickets }).eq('id', scenario.id);
-      if (!error) {
-        alert(`プレイチケット（${addLimit}回分）の購入が完了しました！\n「マイ・シナリオ」から部屋を立てることができます。`);
-        setShopScenarioId("");
-        await fetchData();
-      } else { alert("エラーが発生しました: " + error.message); }
+      if (!error) { alert(`プレイチケット（${addLimit}回分）の購入が完了しました！\n「マイ・シナリオ」から部屋を立てることができます。`); setShopScenarioId(""); await fetchData(); } 
+      else { alert("エラーが発生しました: " + error.message); }
     }
   };
 
@@ -288,26 +287,20 @@ export default function Home() {
     if (!scenario || !targetUserId || !currentUser) return;
     const isAuthor = scenario.authorId === currentUser.id;
     const giftAmount = isAuthor ? (scenario.giftLimit || 1) : 1;
-
     const currentTickets = scenario.purchasedTickets || {};
     let myTickets = currentTickets[currentUser.id] || 0;
-
-    if (!isAuthor && myTickets < giftAmount) {
-      alert("プレゼントするチケットがありません。"); return;
-    }
-
+    if (!isAuthor && myTickets < giftAmount) { alert("プレゼントするチケットがありません。"); return; }
     const newTickets = { ...currentTickets };
     if (!isAuthor) newTickets[currentUser.id] = myTickets - giftAmount;
     newTickets[targetUserId] = (newTickets[targetUserId] || 0) + giftAmount;
-
     const { error } = await supabase.from('scenarios').update({ purchased_tickets: newTickets }).eq('id', scenario.id);
-    if (!error) {
-      alert(`対象のユーザーにプレイチケットを ${giftAmount} 回分プレゼントしました！`);
-      setGiftInputs({ ...giftInputs, [scenario.id]: "" });
-      await fetchData();
-    } else { alert("エラーが発生しました: " + error.message); }
+    if (!error) { alert(`対象のユーザーにプレイチケットを ${giftAmount} 回分プレゼントしました！`); setGiftInputs({ ...giftInputs, [scenario.id]: "" }); await fetchData(); } 
+    else { alert("エラーが発生しました: " + error.message); }
   };
 
+  // ==========================================
+  // 管理画面処理
+  // ==========================================
   const fetchAdminData = async () => {
     const { data: usersData } = await supabase.from('profiles').select('*').order('created_at', { ascending: false });
     if (usersData) { setAllUsers(usersData.map((d: any) => ({ id: d.id, handleName: d.handle_name, avatarUrl: d.avatar_url, bio: d.bio, discordId: d.discord_id, ratingSum: d.rating_sum || 0, ratingCount: d.rating_count || 0, isAdmin: d.is_admin || false, isBanned: d.is_banned || false, email: d.email }))); }
@@ -319,6 +312,47 @@ export default function Home() {
   const toggleAdminStatus = async (userId: string, currentStatus: boolean) => { const newStatus = !currentStatus; await supabase.from('profiles').update({ is_admin: newStatus }).eq('id', userId); setAllUsers(allUsers.map(u => u.id === userId ? { ...u, isAdmin: newStatus } : u)); alert(newStatus ? "管理者権限を付与しました。" : "管理者権限を剥奪しました。"); };
   const executeBan = async () => { if(!banTargetUser || !banReason) return; await supabase.from('profiles').update({ is_banned: true }).eq('id', banTargetUser.id); await supabase.from('ban_appeals').insert({ user_id: banTargetUser.id, reason: banReason, status: 'banned' }); alert("BANを実行しました。"); setBanTargetUser(null); setBanReason(""); fetchAdminData(); };
   const unbanUser = async (userId: string) => { await supabase.from('profiles').update({ is_banned: false }).eq('id', userId); await supabase.from('ban_appeals').update({ status: 'resolved' }).eq('user_id', userId); alert("BANを解除しました。"); fetchAdminData(); };
+  
+  // ★ シナリオの【削除／一時非公開】の実行関数
+  const executeScenarioBan = async (action: 'hard' | 'soft' | 'unban') => {
+    if (!banTargetScenario) return;
+
+    if (action === 'hard') {
+      if(!scenarioBanReason.trim()) { alert("削除の理由を入力してください。"); return; }
+      await supabase.from('rooms').delete().eq('scenario_id', banTargetScenario.id);
+      const { error } = await supabase.from('scenarios').delete().eq('id', banTargetScenario.id);
+      if (!error) {
+        if (banTargetScenario.authorId) {
+           await supabase.from('notifications').insert({ user_id: banTargetScenario.authorId, title: '【重要】シナリオ強制削除のお知らせ', message: `運営による巡回・通報の精査の結果、あなたが作成したシナリオ「${banTargetScenario.title}」は重大な利用規約違反と判断されたため、システムから完全に削除されました。\n\n【削除理由】\n${scenarioBanReason}` });
+        }
+        alert("シナリオを完全に削除し、警告メールを送信しました。");
+      } else { alert("削除に失敗しました: " + error.message); }
+      
+    } else if (action === 'soft') {
+      if(!scenarioBanReason.trim()) { alert("非公開の理由を入力してください。"); return; }
+      const { error } = await supabase.from('scenarios').update({ is_banned: true }).eq('id', banTargetScenario.id);
+      if (!error) {
+        if (banTargetScenario.authorId) {
+           await supabase.from('notifications').insert({ user_id: banTargetScenario.authorId, title: '【重要】シナリオ一時非公開のお知らせ', message: `あなたが作成したシナリオ「${banTargetScenario.title}」について、利用規約に抵触する恐れがあるため、一時的に非公開措置といたしました。（一般ユーザーからは見えなくなっています）\n\n【非公開の理由】\n${scenarioBanReason}\n\n内容を修正することで、再び公開設定に戻せる場合があります。` });
+        }
+        alert("シナリオを一時非公開にし、警告メールを送信しました。");
+      } else { alert("非公開処理に失敗しました: " + error.message); }
+      
+    } else if (action === 'unban') {
+      const { error } = await supabase.from('scenarios').update({ is_banned: false }).eq('id', banTargetScenario.id);
+      if (!error) {
+         if (banTargetScenario.authorId) {
+           await supabase.from('notifications').insert({ user_id: banTargetScenario.authorId, title: '【お知らせ】シナリオの非公開措置が解除されました', message: `シナリオ「${banTargetScenario.title}」の非公開措置が解除され、再びプレイ可能になりました。` });
+         }
+         alert("シナリオの非公開設定を解除しました。");
+      } else { alert("解除に失敗しました: " + error.message); }
+    }
+
+    setBanTargetScenario(null);
+    setScenarioBanReason("");
+    await fetchData();
+  };
+
   const submitAppeal = async () => { if(!currentUser || !appealText) return; await supabase.from('ban_appeals').insert({ user_id: currentUser.id, reason: "不明", appeal_text: appealText, status: 'appealing' }); alert("調査依頼を送信しました。"); setAppealText(""); };
   const sendWarningNotification = async () => { if (!warningModalUser || !warningTitle || !warningText) return; await supabase.from('notifications').insert({ user_id: warningModalUser.id, title: warningTitle, message: warningText }); alert("警告通知を送信しました。"); setWarningModalUser(null); setWarningTitle(""); setWarningText(""); };
   const markNotificationAsRead = async (notifId: string) => { await supabase.from('notifications').update({ is_read: true }).eq('id', notifId); setMyNotifications(myNotifications.map(n => n.id === notifId ? { ...n, isRead: true } : n)); };
@@ -446,14 +480,17 @@ export default function Home() {
               <h1 className="text-2xl font-extrabold text-red-400">⚙️ システム管理画面</h1>
               <button onClick={() => setCurrentView("lobby")} className="text-xs text-slate-400 hover:text-white underline">← ロビーに戻る</button>
             </div>
+            
             <div className="bg-slate-900 border border-slate-700 rounded-xl p-5 flex justify-between items-center">
               <div><h3 className="font-bold text-white mb-1">メンテナンスモード</h3></div>
               <button onClick={toggleMaintenance} className={`px-4 py-2 rounded-lg font-bold text-sm ${isMaintenance ? 'bg-red-600' : 'bg-slate-700'}`}>{isMaintenance ? "🔴 メンテ中" : "🟢 稼働中"}</button>
             </div>
+            
+            {/* ユーザー管理 */}
             <div className="bg-slate-900 border border-slate-700 rounded-xl p-5 space-y-4">
               <h3 className="font-bold text-white mb-3">ユーザー管理</h3>
               <input type="text" placeholder="検索..." value={userSearchQuery} onChange={(e) => setUserSearchQuery(e.target.value)} className="w-full bg-slate-800 border border-slate-600 rounded-lg p-3 text-sm text-white focus:outline-none focus:border-emerald-500 mb-2" />
-              <div className="h-[400px] overflow-y-scroll space-y-3 pr-2 border border-slate-700/50 p-2 rounded-lg bg-slate-900/50">
+              <div className="h-[300px] overflow-y-scroll space-y-3 pr-2 border border-slate-700/50 p-2 rounded-lg bg-slate-900/50">
                 {allUsers.filter(u => u.handleName.toLowerCase().includes(userSearchQuery.toLowerCase()) || (u.email && u.email.toLowerCase().includes(userSearchQuery.toLowerCase()))).map(user => (
                   <div key={user.id} className="flex justify-between items-center bg-slate-800 p-4 rounded-lg border border-slate-700">
                     <div className="flex items-center gap-3">
@@ -469,6 +506,59 @@ export default function Home() {
                   </div>
                 ))}
               </div>
+            </div>
+
+            {/* ★ シナリオ管理＆治安維持（BAN状況の表示追加） */}
+            <div className="bg-slate-900 border border-slate-700 rounded-xl p-5 space-y-4">
+              <h3 className="font-bold text-white mb-3">シナリオ管理＆治安維持</h3>
+              <input type="text" placeholder="シナリオタイトルで検索..." value={scenarioSearchQuery} onChange={(e) => setScenarioSearchQuery(e.target.value)} className="w-full bg-slate-800 border border-slate-600 rounded-lg p-3 text-sm text-white focus:outline-none focus:border-emerald-500 mb-2 shadow-inner" />
+              <div className="h-[300px] overflow-y-scroll space-y-3 pr-2 border border-slate-700/50 p-2 rounded-lg bg-slate-900/50">
+                {scenarios.filter(s => s.title.toLowerCase().includes(scenarioSearchQuery.toLowerCase())).map(scenario => {
+                  const author = allUsers.find(u => u.id === scenario.authorId);
+                  return (
+                    <div key={scenario.id} className={`flex justify-between items-center p-4 rounded-lg border ${scenario.isBanned ? 'bg-amber-900/20 border-amber-600/50' : 'bg-slate-800 border-slate-700'}`}>
+                      <div className="flex items-center gap-3">
+                        <img src={scenario.imageUrl || NO_IMAGE_SCENARIO} className="w-10 h-10 object-cover rounded opacity-80" />
+                        <div>
+                          <p className="text-sm font-bold text-white">
+                            {scenario.title} 
+                            {scenario.isBanned && <span className="text-[10px] bg-amber-600 text-white px-1.5 py-0.5 ml-2 rounded font-bold">非公開中</span>}
+                          </p>
+                          <p className="text-[10px] text-slate-400">作者: {author ? author.handleName : "不明"} | 評価: {scenario.ratingCount > 0 ? (scenario.ratingSum / scenario.ratingCount).toFixed(1) : "未評価"}</p>
+                        </div>
+                      </div>
+                      <div className="flex gap-2">
+                        <button onClick={() => { setBanTargetScenario(scenario); setScenarioBanReason(""); }} className="text-[10px] bg-slate-700 hover:bg-slate-600 text-white px-3 py-2 rounded font-bold shadow-lg">⚙️ 管理(削除/非公開)</button>
+                      </div>
+                    </div>
+                  )
+                })}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ★ シナリオBAN実行モーダル (Admin) */}
+      {banTargetScenario && (
+        <div className="absolute inset-0 bg-black/80 z-50 flex items-center justify-center p-4">
+          <div className="bg-slate-800 border border-slate-700 rounded-xl p-6 w-full max-w-lg shadow-2xl">
+            <h3 className="text-xl font-bold text-white mb-2">⚙️ シナリオの管理措置</h3>
+            <p className="text-xs text-slate-400 mb-4">対象: {banTargetScenario.title}</p>
+            <div className="space-y-3 mb-4">
+              <textarea value={scenarioBanReason} onChange={e=>setScenarioBanReason(e.target.value)} placeholder="措置の理由を入力してください（作者にメールで通知されます）" className="w-full h-32 bg-slate-900 border border-slate-700 rounded p-3 text-sm text-white" />
+            </div>
+            
+            <div className="flex flex-col gap-3">
+              <div className="flex gap-2">
+                {!banTargetScenario.isBanned ? (
+                  <button onClick={() => executeScenarioBan('soft')} disabled={!scenarioBanReason.trim()} className="flex-1 bg-amber-600 hover:bg-amber-500 disabled:bg-slate-600 py-3 rounded text-sm font-bold shadow-lg">一時非公開にする</button>
+                ) : (
+                  <button onClick={() => executeScenarioBan('unban')} className="flex-1 bg-emerald-600 hover:bg-emerald-500 py-3 rounded text-sm font-bold shadow-lg">非公開を解除する</button>
+                )}
+                <button onClick={() => executeScenarioBan('hard')} disabled={!scenarioBanReason.trim()} className="flex-1 bg-red-600 hover:bg-red-500 disabled:bg-slate-600 py-3 rounded text-sm font-bold shadow-lg">完全に削除する</button>
+              </div>
+              <button onClick={() => setBanTargetScenario(null)} className="w-full bg-slate-700 hover:bg-slate-600 py-3 rounded text-sm font-bold mt-2">キャンセル</button>
             </div>
           </div>
         </div>
@@ -525,7 +615,7 @@ export default function Home() {
             <div className="lg:col-span-2 flex flex-col gap-4">
               <h2 className="text-xl font-bold text-blue-400">🌐 募集中のセッション</h2>
               <div className="h-[500px] overflow-y-scroll space-y-4 pr-2 border border-slate-700/50 p-2 rounded-lg bg-slate-900/50">
-                {rooms.length === 0 ? <p className="text-slate-400 text-sm p-4 text-center">現在募集中のセッションはありません。</p> : rooms.map((room) => {
+                {availableRooms.length === 0 ? <p className="text-slate-400 text-sm p-4 text-center">現在募集中のセッションはありません。</p> : availableRooms.map((room) => {
                   return (
                     <div key={room.id} className="bg-slate-800 border border-slate-700 rounded-xl p-4 flex gap-4 hover:border-blue-500">
                       <img src={room.scenario?.imageUrl || NO_IMAGE_SCENARIO} className="w-24 h-24 object-cover rounded" />
@@ -572,7 +662,6 @@ export default function Home() {
                 </div>
               ) : (
                 <>
-                  {/* ★ マイ・シナリオリスト（本格リスト版） */}
                   <div className="bg-slate-800 border border-slate-700 rounded-xl p-4 flex flex-col shadow-lg border-t-2 border-t-emerald-500">
                     <div className="flex justify-between items-center mb-3">
                       <h2 className="text-sm font-bold text-emerald-400">📜 マイ・シナリオリスト</h2>
@@ -605,7 +694,6 @@ export default function Home() {
                                 </div>
                               </div>
 
-                              {/* ホストとして部屋を立てるUI */}
                               <div className="bg-slate-800 p-2 rounded mt-1 border border-slate-700">
                                 {s.presetCharacters.length === 0 ? (
                                   <p className="text-[10px] text-red-400 text-center">キャラクターが未登録です</p>
@@ -622,14 +710,12 @@ export default function Home() {
                                 )}
                               </div>
 
-                              {/* チケットプレゼント機能 */}
                               <div className="bg-slate-800 p-2 rounded mt-1 border border-slate-700 flex gap-2">
                                 <input type="text" value={currentGiftInput} onChange={(e) => setGiftInputs({...giftInputs, [s.id]: e.target.value})} placeholder="相手のIDをペースト" className="flex-1 bg-slate-900 text-[10px] p-1.5 rounded text-white" />
                                 <button onClick={() => handleGiftTicket(s)} disabled={!currentGiftInput} className="bg-emerald-600 disabled:bg-slate-600 text-white text-[10px] px-2 rounded font-bold">
                                   {isAuthor ? `${s.giftLimit || 1}回分渡す` : "1回分渡す"}
                                 </button>
                               </div>
-
                             </div>
                           )
                         })}
@@ -637,7 +723,6 @@ export default function Home() {
                     )}
                   </div>
 
-                  {/* シナリオショップ */}
                   <div className="bg-slate-800 border border-slate-700 rounded-xl p-4 flex flex-col mt-4 shadow-lg border-t-2 border-t-amber-500">
                     <h2 className="text-sm font-bold text-amber-400 mb-3">🛒 シナリオショップ</h2>
                     <select value={shopScenarioId} onChange={(e) => setShopScenarioId(e.target.value)} className="w-full bg-slate-900 border border-slate-700 rounded p-2 text-sm text-white mb-3">
