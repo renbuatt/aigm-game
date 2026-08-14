@@ -87,6 +87,7 @@ export default function Home() {
   const [input, setInput] = useState("");
   const [chatTab, setChatTab] = useState<ChatTab>("story");
   const [isLoading, setIsLoading] = useState(false);
+  const [isExporting, setIsExporting] = useState(false);
   
   const [consultWithAI, setConsultWithAI] = useState<boolean>(true);
 
@@ -483,6 +484,7 @@ export default function Home() {
   const sendWarningNotification = async () => { if (!warningModalUser || !warningTitle || !warningText) return; await supabase.from('notifications').insert({ user_id: warningModalUser.id, title: warningTitle, message: warningText }); alert("警告通知を送信しました。"); setWarningModalUser(null); setWarningTitle(""); setWarningText(""); };
   const markNotificationAsRead = async (notifId: string) => { await supabase.from('notifications').update({ is_read: true }).eq('id', notifId); setMyNotifications(myNotifications.map(n => n.id === notifId ? { ...n, isRead: true } : n)); };
 
+
   // ==========================================
   // ★ ゲーム進行（AI連携・タブ分岐・自動終了検知）
   // ==========================================
@@ -680,7 +682,6 @@ ${roleInstruction}
     await callAIGM(`【システムコマンド】セッションが開始されました。プロットに従い、導入部分の情景描写を行い、プレイヤーに行動方針の相談を促してください。`, "story");
   };
 
-  // ★ セッション完了処理（感想戦モードへの移行）
   const endGame = async () => {
     if(!activeRoom) return;
     if (currentUser?.id === activeRoom.host_id) {
@@ -693,7 +694,6 @@ ${roleInstruction}
   const leaveGame = async () => {
     if (!activeRoom || !currentUser) return;
     
-    // ★ 既にセッションが終了している場合はそのまま評価画面へ
     if (activeRoom.status === 'finished') {
        setCurrentView("evaluation");
        return;
@@ -740,7 +740,6 @@ ${roleInstruction}
     const currentInput = input;
     const isFinished = activeRoom.status === 'finished';
 
-    // ★ 感想戦モード、または相談タブでAIに聞かない設定の場合はDB保存のみ（AIを呼ばない）
     if (isFinished || (chatTab === "consult" && !consultWithAI)) {
       await pushMessage(activeRoom.id, { sender: "player", text: currentInput, type: isFinished ? "ooc" : "ic", sceneId: myScene.id, charName: joinedCharacter.name, channel: chatTab });
       setInput("");
@@ -775,9 +774,96 @@ ${roleInstruction}
 
     await pushMessage(activeRoom.id, { sender: "player", text: msgText, type: "ic", sceneId: myScene.id, charName: joinedCharacter.name, channel: "story" });
     
-    // ★ 感想戦モード中はダイスを振ってもAIは反応しない
     if (activeRoom.status !== 'finished') {
         await callAIGM(`【システム判定結果】${joinedCharacter.name}が${label}ロールを行いました。\n結果: ${msgText}\nこの結果を踏まえてGMとして情景描写を行ってください。`, "story");
+    }
+  };
+
+  // ★ PDFエクスポート処理
+  const exportToPDF = async (type: 'chat' | 'summary' | 'novel') => {
+    if (!activeRoom) return;
+
+    // 感想戦を除外した本編のみのメッセージを抽出
+    const endIndex = messages.findIndex(m => m.text.includes('[SCENARIO_END]'));
+    const baseMessages = endIndex !== -1 ? messages.slice(0, endIndex + 1) : messages;
+    
+    // ★ GMへのメタ質問（gmタブ）は除外
+    const targetMessages = baseMessages.filter(m => m.channel !== 'gm');
+
+    let contentHtml = "";
+
+    if (type === 'chat') {
+      contentHtml = targetMessages.map(m => {
+        const senderName = m.charName || (m.sender === "player" ? "プレイヤー" : m.sender === "gm" ? "AI GM" : "システム");
+        const text = m.text.replace('[SCENARIO_END]', '').trim();
+        if (!text) return "";
+        return `<div style="margin-bottom: 12px; border-bottom: 1px dashed #eee; padding-bottom: 8px;">
+                  <strong style="color: #2c3e50;">${senderName}</strong><br>
+                  <span style="white-space: pre-wrap; color: #34495e;">${text}</span>
+                </div>`;
+      }).join('');
+    } else {
+      setIsExporting(true);
+      
+      // ★ 相談内容を含めるようにAIへ指示を強化
+      const prompt = type === 'summary' 
+        ? "以下のTRPGセッションのチャットログを読み込み、物語のあらすじ・結末として分かりやすく要約してください。\n※ログには「GMへの行動宣言」と「キャラクター同士の相談・会話」が含まれています。キャラクター同士の相談内容も物語の展開として要約に含めてください。"
+        : "以下のTRPGセッションのチャットログを読み込み、セリフや情景描写を補完して臨場感あふれる小説形式に書き直してください。\n※ログには「GMへの行動宣言」と「キャラクター同士の相談・会話」が含まれています。キャラクターたちの作戦会議や掛け合いも、彼らの生きたセリフや心理描写として小説内に自然に盛り込んでください。";
+      
+      const logText = targetMessages.map(m => `${m.charName || (m.sender === 'gm' ? 'GM' : 'システム')}: ${m.text.replace('[SCENARIO_END]', '').trim()}`).join('\n');
+      
+      try {
+        const apiKey = process.env.NEXT_PUBLIC_GEMINI_API_KEY;
+        if (!apiKey) throw new Error("APIキーが設定されていません。");
+
+        const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-3.5-flash-lite:generateContent?key=${apiKey}`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            contents: [{ role: 'user', parts: [{ text: prompt + "\n\n【チャットログ】\n" + logText }] }],
+            generationConfig: { temperature: 0.7 }
+          })
+        });
+        
+        if (!res.ok) throw new Error("AIサーバーの応答エラー");
+        const resData = await res.json();
+        const generatedText = resData.candidates?.[0]?.content?.parts?.[0]?.text || "生成に失敗しました。";
+        contentHtml = `<div style="white-space: pre-wrap; line-height: 1.8; color: #333; font-size: 14px;">${generatedText}</div>`;
+      } catch(e: any) {
+        alert("エクスポート生成エラー: " + e.message);
+        setIsExporting(false);
+        return;
+      }
+      setIsExporting(false);
+    }
+
+    const printWindow = window.open('', '_blank');
+    if (printWindow) {
+      printWindow.document.write(`
+        <!DOCTYPE html>
+        <html>
+          <head>
+            <meta charset="utf-8">
+            <title>${activeRoom.scenario?.title} - ${type === 'chat' ? 'チャットログ' : type === 'summary' ? '要約データ' : 'リプレイ小説'}</title>
+            <style>
+              body { font-family: 'Hiragino Kaku Gothic ProN', 'Meiryo', sans-serif; padding: 40px; color: #333; max-width: 800px; margin: 0 auto; }
+              h1 { font-size: 24px; border-bottom: 2px solid #2c3e50; padding-bottom: 10px; margin-bottom: 30px; color: #2c3e50; }
+              @media print { body { padding: 0; } }
+            </style>
+          </head>
+          <body>
+            <h1>${activeRoom.scenario?.title} - ${type === 'chat' ? 'チャットログ' : type === 'summary' ? 'あらすじ要約' : 'リプレイ小説'}</h1>
+            ${contentHtml}
+            <script>
+              setTimeout(() => { window.print(); window.close(); }, 500);
+            </script>
+          </body>
+        </html>
+      `);
+      printWindow.document.close();
+    } else {
+      alert("ポップアップがブロックされました。ブラウザの設定でポップアップを許可してください。");
+      setIsExporting(false);
     }
   };
 
@@ -1085,7 +1171,6 @@ ${roleInstruction}
           </header>
 
           <div className="flex-1 overflow-y-scroll space-y-3 p-4 bg-slate-800/80 rounded-xl border border-slate-700 mb-3 min-h-0">
-            {/* ★ 終了時は感想戦モードへの移行を促すUIを表示 */}
             {isScenarioEnded && (
               activeRoom.status === 'finished' ? (
                 <div className="bg-amber-900/50 border border-amber-500 rounded p-2 flex justify-between items-center mb-2">
@@ -1131,35 +1216,47 @@ ${roleInstruction}
 
           <div className="bg-slate-800 border border-slate-700 rounded-xl p-3 flex flex-col gap-2 shadow-lg">
             {joinedCharacter ? (
-              <>
-                <div className="flex gap-2 border-b border-slate-700 pb-2 items-center">
-                  <button onClick={() => handleTabClick("story")} className={`relative text-xs font-bold px-4 py-2 rounded-t-lg transition ${chatTab === "story" ? "bg-emerald-600/20 text-emerald-400 border-b-2 border-emerald-500" : "text-slate-400 hover:text-white"}`}>
-                    📖 行動宣言 (GMへ)
-                    {unreadIndicators.story && <span className="absolute top-1 right-1 w-2 h-2 bg-red-500 rounded-full animate-pulse"></span>}
-                  </button>
-                  <button onClick={() => handleTabClick("consult")} className={`relative text-xs font-bold px-4 py-2 rounded-t-lg transition ${chatTab === "consult" ? "bg-indigo-600/20 text-indigo-400 border-b-2 border-indigo-500" : "text-slate-400 hover:text-white"}`}>
-                    🗣️ 相談 (PL・AI相棒へ)
-                    {unreadIndicators.consult && <span className="absolute top-1 right-1 w-2 h-2 bg-red-500 rounded-full animate-pulse"></span>}
-                  </button>
-                  <button onClick={() => handleTabClick("gm")} className={`relative text-xs font-bold px-4 py-2 rounded-t-lg transition ${chatTab === "gm" ? "bg-amber-600/20 text-amber-400 border-b-2 border-amber-500" : "text-slate-400 hover:text-white"}`}>
-                    ⚙️ GMへのメタ質問
-                    {unreadIndicators.gm && <span className="absolute top-1 right-1 w-2 h-2 bg-red-500 rounded-full animate-pulse"></span>}
-                  </button>
-
-                  {chatTab === "consult" && !isScenarioEnded && (
-                    <label className="ml-auto text-[10px] flex items-center gap-1.5 text-indigo-300 bg-slate-900 px-2 py-1 rounded border border-slate-600 cursor-pointer hover:bg-slate-800 transition">
-                      <input type="checkbox" checked={consultWithAI} onChange={(e) => setConsultWithAI(e.target.checked)} className="accent-indigo-500 w-3 h-3" />
-                      AI相棒にも意見を求める
-                    </label>
-                  )}
-                </div>
+              activeRoom.status === 'finished' ? (
                 <div className="flex gap-2 pt-1">
+                  <div className="flex items-center justify-center bg-amber-600/20 text-amber-400 border border-amber-500/30 px-4 py-2 rounded-lg text-xs font-bold">
+                    🗣️ 感想戦
+                  </div>
                   <input type="text" value={input} onChange={(e) => setInput(e.target.value)} onKeyDown={(e) => e.key === "Enter" && handleSend()} 
-                    placeholder={chatTab === "story" ? "例：鍵穴を覗き込みます。" : (chatTab === "consult" ? (consultWithAI && !isScenarioEnded ? "例：ねえ、この扉どうやって開けようか？ (AI相棒が返答します)" : "例：PL同士の作戦会議メモ (AIは反応しません)") : "例：今の状況でもう一度目星は振れますか？")} 
-                    className="flex-1 bg-slate-900 border border-slate-600 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-emerald-500 transition" />
-                  <button onClick={handleSend} disabled={isLoading} className={`text-white px-6 py-2 rounded-lg text-sm font-bold shadow transition ${chatTab === "story" ? "bg-emerald-600 hover:bg-emerald-500" : (chatTab === "consult" ? "bg-indigo-600 hover:bg-indigo-500" : "bg-amber-600 hover:bg-amber-500")} disabled:opacity-50`}>送信</button>
+                    placeholder="他のプレイヤーとセッションの感想を語り合いましょう！（AIは反応しません）" 
+                    className="flex-1 bg-slate-900 border border-slate-600 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-amber-500 transition" />
+                  <button onClick={handleSend} disabled={isLoading} className="text-white px-6 py-2 rounded-lg text-sm font-bold shadow transition bg-amber-600 hover:bg-amber-500 disabled:opacity-50">送信</button>
                 </div>
-              </>
+              ) : (
+                <>
+                  <div className="flex gap-2 border-b border-slate-700 pb-2 items-center">
+                    <button onClick={() => handleTabClick("story")} className={`relative text-xs font-bold px-4 py-2 rounded-t-lg transition ${chatTab === "story" ? "bg-emerald-600/20 text-emerald-400 border-b-2 border-emerald-500" : "text-slate-400 hover:text-white"}`}>
+                      📖 行動宣言 (GMへ)
+                      {unreadIndicators.story && <span className="absolute top-1 right-1 w-2 h-2 bg-red-500 rounded-full animate-pulse"></span>}
+                    </button>
+                    <button onClick={() => handleTabClick("consult")} className={`relative text-xs font-bold px-4 py-2 rounded-t-lg transition ${chatTab === "consult" ? "bg-indigo-600/20 text-indigo-400 border-b-2 border-indigo-500" : "text-slate-400 hover:text-white"}`}>
+                      🗣️ 相談 (PL・AI相棒へ)
+                      {unreadIndicators.consult && <span className="absolute top-1 right-1 w-2 h-2 bg-red-500 rounded-full animate-pulse"></span>}
+                    </button>
+                    <button onClick={() => handleTabClick("gm")} className={`relative text-xs font-bold px-4 py-2 rounded-t-lg transition ${chatTab === "gm" ? "bg-amber-600/20 text-amber-400 border-b-2 border-amber-500" : "text-slate-400 hover:text-white"}`}>
+                      ⚙️ GMへのメタ質問
+                      {unreadIndicators.gm && <span className="absolute top-1 right-1 w-2 h-2 bg-red-500 rounded-full animate-pulse"></span>}
+                    </button>
+
+                    {chatTab === "consult" && !isScenarioEnded && (
+                      <label className="ml-auto text-[10px] flex items-center gap-1.5 text-indigo-300 bg-slate-900 px-2 py-1 rounded border border-slate-600 cursor-pointer hover:bg-slate-800 transition">
+                        <input type="checkbox" checked={consultWithAI} onChange={(e) => setConsultWithAI(e.target.checked)} className="accent-indigo-500 w-3 h-3" />
+                        AI相棒にも意見を求める
+                      </label>
+                    )}
+                  </div>
+                  <div className="flex gap-2 pt-1">
+                    <input type="text" value={input} onChange={(e) => setInput(e.target.value)} onKeyDown={(e) => e.key === "Enter" && handleSend()} 
+                      placeholder={chatTab === "story" ? "例：鍵穴を覗き込みます。" : (chatTab === "consult" ? (consultWithAI && !isScenarioEnded ? "例：ねえ、この扉どうやって開けようか？ (AI相棒が返答します)" : "例：PL同士の作戦会議メモ (AIは反応しません)") : "例：今の状況でもう一度目星は振れますか？")} 
+                      className="flex-1 bg-slate-900 border border-slate-600 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-emerald-500 transition" />
+                    <button onClick={handleSend} disabled={isLoading} className={`text-white px-6 py-2 rounded-lg text-sm font-bold shadow transition ${chatTab === "story" ? "bg-emerald-600 hover:bg-emerald-500" : (chatTab === "consult" ? "bg-indigo-600 hover:bg-indigo-500" : "bg-amber-600 hover:bg-amber-500")} disabled:opacity-50`}>送信</button>
+                  </div>
+                </>
+              )
             ) : (
               <div className="text-center p-2 text-slate-400 text-sm font-bold">あなたは観戦モードです（チャットは行えません）</div>
             )}
@@ -1172,6 +1269,18 @@ ${roleInstruction}
         <div className="flex-1 flex flex-col items-center justify-center p-6 w-full min-h-0 overflow-y-auto">
           <div className="bg-slate-800 border border-slate-700 rounded-2xl p-8 w-full max-w-lg shadow-2xl space-y-6">
             <h1 className="text-2xl font-extrabold text-amber-400 text-center border-b border-slate-700 pb-4">セッション終了！お疲れ様でした</h1>
+            
+            {/* ★ エクスポート機能 */}
+            <div className="bg-slate-900 border border-slate-700 rounded-xl p-5 space-y-3">
+              <h2 className="text-sm font-bold text-white mb-2">💾 思い出を保存する (PDF出力)</h2>
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-2">
+                <button onClick={() => exportToPDF('chat')} disabled={isExporting} className="bg-blue-600 hover:bg-blue-500 text-white text-[10px] font-bold py-2 rounded shadow disabled:opacity-50">そのままのチャット</button>
+                <button onClick={() => exportToPDF('summary')} disabled={isExporting} className="bg-indigo-600 hover:bg-indigo-500 text-white text-[10px] font-bold py-2 rounded shadow disabled:opacity-50">AI要約データ</button>
+                <button onClick={() => exportToPDF('novel')} disabled={isExporting} className="bg-purple-600 hover:bg-purple-500 text-white text-[10px] font-bold py-2 rounded shadow disabled:opacity-50">AIリプレイ小説化</button>
+              </div>
+              {isExporting && <p className="text-[10px] text-amber-400 animate-pulse text-center mt-2">AIが執筆しています... (数秒〜十数秒かかります)</p>}
+            </div>
+
             <p className="text-sm text-slate-400 text-center">次回のプレイをより良くするため、評価にご協力ください。</p>
             
             <div className="bg-slate-900 border border-slate-700 rounded-xl p-5 space-y-4">
