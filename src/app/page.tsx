@@ -185,7 +185,6 @@ export default function Home() {
         .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'rooms', filter: `id=eq.${activeRoom.id}` }, (payload) => {
           setActiveRoom(prev => {
             if (!prev) return payload.new as Room;
-            // payload.new には joined_users などは入っているが scenario オブジェクトはないため、prevから引き継ぐ
             return { ...prev, ...payload.new, scenario: prev.scenario };
           });
         })
@@ -216,14 +215,15 @@ export default function Home() {
     prevMessagesLength.current = messages.length;
   }, [messages, myScene?.id]);
 
+  // ★ TypeScriptエラー（Nullチェック）を修正した部分
   useEffect(() => {
-    if (isSplitMode && currentUser?.id === activeRoom?.host_id && activeRoom.status === 'playing') {
+    if (activeRoom && isSplitMode && currentUser?.id === activeRoom.host_id && activeRoom.status === 'playing') {
       const nonMainScenes = activeRoom.scenes.filter(s => s.id !== 'scene_main');
       if (nonMainScenes.length > 0 && nonMainScenes.every(s => s.isMerged)) {
         executeMergeAll();
       }
     }
-  }, [activeRoom?.scenes]);
+  }, [activeRoom?.scenes, activeRoom?.status, activeRoom?.host_id, currentUser?.id, isSplitMode]);
 
   const handleTabClick = (tab: ChatTab) => {
     setChatTab(tab);
@@ -276,7 +276,6 @@ export default function Home() {
     await fetchNotifications(userId);
 
     if (!profileData.isBanned && !currentMaintenance) {
-      // ★ 募集中の部屋も復帰対象に含めることでリロード時の離脱を防ぐ
       const activeMyRoom = roomsData.find(r => (r.status === 'playing' || r.status === 'splitting' || r.status === 'recruiting') && r.joined_users && r.joined_users[userId]);
       if (activeMyRoom && activeMyRoom.scenario) {
         const charId = activeMyRoom.joined_users[userId];
@@ -447,7 +446,6 @@ export default function Home() {
     else { alert("エラーが発生しました: " + error.message); }
   };
 
-  // ★ 管理画面の関数をすべて復元！
   const fetchAdminData = async () => {
     const { data: usersData } = await supabase.from('profiles').select('*').order('created_at', { ascending: false });
     if (usersData) { setAllUsers(usersData.map((d: any) => ({ id: d.id, handleName: d.handle_name, avatarUrl: d.avatar_url, bio: d.bio, discordId: d.discord_id, ratingSum: d.rating_sum || 0, ratingCount: d.rating_count || 0, isAdmin: d.is_admin || false, isBanned: d.is_banned || false, email: d.email }))); }
@@ -514,9 +512,6 @@ export default function Home() {
   const markNotificationAsRead = async (notifId: string) => { await supabase.from('notifications').update({ is_read: true }).eq('id', notifId); setMyNotifications(myNotifications.map(n => n.id === notifId ? { ...n, isRead: true } : n)); };
 
 
-  // ==========================================
-  // ★ チーム分け関連の処理群
-  // ==========================================
   const startSplitting = () => {
     if (!activeRoom) return;
     supabase.from('rooms').update({ status: 'splitting' }).eq('id', activeRoom.id).then(() => {
@@ -571,11 +566,6 @@ export default function Home() {
     await pushMessage(activeRoom.id, { sender: "gm", text: `【システム】全チームが合流しました！`, type: "system", sceneId: 'scene_main', channel: "system" });
     await callAIGM(`【システムコマンド】全チームの別行動が終了し、一箇所に合流しました。これまでの各チームの報告を踏まえ、合流時の情景描写と今後の展開を提示してください。`, "story");
   };
-
-
-  // ==========================================
-  // ★ ゲーム進行（AI連携・タブ分岐・自動終了検知）
-  // ==========================================
 
   const callAIGM = async (extraUserContext?: string, targetTab: ChatTab = "story") => {
     if (!activeRoom || !joinedCharacter || !myScene) return;
@@ -959,7 +949,6 @@ ${roleInstruction}`;
 
   const unreadCount = myNotifications.filter(n => !n.isRead).length;
 
-  // ★ TypeScriptエラーを完全に解消するための変数
   const isChatDisabled = !!(isLoading || (isSplitMode && myScene?.isMerged === true && chatTab !== 'consult'));
 
   return (
@@ -1427,7 +1416,7 @@ ${roleInstruction}`;
               </div>
             </div>
             
-            <div className="flex flex-wrap items-center gap-2 justify-end">
+            <div className="flex flex-wrap items-center gap-2 justify-end max-w-md">
               {joinedCharacter && (
                 <>
                   <button onClick={() => rollDice(joinedCharacter.san, "SAN", true)} className="bg-cyan-700 hover:bg-cyan-600 text-white text-[10px] px-2 py-1.5 rounded font-bold shadow-lg">🎲 SAN({joinedCharacter.san}%)</button>
@@ -1500,6 +1489,7 @@ ${roleInstruction}`;
               )
             )}
 
+            {/* ★ チーム合流待ちのバナー表示 */}
             {isSplitMode && myScene.isMerged && activeRoom.status === 'playing' && (
               <div className="bg-indigo-900/50 border border-indigo-500 rounded p-2 text-center text-indigo-300 text-sm font-bold mb-2">
                 ⏳ {myScene.name}チームの行動を終了し、他チームの合流を待っています... (相談チャットのみ使用可能)
@@ -1571,6 +1561,7 @@ ${roleInstruction}`;
           <div className="bg-slate-800 border border-slate-700 rounded-2xl p-8 w-full max-w-lg shadow-2xl space-y-6">
             <h1 className="text-2xl font-extrabold text-amber-400 text-center border-b border-slate-700 pb-4">セッション終了！お疲れ様でした</h1>
             
+            {/* ★ エクスポート機能 */}
             <div className="bg-slate-900 border border-slate-700 rounded-xl p-5 space-y-3">
               <h2 className="text-sm font-bold text-white mb-2">💾 思い出を保存する (PDF出力)</h2>
               <div className="grid grid-cols-1 md:grid-cols-3 gap-2">
