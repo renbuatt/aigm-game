@@ -141,7 +141,6 @@ export default function Home() {
 
   const isScenarioEnded = messages.some(m => m.text.includes('[SCENARIO_END]')) || activeRoom?.status === 'finished';
 
-  // ★ データベースからのチャット履歴読み込み
   const loadChatLogs = async (roomId: string) => {
     const { data } = await supabase.from('chat_logs').select('message').eq('room_id', roomId).order('id', { ascending: true });
     if (data && data.length > 0) {
@@ -151,7 +150,6 @@ export default function Home() {
     }
   };
 
-  // ★ メッセージの保存と画面への反映（一元化）
   const pushMessage = async (roomId: string, msg: Message, save: boolean = true) => {
     setMessages(prev => {
       const isDuplicate = prev.some(m => JSON.stringify(m) === JSON.stringify(msg));
@@ -163,14 +161,12 @@ export default function Home() {
     }
   };
 
-  // ★ マルチプレイ対応：他の人の発言をリアルタイムで画面に同期する
   useEffect(() => {
     if (currentView === "game" && activeRoom) {
       const channel = supabase.channel(`chat_sync_${activeRoom.id}`)
         .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'chat_logs', filter: `room_id=eq.${activeRoom.id}` }, (payload) => {
           const incomingMsg = payload.new.message;
           setMessages(prev => {
-            // 自分が送信したものは既に画面にあるので重複を防ぐ
             const isDuplicate = prev.some(m => JSON.stringify(m) === JSON.stringify(incomingMsg));
             if (isDuplicate) return prev;
             return [...prev, incomingMsg];
@@ -251,7 +247,6 @@ export default function Home() {
     setCurrentUser(profileData);
     await fetchNotifications(userId);
 
-    // ★ リロードや再ログイン時に、部屋とチャットログを復元
     if (!profileData.isBanned && !currentMaintenance) {
       const activeMyRoom = roomsData.find(r => r.status === 'playing' && r.joined_users && r.joined_users[userId]);
       if (activeMyRoom && activeMyRoom.scenario) {
@@ -263,7 +258,7 @@ export default function Home() {
           const takenIds = Object.values(activeMyRoom.joined_users || {});
           const aiChars = activeMyRoom.scenario.presetCharacters.filter(c => !takenIds.includes(c.id));
           setAiPlayersList(aiChars);
-          await loadChatLogs(activeMyRoom.id); // ログの復元
+          await loadChatLogs(activeMyRoom.id);
           setCurrentView("game");
           return;
         }
@@ -489,7 +484,7 @@ export default function Home() {
   const markNotificationAsRead = async (notifId: string) => { await supabase.from('notifications').update({ is_read: true }).eq('id', notifId); setMyNotifications(myNotifications.map(n => n.id === notifId ? { ...n, isRead: true } : n)); };
 
   // ==========================================
-  // ★ ゲーム進行（AI連携・タブ分岐・自動同期）
+  // ★ ゲーム進行（AI連携・タブ分岐・自動終了検知）
   // ==========================================
 
   const callAIGM = async (extraUserContext?: string, targetTab: ChatTab = "story") => {
@@ -685,17 +680,25 @@ ${roleInstruction}
     await callAIGM(`【システムコマンド】セッションが開始されました。プロットに従い、導入部分の情景描写を行い、プレイヤーに行動方針の相談を促してください。`, "story");
   };
 
+  // ★ セッション完了処理（感想戦モードへの移行）
   const endGame = async () => {
     if(!activeRoom) return;
     if (currentUser?.id === activeRoom.host_id) {
       await supabase.from('rooms').update({ status: 'finished' }).eq('id', activeRoom.id);
+      setActiveRoom({...activeRoom, status: 'finished'});
+      await pushMessage(activeRoom.id, { sender: "gm", text: `【システム】セッションが完了しました！\nこれより「感想戦モード」になります（AIは停止し、プレイヤー間のチャットのみ可能です）。お疲れ様でした！`, type: "system", sceneId: myScene?.id, channel: "system" });
     }
-    setCurrentView("evaluation");
   };
 
   const leaveGame = async () => {
     if (!activeRoom || !currentUser) return;
     
+    // ★ 既にセッションが終了している場合はそのまま評価画面へ
+    if (activeRoom.status === 'finished') {
+       setCurrentView("evaluation");
+       return;
+    }
+
     if (!joinedCharacter) {
       setCurrentView("lobby"); setActiveRoom(null); return;
     }
@@ -735,9 +738,11 @@ ${roleInstruction}
     if (!input.trim() || isLoading || !activeRoom || !joinedCharacter || !currentUser || !myScene) return;
     
     const currentInput = input;
-    
-    if (chatTab === "consult" && !consultWithAI) {
-      await pushMessage(activeRoom.id, { sender: "player", text: currentInput, type: "ic", sceneId: myScene.id, charName: joinedCharacter.name, channel: chatTab });
+    const isFinished = activeRoom.status === 'finished';
+
+    // ★ 感想戦モード、または相談タブでAIに聞かない設定の場合はDB保存のみ（AIを呼ばない）
+    if (isFinished || (chatTab === "consult" && !consultWithAI)) {
+      await pushMessage(activeRoom.id, { sender: "player", text: currentInput, type: isFinished ? "ooc" : "ic", sceneId: myScene.id, charName: joinedCharacter.name, channel: chatTab });
       setInput("");
       return;
     }
@@ -769,7 +774,11 @@ ${roleInstruction}
     }
 
     await pushMessage(activeRoom.id, { sender: "player", text: msgText, type: "ic", sceneId: myScene.id, charName: joinedCharacter.name, channel: "story" });
-    await callAIGM(`【システム判定結果】${joinedCharacter.name}が${label}ロールを行いました。\n結果: ${msgText}\nこの結果を踏まえてGMとして情景描写を行ってください。`, "story");
+    
+    // ★ 感想戦モード中はダイスを振ってもAIは反応しない
+    if (activeRoom.status !== 'finished') {
+        await callAIGM(`【システム判定結果】${joinedCharacter.name}が${label}ロールを行いました。\n結果: ${msgText}\nこの結果を踏まえてGMとして情景描写を行ってください。`, "story");
+    }
   };
 
   const unreadCount = myNotifications.filter(n => !n.isRead).length;
@@ -789,6 +798,7 @@ ${roleInstruction}
               <div><h3 className="font-bold text-white mb-1">メンテナンスモード</h3></div>
               <button onClick={toggleMaintenance} className={`px-4 py-2 rounded-lg font-bold text-sm ${isMaintenance ? 'bg-red-600' : 'bg-slate-700'}`}>{isMaintenance ? "🔴 メンテ中" : "🟢 稼働中"}</button>
             </div>
+            {/* ... other admin UI ... */}
           </div>
         </div>
       )}
@@ -1075,6 +1085,26 @@ ${roleInstruction}
           </header>
 
           <div className="flex-1 overflow-y-scroll space-y-3 p-4 bg-slate-800/80 rounded-xl border border-slate-700 mb-3 min-h-0">
+            {/* ★ 終了時は感想戦モードへの移行を促すUIを表示 */}
+            {isScenarioEnded && (
+              activeRoom.status === 'finished' ? (
+                <div className="bg-amber-900/50 border border-amber-500 rounded p-2 flex justify-between items-center mb-2">
+                  <span className="text-amber-400 text-sm font-bold">🎉 感想戦モード（AIは停止しています）</span>
+                  <button onClick={() => setCurrentView("evaluation")} className="bg-amber-600 hover:bg-amber-500 text-white text-xs font-bold px-4 py-2 rounded shadow">
+                    評価して退出する
+                  </button>
+                </div>
+              ) : currentUser?.id === activeRoom.host_id ? (
+                <button onClick={endGame} className="w-full bg-amber-600 hover:bg-amber-500 text-white font-bold py-3 rounded-xl shadow-lg animate-pulse text-sm mb-2">
+                  🎉 セッション完了！感想戦モードへ移行する
+                </button>
+              ) : (
+                <div className="bg-amber-900/50 border border-amber-500 rounded p-2 text-center text-amber-400 text-sm font-bold mb-2">
+                  🎉 エンディング到達！ホストの完了操作をお待ちください...
+                </div>
+              )
+            )}
+
             {messages.filter(msg => msg.type === "system" || msg.channel === chatTab).map((msg, index) => {
               const isMe = msg.sender === "player";
               const isAIPlayer = msg.sender === "ai_player";
@@ -1100,11 +1130,7 @@ ${roleInstruction}
           </div>
 
           <div className="bg-slate-800 border border-slate-700 rounded-xl p-3 flex flex-col gap-2 shadow-lg">
-            {isScenarioEnded ? (
-              <button onClick={endGame} className="w-full bg-amber-600 hover:bg-amber-500 text-white font-bold py-4 rounded-xl shadow-lg animate-pulse text-lg">
-                🎉 セッション終了！評価画面へ進む
-              </button>
-            ) : joinedCharacter ? (
+            {joinedCharacter ? (
               <>
                 <div className="flex gap-2 border-b border-slate-700 pb-2 items-center">
                   <button onClick={() => handleTabClick("story")} className={`relative text-xs font-bold px-4 py-2 rounded-t-lg transition ${chatTab === "story" ? "bg-emerald-600/20 text-emerald-400 border-b-2 border-emerald-500" : "text-slate-400 hover:text-white"}`}>
@@ -1120,7 +1146,7 @@ ${roleInstruction}
                     {unreadIndicators.gm && <span className="absolute top-1 right-1 w-2 h-2 bg-red-500 rounded-full animate-pulse"></span>}
                   </button>
 
-                  {chatTab === "consult" && (
+                  {chatTab === "consult" && !isScenarioEnded && (
                     <label className="ml-auto text-[10px] flex items-center gap-1.5 text-indigo-300 bg-slate-900 px-2 py-1 rounded border border-slate-600 cursor-pointer hover:bg-slate-800 transition">
                       <input type="checkbox" checked={consultWithAI} onChange={(e) => setConsultWithAI(e.target.checked)} className="accent-indigo-500 w-3 h-3" />
                       AI相棒にも意見を求める
@@ -1129,7 +1155,7 @@ ${roleInstruction}
                 </div>
                 <div className="flex gap-2 pt-1">
                   <input type="text" value={input} onChange={(e) => setInput(e.target.value)} onKeyDown={(e) => e.key === "Enter" && handleSend()} 
-                    placeholder={chatTab === "story" ? "例：鍵穴を覗き込みます。" : (chatTab === "consult" ? (consultWithAI ? "例：ねえ、この扉どうやって開けようか？ (AI相棒が返答します)" : "例：PL同士の作戦会議メモ (AIは反応しません)") : "例：今の状況でもう一度目星は振れますか？")} 
+                    placeholder={chatTab === "story" ? "例：鍵穴を覗き込みます。" : (chatTab === "consult" ? (consultWithAI && !isScenarioEnded ? "例：ねえ、この扉どうやって開けようか？ (AI相棒が返答します)" : "例：PL同士の作戦会議メモ (AIは反応しません)") : "例：今の状況でもう一度目星は振れますか？")} 
                     className="flex-1 bg-slate-900 border border-slate-600 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-emerald-500 transition" />
                   <button onClick={handleSend} disabled={isLoading} className={`text-white px-6 py-2 rounded-lg text-sm font-bold shadow transition ${chatTab === "story" ? "bg-emerald-600 hover:bg-emerald-500" : (chatTab === "consult" ? "bg-indigo-600 hover:bg-indigo-500" : "bg-amber-600 hover:bg-amber-500")} disabled:opacity-50`}>送信</button>
                 </div>
