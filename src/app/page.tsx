@@ -126,7 +126,6 @@ export default function Home() {
   
   const [shopScenarioId, setShopScenarioId] = useState<string>(""); 
 
-  // ★ 新着メッセージ通知バッジ用のステートとRef
   const [unreadIndicators, setUnreadIndicators] = useState({ story: false, consult: false, gm: false });
   const chatTabRef = useRef<ChatTab>(chatTab);
   const prevMessagesLength = useRef(0);
@@ -142,10 +141,47 @@ export default function Home() {
 
   const isScenarioEnded = messages.some(m => m.text.includes('[SCENARIO_END]')) || activeRoom?.status === 'finished';
 
-  // ★ タブ切り替えと新着バッジの更新
+  // ★ データベースからのチャット履歴読み込み
+  const loadChatLogs = async (roomId: string) => {
+    const { data } = await supabase.from('chat_logs').select('message').eq('room_id', roomId).order('id', { ascending: true });
+    if (data && data.length > 0) {
+      setMessages(data.map((d: any) => d.message));
+    } else {
+      setMessages([]);
+    }
+  };
+
+  // ★ メッセージの保存と画面への反映（一元化）
+  const pushMessage = async (roomId: string, msg: Message, save: boolean = true) => {
+    setMessages(prev => {
+      const isDuplicate = prev.some(m => JSON.stringify(m) === JSON.stringify(msg));
+      if (isDuplicate) return prev;
+      return [...prev, msg];
+    });
+    if (save && roomId) {
+      await supabase.from('chat_logs').insert({ room_id: roomId, message: msg });
+    }
+  };
+
+  // ★ マルチプレイ対応：他の人の発言をリアルタイムで画面に同期する
   useEffect(() => {
-    chatTabRef.current = chatTab;
-  }, [chatTab]);
+    if (currentView === "game" && activeRoom) {
+      const channel = supabase.channel(`chat_sync_${activeRoom.id}`)
+        .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'chat_logs', filter: `room_id=eq.${activeRoom.id}` }, (payload) => {
+          const incomingMsg = payload.new.message;
+          setMessages(prev => {
+            // 自分が送信したものは既に画面にあるので重複を防ぐ
+            const isDuplicate = prev.some(m => JSON.stringify(m) === JSON.stringify(incomingMsg));
+            if (isDuplicate) return prev;
+            return [...prev, incomingMsg];
+          });
+        })
+        .subscribe();
+      return () => { supabase.removeChannel(channel); };
+    }
+  }, [currentView, activeRoom]);
+
+  useEffect(() => { chatTabRef.current = chatTab; }, [chatTab]);
 
   useEffect(() => {
     if (messages.length > prevMessagesLength.current) {
@@ -215,6 +251,7 @@ export default function Home() {
     setCurrentUser(profileData);
     await fetchNotifications(userId);
 
+    // ★ リロードや再ログイン時に、部屋とチャットログを復元
     if (!profileData.isBanned && !currentMaintenance) {
       const activeMyRoom = roomsData.find(r => r.status === 'playing' && r.joined_users && r.joined_users[userId]);
       if (activeMyRoom && activeMyRoom.scenario) {
@@ -226,6 +263,7 @@ export default function Home() {
           const takenIds = Object.values(activeMyRoom.joined_users || {});
           const aiChars = activeMyRoom.scenario.presetCharacters.filter(c => !takenIds.includes(c.id));
           setAiPlayersList(aiChars);
+          await loadChatLogs(activeMyRoom.id); // ログの復元
           setCurrentView("game");
           return;
         }
@@ -450,9 +488,8 @@ export default function Home() {
   const sendWarningNotification = async () => { if (!warningModalUser || !warningTitle || !warningText) return; await supabase.from('notifications').insert({ user_id: warningModalUser.id, title: warningTitle, message: warningText }); alert("警告通知を送信しました。"); setWarningModalUser(null); setWarningTitle(""); setWarningText(""); };
   const markNotificationAsRead = async (notifId: string) => { await supabase.from('notifications').update({ is_read: true }).eq('id', notifId); setMyNotifications(myNotifications.map(n => n.id === notifId ? { ...n, isRead: true } : n)); };
 
-
   // ==========================================
-  // ★ ゲーム進行（AI連携・タブ分岐・自動終了検知）
+  // ★ ゲーム進行（AI連携・タブ分岐・自動同期）
   // ==========================================
 
   const callAIGM = async (extraUserContext?: string, targetTab: ChatTab = "story") => {
@@ -548,11 +585,11 @@ ${roleInstruction}
       await supabase.from('ai_memory').insert({ room_id: activeRoom.id, role: 'assistant', content: aiText });
       
       const msgSender = targetTab === "consult" ? "ai_player" : "gm";
-      setMessages((prev) => [...prev, { sender: msgSender, text: aiText, type: targetTab === "gm" ? "ooc" : "ic", sceneId: myScene?.id, charName: targetTab === "consult" ? "AI相棒" : "AI GM", channel: targetTab }]);
+      await pushMessage(activeRoom.id, { sender: msgSender, text: aiText, type: targetTab === "gm" ? "ooc" : "ic", sceneId: myScene?.id, charName: targetTab === "consult" ? "AI相棒" : "AI GM", channel: targetTab });
 
     } catch (err: any) {
       alert("AIエラー: " + err.message);
-      setMessages((prev) => [...prev, { sender: "gm", text: `（システムエラー: ${err.message}）`, type: "system", sceneId: myScene?.id, channel: "system" }]);
+      await pushMessage(activeRoom.id, { sender: "gm", text: `（システムエラー: ${err.message}）`, type: "system", sceneId: myScene?.id, channel: "system" }, false);
     } finally {
       setIsLoading(false);
     }
@@ -589,7 +626,8 @@ ${roleInstruction}
       const hostChar = scenario.presetCharacters.find(c => c.id === charId);
       if (hostChar) {
         setActiveRoom(newRoom); setJoinedCharacter(hostChar);
-        setMessages([{ sender: "gm", text: `【入室完了】プレイヤー全員の準備が整うまでお待ちください。`, type: "system", sceneId: newRoom.scenes?.[0]?.id, channel: "system" }]);
+        setMessages([]); 
+        await pushMessage(newRoom.id, { sender: "gm", text: `【入室完了】プレイヤー全員の準備が整うまでお待ちください。`, type: "system", sceneId: newRoom.scenes?.[0]?.id, channel: "system" });
         setCurrentView("game");
       }
     }
@@ -613,15 +651,17 @@ ${roleInstruction}
     if (char) {
       const updatedRoom = { ...room, joined_users: newUsers };
       setActiveRoom(updatedRoom); setJoinedCharacter(char);
-      setMessages([{ sender: "gm", text: `【入室完了】${char.name}として参加しました！ホストの開始をお待ちください。`, type: "system", sceneId: room.scenes?.[0]?.id, channel: "system" }]);
+      await loadChatLogs(room.id);
+      await pushMessage(room.id, { sender: "gm", text: `【入室完了】${char.name}として参加しました！ホストの開始をお待ちください。`, type: "system", sceneId: room.scenes?.[0]?.id, channel: "system" });
       setCurrentView("game");
     }
   };
 
-  const spectateRoom = (room: Room) => {
+  const spectateRoom = async (room: Room) => {
     setActiveRoom(room);
     setJoinedCharacter(null); 
-    setMessages([{ sender: "gm", text: `【観戦モード】部屋に入室しました。チャットやダイスは使用できません。`, type: "system", sceneId: room.scenes?.[0]?.id, channel: "system" }]);
+    await loadChatLogs(room.id);
+    await pushMessage(room.id, { sender: "gm", text: `【観戦モード】部屋に入室しました。チャットやダイスは使用できません。`, type: "system", sceneId: room.scenes?.[0]?.id, channel: "system" }, false);
     setCurrentView("game");
   };
 
@@ -640,7 +680,7 @@ ${roleInstruction}
 
     await supabase.from('rooms').update({ status: 'playing' }).eq('id', activeRoom.id);
     setActiveRoom({...activeRoom, status: 'playing'});
-    setMessages(prev => [...prev, { sender: "gm", text: `【システム】ゲームを開始しました。AI GMを呼び出しています...`, type: "system", sceneId: myScene.id, channel: "system" }]);
+    await pushMessage(activeRoom.id, { sender: "gm", text: `【システム】ゲームを開始しました。AI GMを呼び出しています...`, type: "system", sceneId: myScene.id, channel: "system" });
     
     await callAIGM(`【システムコマンド】セッションが開始されました。プロットに従い、導入部分の情景描写を行い、プレイヤーに行動方針の相談を促してください。`, "story");
   };
@@ -694,17 +734,15 @@ ${roleInstruction}
   const handleSend = async () => {
     if (!input.trim() || isLoading || !activeRoom || !joinedCharacter || !currentUser || !myScene) return;
     
+    const currentInput = input;
+    
     if (chatTab === "consult" && !consultWithAI) {
-      const currentInput = input;
-      const userMsg: Message = { sender: "player", text: currentInput, type: "ic", sceneId: myScene.id, charName: joinedCharacter.name, channel: chatTab };
-      setMessages((prev) => [...prev, userMsg]);
+      await pushMessage(activeRoom.id, { sender: "player", text: currentInput, type: "ic", sceneId: myScene.id, charName: joinedCharacter.name, channel: chatTab });
       setInput("");
       return;
     }
 
-    const currentInput = input;
-    const userMsg: Message = { sender: "player", text: currentInput, type: chatTab === "story" ? "ic" : "ooc", sceneId: myScene.id, charName: joinedCharacter.name, channel: chatTab };
-    setMessages((prev) => [...prev, userMsg]);
+    await pushMessage(activeRoom.id, { sender: "player", text: currentInput, type: chatTab === "story" ? "ic" : "ooc", sceneId: myScene.id, charName: joinedCharacter.name, channel: chatTab });
     setInput(""); 
     
     let context = "";
@@ -730,7 +768,7 @@ ${roleInstruction}
       msgText = `🎲 ${label} (3d6 ≦ ${targetValue}) ➔ 出目: ${res} [${d1},${d2},${d3}] 【${isSuccess ? "成功" : "失敗"}】`;
     }
 
-    setMessages((prev) => [...prev, { sender: "player", text: msgText, type: "ic", sceneId: myScene.id, charName: joinedCharacter.name, channel: "story" }]);
+    await pushMessage(activeRoom.id, { sender: "player", text: msgText, type: "ic", sceneId: myScene.id, charName: joinedCharacter.name, channel: "story" });
     await callAIGM(`【システム判定結果】${joinedCharacter.name}が${label}ロールを行いました。\n結果: ${msgText}\nこの結果を踏まえてGMとして情景描写を行ってください。`, "story");
   };
 
@@ -751,7 +789,6 @@ ${roleInstruction}
               <div><h3 className="font-bold text-white mb-1">メンテナンスモード</h3></div>
               <button onClick={toggleMaintenance} className={`px-4 py-2 rounded-lg font-bold text-sm ${isMaintenance ? 'bg-red-600' : 'bg-slate-700'}`}>{isMaintenance ? "🔴 メンテ中" : "🟢 稼働中"}</button>
             </div>
-            {/* ... other admin UI ... */}
           </div>
         </div>
       )}
