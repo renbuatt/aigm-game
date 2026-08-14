@@ -24,9 +24,8 @@ type BanAppeal = {
   id: string; userId: string; reason: string; appealText: string; status: string; createdAt: string;
 };
 
-// ★ 通報用の型定義を追加
 type Report = {
-  id: string; reporterId: string; targetType: 'user' | 'scenario'; targetId: string;
+  id: string; reporterId: string; targetType: 'user' | 'scenario' | 'scenario_appeal'; targetId: string;
   reason: string; status: string; createdAt: string;
 };
 
@@ -111,14 +110,20 @@ export default function Home() {
   const [banTargetScenario, setBanTargetScenario] = useState<Scenario | null>(null);
   const [scenarioBanReason, setScenarioBanReason] = useState("");
 
-  // ★ ユーザー通報用のステート
   const [reports, setReports] = useState<Report[]>([]);
   const [reportTarget, setReportTarget] = useState<{type: 'user' | 'scenario', id: string, name: string} | null>(null);
   const [reportReason, setReportReason] = useState("");
 
-  const availableScenarios = scenarios.filter(s => !s.isBanned);
-  const myScenarios = availableScenarios.filter(s => s.authorId === currentUser?.id || (s.purchasedTickets && currentUser && s.purchasedTickets[currentUser.id] > 0));
-  const shopScenarios = availableScenarios.filter(s => s.authorId !== currentUser?.id);
+  // ★ シナリオ再審査申請用のステート
+  const [scenarioAppealTarget, setScenarioAppealTarget] = useState<Scenario | null>(null);
+  const [scenarioAppealText, setScenarioAppealText] = useState("");
+
+  // ★ マイ・シナリオの条件変更（作者ならBANされていてもリストに表示される）
+  const myScenarios = scenarios.filter(s => 
+    s.authorId === currentUser?.id || 
+    (!s.isBanned && s.purchasedTickets && currentUser && s.purchasedTickets[currentUser.id] > 0)
+  );
+  const shopScenarios = scenarios.filter(s => !s.isBanned && s.authorId !== currentUser?.id);
   const availableRooms = rooms.filter(r => !r.scenario?.isBanned);
 
   const defaultScene: Scene = { id: "scene_main", name: "メインルーム", memberIds: [] };
@@ -293,20 +298,23 @@ export default function Home() {
     else { alert("エラーが発生しました: " + error.message); }
   };
 
-  // ★ 一般ユーザーからの通報処理
   const submitUserReport = async () => {
     if (!currentUser || !reportTarget || !reportReason.trim()) return;
     const { error } = await supabase.from('reports').insert({
-      reporter_id: currentUser.id,
-      target_type: reportTarget.type,
-      target_id: reportTarget.id,
-      reason: reportReason
+      reporter_id: currentUser.id, target_type: reportTarget.type, target_id: reportTarget.id, reason: reportReason
     });
-    if (!error) {
-      alert("運営に通報を送信しました。ご協力ありがとうございます。");
-      setReportTarget(null);
-      setReportReason("");
-    } else { alert("エラーが発生しました: " + error.message); }
+    if (!error) { alert("運営に通報を送信しました。ご協力ありがとうございます。"); setReportTarget(null); setReportReason(""); } 
+    else { alert("エラーが発生しました: " + error.message); }
+  };
+
+  // ★ シナリオ再審査申請（修正完了申請）の送信
+  const submitScenarioAppeal = async () => {
+    if (!currentUser || !scenarioAppealTarget || !scenarioAppealText.trim()) return;
+    const { error } = await supabase.from('reports').insert({
+      reporter_id: currentUser.id, target_type: 'scenario_appeal', target_id: scenarioAppealTarget.id, reason: scenarioAppealText
+    });
+    if (!error) { alert("運営に再審査（修正完了）の申請を送信しました。"); setScenarioAppealTarget(null); setScenarioAppealText(""); await fetchAdminData(); } 
+    else { alert("エラーが発生しました: " + error.message); }
   };
 
   // ==========================================
@@ -317,7 +325,6 @@ export default function Home() {
     if (usersData) { setAllUsers(usersData.map((d: any) => ({ id: d.id, handleName: d.handle_name, avatarUrl: d.avatar_url, bio: d.bio, discordId: d.discord_id, ratingSum: d.rating_sum || 0, ratingCount: d.rating_count || 0, isAdmin: d.is_admin || false, isBanned: d.is_banned || false, email: d.email }))); }
     const { data: appealsData } = await supabase.from('ban_appeals').select('*').order('created_at', { ascending: false });
     if (appealsData) { setBanAppeals(appealsData.map((d: any) => ({ id: d.id, userId: d.user_id, reason: d.reason, appealText: d.appeal_text, status: d.status, createdAt: d.created_at }))); }
-    // ★ 通報データを取得
     const { data: reportsData } = await supabase.from('reports').select('*').order('created_at', { ascending: false });
     if (reportsData) { setReports(reportsData.map((d: any) => ({ id: d.id, reporterId: d.reporter_id, targetType: d.target_type, targetId: d.target_id, reason: d.reason, status: d.status, createdAt: d.created_at }))); }
   };
@@ -360,12 +367,22 @@ export default function Home() {
     setBanTargetScenario(null); setScenarioBanReason(""); await fetchData();
   };
 
-  // ★ 通報の対応完了処理
-  const resolveReport = async (reportId: string) => {
-    await supabase.from('reports').update({ status: 'resolved' }).eq('id', reportId);
-    fetchAdminData();
+  // ★ 申請からシナリオの非公開を解除する
+  const unbanScenarioFromAppeal = async (reportId: string, scenarioId: string) => {
+    const { error } = await supabase.from('scenarios').update({ is_banned: false }).eq('id', scenarioId);
+    if (!error) {
+      await supabase.from('reports').update({ status: 'resolved' }).eq('id', reportId);
+      const s = scenarios.find(x => x.id === scenarioId);
+      if(s && s.authorId) {
+        await supabase.from('notifications').insert({ user_id: s.authorId, title: '【お知らせ】シナリオの再審査が承認されました', message: `申請いただいたシナリオ「${s.title}」の修正内容が承認されました。非公開措置が解除され、再びプレイ可能になっています。` });
+      }
+      alert("シナリオの非公開を解除し、作者に通知しました。");
+      await fetchAdminData();
+      await fetchData();
+    } else { alert("エラーが発生しました: " + error.message); }
   };
 
+  const resolveReport = async (reportId: string) => { await supabase.from('reports').update({ status: 'resolved' }).eq('id', reportId); fetchAdminData(); };
   const submitAppeal = async () => { if(!currentUser || !appealText) return; await supabase.from('ban_appeals').insert({ user_id: currentUser.id, reason: "不明", appeal_text: appealText, status: 'appealing' }); alert("調査依頼を送信しました。"); setAppealText(""); };
   const sendWarningNotification = async () => { if (!warningModalUser || !warningTitle || !warningText) return; await supabase.from('notifications').insert({ user_id: warningModalUser.id, title: warningTitle, message: warningText }); alert("警告通知を送信しました。"); setWarningModalUser(null); setWarningTitle(""); setWarningText(""); };
   const markNotificationAsRead = async (notifId: string) => { await supabase.from('notifications').update({ is_read: true }).eq('id', notifId); setMyNotifications(myNotifications.map(n => n.id === notifId ? { ...n, isRead: true } : n)); };
@@ -373,7 +390,6 @@ export default function Home() {
   const handleCreateRoom = async (scenario: Scenario) => {
     const charId = charSelects[scenario.id];
     if (!currentUser || !scenario || !charId) { alert("エラー: キャラクターが選択されていません。"); return; }
-    
     const isAuthor = scenario.authorId === currentUser.id;
     if (!isAuthor) {
       const currentTickets = scenario.purchasedTickets || {};
@@ -383,7 +399,6 @@ export default function Home() {
       const { error: ticketError } = await supabase.from('scenarios').update({ purchased_tickets: newTickets }).eq('id', scenario.id);
       if (ticketError) { alert("チケットの消費処理に失敗しました。"); return; }
     }
-
     const initialScenes: Scene[] = [{ id: `scene_main_${Date.now()}`, name: "メインルーム", memberIds: scenario.presetCharacters.map(c => c.id) }];
     const { data, error } = await supabase.from('rooms').insert({ scenario_id: scenario.id, host_name: currentUser.handleName, host_id: currentUser.id, status: "recruiting", scenes: initialScenes }).select().single();
     if (error) { alert("データベースエラーが発生しました: " + error.message); return; }
@@ -498,11 +513,11 @@ export default function Home() {
               <button onClick={toggleMaintenance} className={`px-4 py-2 rounded-lg font-bold text-sm ${isMaintenance ? 'bg-red-600' : 'bg-slate-700'}`}>{isMaintenance ? "🔴 メンテ中" : "🟢 稼働中"}</button>
             </div>
 
-            {/* ★ ユーザーからの通報一覧（新設） */}
+            {/* ユーザーからの通報一覧 */}
             <div className="bg-slate-900 border border-slate-700 rounded-xl p-5 space-y-4">
               <h3 className="font-bold text-red-400 mb-3">🚨 ユーザーからの通報一覧</h3>
               <div className="h-[250px] overflow-y-scroll space-y-3 pr-2 border border-slate-700/50 p-2 rounded-lg bg-slate-900/50">
-                {reports.filter(r => r.status === 'pending').map(report => {
+                {reports.filter(r => r.status === 'pending' && r.targetType !== 'scenario_appeal').map(report => {
                   const reporter = allUsers.find(u => u.id === report.reporterId);
                   const targetName = report.targetType === 'user' 
                     ? allUsers.find(u => u.id === report.targetId)?.handleName || "不明なユーザー" 
@@ -529,7 +544,35 @@ export default function Home() {
                     </div>
                   )
                 })}
-                {reports.filter(r => r.status === 'pending').length === 0 && <p className="text-xs text-slate-500">現在、未処理の通報はありません。</p>}
+                {reports.filter(r => r.status === 'pending' && r.targetType !== 'scenario_appeal').length === 0 && <p className="text-xs text-slate-500">現在、未処理の通報はありません。</p>}
+              </div>
+            </div>
+
+            {/* ★ シナリオ再審査申請（新設） */}
+            <div className="bg-slate-900 border border-slate-700 rounded-xl p-5 space-y-4">
+              <h3 className="font-bold text-amber-400 mb-3">🚨 シナリオ修正完了・再審査申請</h3>
+              <div className="h-[250px] overflow-y-scroll space-y-3 pr-2 border border-slate-700/50 p-2 rounded-lg bg-slate-900/50">
+                {reports.filter(r => r.targetType === 'scenario_appeal' && r.status === 'pending').map(report => {
+                  const reporter = allUsers.find(u => u.id === report.reporterId);
+                  const targetScenario = scenarios.find(s => s.id === report.targetId);
+                  return (
+                    <div key={report.id} className="bg-slate-800 p-4 rounded-lg border border-amber-900/50 flex flex-col gap-2">
+                      <div className="flex justify-between items-start">
+                        <span className="text-[10px] bg-amber-900 text-amber-100 px-2 py-0.5 rounded font-bold">再審査申請</span>
+                        <span className="text-[10px] text-slate-400">申請者: {reporter?.handleName || "不明"}</span>
+                      </div>
+                      <p className="text-sm font-bold text-white mt-1">対象シナリオ: {targetScenario?.title || "不明なシナリオ"}</p>
+                      <div className="text-xs text-slate-300 bg-slate-900 p-2 rounded border border-slate-700">
+                        <span className="text-emerald-400 font-bold block mb-1">【修正内容・コメント】</span>{report.reason}
+                      </div>
+                      <div className="flex gap-2 justify-end mt-2">
+                        <button onClick={() => unbanScenarioFromAppeal(report.id, report.targetId)} className="text-[10px] bg-emerald-700 hover:bg-emerald-600 text-white px-3 py-1.5 rounded font-bold shadow-lg">非公開を解除(承認)</button>
+                        <button onClick={() => resolveReport(report.id)} className="text-[10px] bg-slate-700 hover:bg-slate-600 text-white px-3 py-1.5 rounded font-bold">却下(処置済みにする)</button>
+                      </div>
+                    </div>
+                  )
+                })}
+                {reports.filter(r => r.targetType === 'scenario_appeal' && r.status === 'pending').length === 0 && <p className="text-xs text-slate-500">現在、未処理の申請はありません。</p>}
               </div>
             </div>
             
@@ -586,7 +629,7 @@ export default function Home() {
         </div>
       )}
 
-      {/* ★ ユーザー・シナリオ通報モーダル (Global) */}
+      {/* ユーザー・シナリオ通報モーダル */}
       {reportTarget && (
         <div className="absolute inset-0 bg-black/80 z-50 flex items-center justify-center p-4">
           <div className="bg-slate-800 border border-red-700/50 rounded-xl p-6 w-full max-w-lg shadow-2xl">
@@ -598,6 +641,23 @@ export default function Home() {
             <div className="flex gap-4">
               <button onClick={() => { setReportTarget(null); setReportReason(""); }} className="flex-1 bg-slate-700 hover:bg-slate-600 py-3 rounded text-sm font-bold">キャンセル</button>
               <button onClick={submitUserReport} disabled={!reportReason.trim()} className="flex-1 bg-red-600 hover:bg-red-500 disabled:bg-slate-600 py-3 rounded text-sm font-bold shadow-lg shadow-red-900/50">運営に送信する</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ★ シナリオ修正完了申請モーダル (作者用) */}
+      {scenarioAppealTarget && (
+        <div className="absolute inset-0 bg-black/80 z-50 flex items-center justify-center p-4">
+          <div className="bg-slate-800 border border-amber-700/50 rounded-xl p-6 w-full max-w-lg shadow-2xl">
+            <h3 className="text-xl font-bold text-amber-400 mb-2">📝 再審査（修正完了）の申請</h3>
+            <p className="text-xs text-slate-400 mb-4">対象シナリオ: {scenarioAppealTarget.title}</p>
+            <div className="space-y-3 mb-4">
+              <textarea value={scenarioAppealText} onChange={e=>setScenarioAppealText(e.target.value)} placeholder="修正した箇所や、非公開措置へのコメントを入力してください。" className="w-full h-32 bg-slate-900 border border-slate-700 rounded p-3 text-sm text-white" />
+            </div>
+            <div className="flex gap-4">
+              <button onClick={() => { setScenarioAppealTarget(null); setScenarioAppealText(""); }} className="flex-1 bg-slate-700 hover:bg-slate-600 py-3 rounded text-sm font-bold">キャンセル</button>
+              <button onClick={submitScenarioAppeal} disabled={!scenarioAppealText.trim()} className="flex-1 bg-amber-600 hover:bg-amber-500 disabled:bg-slate-600 py-3 rounded text-sm font-bold shadow-lg shadow-amber-900/50">運営に申請を送信する</button>
             </div>
           </div>
         </div>
@@ -701,7 +761,6 @@ export default function Home() {
                       <div className="flex-1">
                         <div className="flex justify-between items-start">
                           <h3 className="text-lg font-bold text-white mb-1 flex items-center gap-2">{room.scenario?.title} {room.host_id === currentUser.id && <span className="text-[10px] bg-amber-600 text-white px-2 py-0.5 rounded ml-auto">あなたがホスト</span>}</h3>
-                          {/* ★ ホストの通報ボタン */}
                           {room.host_id !== currentUser.id && (
                             <button onClick={() => setReportTarget({type:'user', id:room.host_id as string, name:room.host_name})} className="text-[10px] text-slate-400 hover:text-red-400 bg-slate-900 px-2 py-1 rounded border border-slate-700">🚩 ホストを通報</button>
                           )}
@@ -763,7 +822,7 @@ export default function Home() {
                           const currentGiftInput = giftInputs[s.id] || "";
 
                           return (
-                            <div key={s.id} className="bg-slate-900 border border-slate-700 rounded-lg p-3 flex flex-col gap-2">
+                            <div key={s.id} className={`bg-slate-900 border rounded-lg p-3 flex flex-col gap-2 ${s.isBanned ? 'border-red-900/50 opacity-80' : 'border-slate-700'}`}>
                               <div className="flex items-start gap-3">
                                 <img src={s.imageUrl || NO_IMAGE_SCENARIO} className="w-12 h-12 object-cover rounded border border-slate-600" />
                                 <div className="flex-1">
@@ -776,36 +835,45 @@ export default function Home() {
                                         <button onClick={() => deleteScenario(s.id)} className="text-[10px] bg-red-900/50 px-2 py-1 rounded text-red-300 hover:bg-red-800/80">削除</button>
                                       </>
                                     )}
-                                    {/* ★ シナリオの通報ボタン */}
-                                    {!isAuthor && (
+                                    {!isAuthor && !s.isBanned && (
                                       <button onClick={() => setReportTarget({type:'scenario', id:s.id, name:s.title})} className="text-[10px] text-slate-400 hover:text-red-400 bg-slate-800 px-2 py-1 rounded border border-slate-700 ml-auto">🚩 通報</button>
                                     )}
                                   </div>
                                 </div>
                               </div>
 
-                              <div className="bg-slate-800 p-2 rounded mt-1 border border-slate-700">
-                                {s.presetCharacters.length === 0 ? (
-                                  <p className="text-[10px] text-red-400 text-center">キャラクターが未登録です</p>
-                                ) : (
-                                  <div className="flex flex-col gap-2">
-                                    <select value={currentChar} onChange={(e) => setCharSelects({...charSelects, [s.id]: e.target.value})} className="w-full bg-slate-900 text-xs p-1.5 rounded text-white">
-                                      <option value="" disabled>自分のキャラクターを選択...</option>
-                                      {s.presetCharacters.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
-                                    </select>
-                                    <button onClick={() => handleCreateRoom(s)} disabled={!currentChar} className="bg-emerald-600 disabled:bg-slate-600 text-white text-xs font-bold py-1.5 rounded">
-                                      部屋を立てて入室 {isAuthor ? "" : "(-1 回)"}
+                              {/* ★ BAN(非公開)状態によるUIの分岐 */}
+                              {s.isBanned ? (
+                                <div className="bg-red-900/30 border border-red-500/50 p-2 rounded mt-1">
+                                  <p className="text-[10px] text-red-400 mb-2">※規約違反により一時非公開中です。部屋を立てることはできません。</p>
+                                  <button onClick={() => { setScenarioAppealTarget(s); setScenarioAppealText(""); }} className="text-[10px] bg-amber-600 hover:bg-amber-500 text-white px-2 py-1.5 rounded font-bold">修正完了を申請する</button>
+                                </div>
+                              ) : (
+                                <>
+                                  <div className="bg-slate-800 p-2 rounded mt-1 border border-slate-700">
+                                    {s.presetCharacters.length === 0 ? (
+                                      <p className="text-[10px] text-red-400 text-center">キャラクターが未登録です</p>
+                                    ) : (
+                                      <div className="flex flex-col gap-2">
+                                        <select value={currentChar} onChange={(e) => setCharSelects({...charSelects, [s.id]: e.target.value})} className="w-full bg-slate-900 text-xs p-1.5 rounded text-white">
+                                          <option value="" disabled>自分のキャラクターを選択...</option>
+                                          {s.presetCharacters.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+                                        </select>
+                                        <button onClick={() => handleCreateRoom(s)} disabled={!currentChar} className="bg-emerald-600 disabled:bg-slate-600 text-white text-xs font-bold py-1.5 rounded">
+                                          部屋を立てて入室 {isAuthor ? "" : "(-1 回)"}
+                                        </button>
+                                      </div>
+                                    )}
+                                  </div>
+
+                                  <div className="bg-slate-800 p-2 rounded mt-1 border border-slate-700 flex gap-2">
+                                    <input type="text" value={currentGiftInput} onChange={(e) => setGiftInputs({...giftInputs, [s.id]: e.target.value})} placeholder="相手のIDをペースト" className="flex-1 bg-slate-900 text-[10px] p-1.5 rounded text-white" />
+                                    <button onClick={() => handleGiftTicket(s)} disabled={!currentGiftInput} className="bg-emerald-600 disabled:bg-slate-600 text-white text-[10px] px-2 rounded font-bold">
+                                      {isAuthor ? `${s.giftLimit || 1}回分渡す` : "1回分渡す"}
                                     </button>
                                   </div>
-                                )}
-                              </div>
-
-                              <div className="bg-slate-800 p-2 rounded mt-1 border border-slate-700 flex gap-2">
-                                <input type="text" value={currentGiftInput} onChange={(e) => setGiftInputs({...giftInputs, [s.id]: e.target.value})} placeholder="相手のIDをペースト" className="flex-1 bg-slate-900 text-[10px] p-1.5 rounded text-white" />
-                                <button onClick={() => handleGiftTicket(s)} disabled={!currentGiftInput} className="bg-emerald-600 disabled:bg-slate-600 text-white text-[10px] px-2 rounded font-bold">
-                                  {isAuthor ? `${s.giftLimit || 1}回分渡す` : "1回分渡す"}
-                                </button>
-                              </div>
+                                </>
+                              )}
                             </div>
                           )
                         })}
@@ -824,7 +892,6 @@ export default function Home() {
                         <button onClick={() => { const target = scenarios.find(s => s.id === shopScenarioId); if(target) buyScenario(target); }} className="flex-1 bg-amber-600 hover:bg-amber-500 text-white font-bold py-2 rounded shadow-lg shadow-amber-900/50 transition">
                           購入（{scenarios.find(s => s.id === shopScenarioId)?.price || 500} G）
                         </button>
-                        {/* ★ ショップからの通報ボタン */}
                         <button onClick={() => { const target = scenarios.find(s => s.id === shopScenarioId); if(target) setReportTarget({type:'scenario', id:target.id, name:target.title}); }} className="bg-slate-700 hover:bg-slate-600 text-slate-300 px-3 py-2 rounded shadow-lg border border-slate-600">🚩</button>
                       </div>
                     )}
