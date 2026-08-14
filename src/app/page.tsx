@@ -72,9 +72,6 @@ export default function Home() {
   const [editingScenario, setEditingScenario] = useState<Scenario | null>(null);
   const [editingCharIndex, setEditingCharIndex] = useState<number | null>(null);
   
-  const [selectedScenarioId, setSelectedScenarioId] = useState<string>("");
-  const [shopScenarioId, setShopScenarioId] = useState<string>(""); 
-  
   const [charSelects, setCharSelects] = useState<Record<string, string>>({});
   const [giftInputs, setGiftInputs] = useState<Record<string, string>>({});
 
@@ -114,16 +111,14 @@ export default function Home() {
   const [reportTarget, setReportTarget] = useState<{type: 'user' | 'scenario', id: string, name: string} | null>(null);
   const [reportReason, setReportReason] = useState("");
 
-  // ★ シナリオ再審査申請用のステート
   const [scenarioAppealTarget, setScenarioAppealTarget] = useState<Scenario | null>(null);
   const [scenarioAppealText, setScenarioAppealText] = useState("");
 
-  // ★ マイ・シナリオの条件変更（作者ならBANされていてもリストに表示される）
-  const myScenarios = scenarios.filter(s => 
-    s.authorId === currentUser?.id || 
-    (!s.isBanned && s.purchasedTickets && currentUser && s.purchasedTickets[currentUser.id] > 0)
-  );
-  const shopScenarios = scenarios.filter(s => !s.isBanned && s.authorId !== currentUser?.id);
+  // ★ シナリオを「自作」と「購入済み」に明確に分割
+  const availableScenarios = scenarios.filter(s => !s.isBanned);
+  const createdScenarios = availableScenarios.filter(s => s.authorId === currentUser?.id);
+  const purchasedScenarios = availableScenarios.filter(s => s.authorId !== currentUser?.id && s.purchasedTickets && currentUser && s.purchasedTickets[currentUser.id] > 0);
+  
   const availableRooms = rooms.filter(r => !r.scenario?.isBanned);
 
   const defaultScene: Scene = { id: "scene_main", name: "メインルーム", memberIds: [] };
@@ -270,18 +265,6 @@ export default function Home() {
     else { alert("エラーが発生しました: " + error.message); }
   };
 
-  const buyScenario = async (scenario: Scenario) => {
-    if (!currentUser) return;
-    if (confirm(`「${scenario.title}」のプレイチケットを ${scenario.price || 500} G で購入しますか？\n（※現在はテスト用のデモ決済です）`)) {
-      const currentTickets = scenario.purchasedTickets || {};
-      const addLimit = scenario.playLimit || 1;
-      const newTickets = { ...currentTickets, [currentUser.id]: (currentTickets[currentUser.id] || 0) + addLimit };
-      const { error } = await supabase.from('scenarios').update({ purchased_tickets: newTickets }).eq('id', scenario.id);
-      if (!error) { alert(`プレイチケット（${addLimit}回分）の購入が完了しました！\n「マイ・シナリオ」から部屋を立てることができます。`); setShopScenarioId(""); await fetchData(); } 
-      else { alert("エラーが発生しました: " + error.message); }
-    }
-  };
-
   const handleGiftTicket = async (scenario: Scenario) => {
     const targetUserId = giftInputs[scenario.id];
     if (!scenario || !targetUserId || !currentUser) return;
@@ -307,7 +290,6 @@ export default function Home() {
     else { alert("エラーが発生しました: " + error.message); }
   };
 
-  // ★ シナリオ再審査申請（修正完了申請）の送信
   const submitScenarioAppeal = async () => {
     if (!currentUser || !scenarioAppealTarget || !scenarioAppealText.trim()) return;
     const { error } = await supabase.from('reports').insert({
@@ -367,7 +349,6 @@ export default function Home() {
     setBanTargetScenario(null); setScenarioBanReason(""); await fetchData();
   };
 
-  // ★ 申請からシナリオの非公開を解除する
   const unbanScenarioFromAppeal = async (reportId: string, scenarioId: string) => {
     const { error } = await supabase.from('scenarios').update({ is_banned: false }).eq('id', scenarioId);
     if (!error) {
@@ -377,8 +358,7 @@ export default function Home() {
         await supabase.from('notifications').insert({ user_id: s.authorId, title: '【お知らせ】シナリオの再審査が承認されました', message: `申請いただいたシナリオ「${s.title}」の修正内容が承認されました。非公開措置が解除され、再びプレイ可能になっています。` });
       }
       alert("シナリオの非公開を解除し、作者に通知しました。");
-      await fetchAdminData();
-      await fetchData();
+      await fetchAdminData(); await fetchData();
     } else { alert("エラーが発生しました: " + error.message); }
   };
 
@@ -390,6 +370,7 @@ export default function Home() {
   const handleCreateRoom = async (scenario: Scenario) => {
     const charId = charSelects[scenario.id];
     if (!currentUser || !scenario || !charId) { alert("エラー: キャラクターが選択されていません。"); return; }
+    
     const isAuthor = scenario.authorId === currentUser.id;
     if (!isAuthor) {
       const currentTickets = scenario.purchasedTickets || {};
@@ -399,6 +380,7 @@ export default function Home() {
       const { error: ticketError } = await supabase.from('scenarios').update({ purchased_tickets: newTickets }).eq('id', scenario.id);
       if (ticketError) { alert("チケットの消費処理に失敗しました。"); return; }
     }
+
     const initialScenes: Scene[] = [{ id: `scene_main_${Date.now()}`, name: "メインルーム", memberIds: scenario.presetCharacters.map(c => c.id) }];
     const { data, error } = await supabase.from('rooms').insert({ scenario_id: scenario.id, host_name: currentUser.handleName, host_id: currentUser.id, status: "recruiting", scenes: initialScenes }).select().single();
     if (error) { alert("データベースエラーが発生しました: " + error.message); return; }
@@ -513,7 +495,6 @@ export default function Home() {
               <button onClick={toggleMaintenance} className={`px-4 py-2 rounded-lg font-bold text-sm ${isMaintenance ? 'bg-red-600' : 'bg-slate-700'}`}>{isMaintenance ? "🔴 メンテ中" : "🟢 稼働中"}</button>
             </div>
 
-            {/* ユーザーからの通報一覧 */}
             <div className="bg-slate-900 border border-slate-700 rounded-xl p-5 space-y-4">
               <h3 className="font-bold text-red-400 mb-3">🚨 ユーザーからの通報一覧</h3>
               <div className="h-[250px] overflow-y-scroll space-y-3 pr-2 border border-slate-700/50 p-2 rounded-lg bg-slate-900/50">
@@ -548,7 +529,6 @@ export default function Home() {
               </div>
             </div>
 
-            {/* ★ シナリオ再審査申請（新設） */}
             <div className="bg-slate-900 border border-slate-700 rounded-xl p-5 space-y-4">
               <h3 className="font-bold text-amber-400 mb-3">🚨 シナリオ修正完了・再審査申請</h3>
               <div className="h-[250px] overflow-y-scroll space-y-3 pr-2 border border-slate-700/50 p-2 rounded-lg bg-slate-900/50">
@@ -576,7 +556,6 @@ export default function Home() {
               </div>
             </div>
             
-            {/* ユーザー管理 */}
             <div className="bg-slate-900 border border-slate-700 rounded-xl p-5 space-y-4">
               <h3 className="font-bold text-white mb-3">ユーザー管理</h3>
               <input type="text" placeholder="検索..." value={userSearchQuery} onChange={(e) => setUserSearchQuery(e.target.value)} className="w-full bg-slate-800 border border-slate-600 rounded-lg p-3 text-sm text-white focus:outline-none focus:border-emerald-500 mb-2" />
@@ -598,7 +577,6 @@ export default function Home() {
               </div>
             </div>
 
-            {/* シナリオ管理 */}
             <div className="bg-slate-900 border border-slate-700 rounded-xl p-5 space-y-4">
               <h3 className="font-bold text-white mb-3">シナリオ管理＆治安維持</h3>
               <input type="text" placeholder="シナリオタイトルで検索..." value={scenarioSearchQuery} onChange={(e) => setScenarioSearchQuery(e.target.value)} className="w-full bg-slate-800 border border-slate-600 rounded-lg p-3 text-sm text-white focus:outline-none focus:border-emerald-500 mb-2 shadow-inner" />
@@ -629,7 +607,6 @@ export default function Home() {
         </div>
       )}
 
-      {/* ユーザー・シナリオ通報モーダル */}
       {reportTarget && (
         <div className="absolute inset-0 bg-black/80 z-50 flex items-center justify-center p-4">
           <div className="bg-slate-800 border border-red-700/50 rounded-xl p-6 w-full max-w-lg shadow-2xl">
@@ -646,7 +623,6 @@ export default function Home() {
         </div>
       )}
 
-      {/* ★ シナリオ修正完了申請モーダル (作者用) */}
       {scenarioAppealTarget && (
         <div className="absolute inset-0 bg-black/80 z-50 flex items-center justify-center p-4">
           <div className="bg-slate-800 border border-amber-700/50 rounded-xl p-6 w-full max-w-lg shadow-2xl">
@@ -663,7 +639,6 @@ export default function Home() {
         </div>
       )}
 
-      {/* シナリオBAN実行モーダル (Admin) */}
       {banTargetScenario && (
         <div className="absolute inset-0 bg-black/80 z-50 flex items-center justify-center p-4">
           <div className="bg-slate-800 border border-slate-700 rounded-xl p-6 w-full max-w-lg shadow-2xl">
@@ -687,7 +662,6 @@ export default function Home() {
         </div>
       )}
 
-      {/* ユーザーBAN実行モーダル (Admin) */}
       {banTargetUser && (
         <div className="absolute inset-0 bg-black/80 z-50 flex items-center justify-center p-4">
           <div className="bg-slate-800 border border-red-700/50 rounded-xl p-6 w-full max-w-lg shadow-2xl">
@@ -805,19 +779,18 @@ export default function Home() {
                 </div>
               ) : (
                 <>
+                  {/* ★ 作成したシナリオ */}
                   <div className="bg-slate-800 border border-slate-700 rounded-xl p-4 flex flex-col shadow-lg border-t-2 border-t-emerald-500">
                     <div className="flex justify-between items-center mb-3">
-                      <h2 className="text-sm font-bold text-emerald-400">📜 マイ・シナリオリスト</h2>
+                      <h2 className="text-sm font-bold text-emerald-400">📜 作成したシナリオ</h2>
                       <button onClick={() => { setEditingScenario({ id: "", title: "", system: "", tags: "", setting: "", npcList: "", plot: "", imageUrl: "", presetCharacters: [], ratingSum: 0, ratingCount: 0, price: 500, playLimit: 1, giftLimit: 1 }); setCurrentView("scenarioEdit"); }} className="text-[10px] bg-slate-700 px-2 py-1 rounded hover:bg-slate-600">＋ 新規作成</button>
                     </div>
 
-                    {myScenarios.length === 0 ? (
-                      <p className="text-xs text-slate-400 mt-2 text-center p-2 bg-slate-900 rounded border border-slate-700/50">所有しているシナリオがありません。<br/>誰かのセッションを遊んだ後、購入できます。</p>
+                    {createdScenarios.length === 0 ? (
+                      <p className="text-xs text-slate-400 mt-2 text-center p-2 bg-slate-900 rounded border border-slate-700/50">作成したシナリオはありません。</p>
                     ) : (
-                      <div className="h-[300px] overflow-y-scroll space-y-3 pr-2 custom-scrollbar">
-                        {myScenarios.map(s => {
-                          const isAuthor = s.authorId === currentUser?.id;
-                          const ticketCount = isAuthor ? "∞" : (s.purchasedTickets?.[currentUser?.id] || 0);
+                      <div className="max-h-[300px] overflow-y-scroll space-y-3 pr-2 custom-scrollbar">
+                        {createdScenarios.map(s => {
                           const currentChar = charSelects[s.id] || "";
                           const currentGiftInput = giftInputs[s.id] || "";
 
@@ -827,26 +800,17 @@ export default function Home() {
                                 <img src={s.imageUrl || NO_IMAGE_SCENARIO} className="w-12 h-12 object-cover rounded border border-slate-600" />
                                 <div className="flex-1">
                                   <h4 className="text-sm font-bold text-white">{s.title}</h4>
-                                  <p className="text-[10px] text-slate-400 mt-1">プレイ権: {ticketCount} 回</p>
                                   <div className="flex gap-2 mt-2 items-center">
-                                    {isAuthor && (
-                                      <>
-                                        <button onClick={() => { setEditingScenario(s); setCurrentView("scenarioEdit"); }} className="text-[10px] bg-slate-700 px-2 py-1 rounded text-white hover:bg-slate-600">編集</button>
-                                        <button onClick={() => deleteScenario(s.id)} className="text-[10px] bg-red-900/50 px-2 py-1 rounded text-red-300 hover:bg-red-800/80">削除</button>
-                                      </>
-                                    )}
-                                    {!isAuthor && !s.isBanned && (
-                                      <button onClick={() => setReportTarget({type:'scenario', id:s.id, name:s.title})} className="text-[10px] text-slate-400 hover:text-red-400 bg-slate-800 px-2 py-1 rounded border border-slate-700 ml-auto">🚩 通報</button>
-                                    )}
+                                    <button onClick={() => { setEditingScenario(s); setCurrentView("scenarioEdit"); }} className="text-[10px] bg-slate-700 px-2 py-1 rounded text-white hover:bg-slate-600">編集</button>
+                                    <button onClick={() => deleteScenario(s.id)} className="text-[10px] bg-red-900/50 px-2 py-1 rounded text-red-300 hover:bg-red-800/80">削除</button>
                                   </div>
                                 </div>
                               </div>
 
-                              {/* ★ BAN(非公開)状態によるUIの分岐 */}
                               {s.isBanned ? (
                                 <div className="bg-red-900/30 border border-red-500/50 p-2 rounded mt-1">
-                                  <p className="text-[10px] text-red-400 mb-2">※規約違反により一時非公開中です。部屋を立てることはできません。</p>
-                                  <button onClick={() => { setScenarioAppealTarget(s); setScenarioAppealText(""); }} className="text-[10px] bg-amber-600 hover:bg-amber-500 text-white px-2 py-1.5 rounded font-bold">修正完了を申請する</button>
+                                  <p className="text-[10px] text-red-400 mb-2">※規約違反により一時非公開中。</p>
+                                  <button onClick={() => { setScenarioAppealTarget(s); setScenarioAppealText(""); }} className="text-[10px] bg-amber-600 hover:bg-amber-500 text-white px-2 py-1.5 rounded font-bold">修正完了を申請</button>
                                 </div>
                               ) : (
                                 <>
@@ -859,8 +823,8 @@ export default function Home() {
                                           <option value="" disabled>自分のキャラクターを選択...</option>
                                           {s.presetCharacters.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
                                         </select>
-                                        <button onClick={() => handleCreateRoom(s)} disabled={!currentChar} className="bg-emerald-600 disabled:bg-slate-600 text-white text-xs font-bold py-1.5 rounded">
-                                          部屋を立てて入室 {isAuthor ? "" : "(-1 回)"}
+                                        <button onClick={() => handleCreateRoom(s)} disabled={!currentChar} className="bg-emerald-600 hover:bg-emerald-500 disabled:bg-slate-600 text-white text-xs font-bold py-1.5 rounded">
+                                          部屋を立てて入室
                                         </button>
                                       </div>
                                     )}
@@ -868,8 +832,8 @@ export default function Home() {
 
                                   <div className="bg-slate-800 p-2 rounded mt-1 border border-slate-700 flex gap-2">
                                     <input type="text" value={currentGiftInput} onChange={(e) => setGiftInputs({...giftInputs, [s.id]: e.target.value})} placeholder="相手のIDをペースト" className="flex-1 bg-slate-900 text-[10px] p-1.5 rounded text-white" />
-                                    <button onClick={() => handleGiftTicket(s)} disabled={!currentGiftInput} className="bg-emerald-600 disabled:bg-slate-600 text-white text-[10px] px-2 rounded font-bold">
-                                      {isAuthor ? `${s.giftLimit || 1}回分渡す` : "1回分渡す"}
+                                    <button onClick={() => handleGiftTicket(s)} disabled={!currentGiftInput} className="bg-emerald-600 hover:bg-emerald-500 disabled:bg-slate-600 text-white text-[10px] px-2 rounded font-bold">
+                                      {s.giftLimit || 1}回分渡す
                                     </button>
                                   </div>
                                 </>
@@ -881,18 +845,56 @@ export default function Home() {
                     )}
                   </div>
 
-                  <div className="bg-slate-800 border border-slate-700 rounded-xl p-4 flex flex-col mt-4 shadow-lg border-t-2 border-t-amber-500 relative">
-                    <h2 className="text-sm font-bold text-amber-400 mb-3">🛒 シナリオショップ</h2>
-                    <select value={shopScenarioId} onChange={(e) => setShopScenarioId(e.target.value)} className="w-full bg-slate-900 border border-slate-700 rounded p-2 text-sm text-white mb-3">
-                      <option value="" disabled>シナリオを探す...</option>
-                      {shopScenarios.map(s => <option key={s.id} value={s.id}>{s.title}</option>)}
-                    </select>
-                    {shopScenarioId && (
-                      <div className="flex gap-2">
-                        <button onClick={() => { const target = scenarios.find(s => s.id === shopScenarioId); if(target) buyScenario(target); }} className="flex-1 bg-amber-600 hover:bg-amber-500 text-white font-bold py-2 rounded shadow-lg shadow-amber-900/50 transition">
-                          購入（{scenarios.find(s => s.id === shopScenarioId)?.price || 500} G）
-                        </button>
-                        <button onClick={() => { const target = scenarios.find(s => s.id === shopScenarioId); if(target) setReportTarget({type:'scenario', id:target.id, name:target.title}); }} className="bg-slate-700 hover:bg-slate-600 text-slate-300 px-3 py-2 rounded shadow-lg border border-slate-600">🚩</button>
+                  {/* ★ 購入したシナリオ */}
+                  <div className="bg-slate-800 border border-slate-700 rounded-xl p-4 flex flex-col mt-4 shadow-lg border-t-2 border-t-amber-500">
+                    <h2 className="text-sm font-bold text-amber-400 mb-3">🎟️ 購入したシナリオ</h2>
+                    {purchasedScenarios.length === 0 ? (
+                      <p className="text-xs text-slate-400 text-center p-2 bg-slate-900 rounded border border-slate-700/50">現在所有しているチケットはありません。<br/>他の人のセッションを遊んだ後に購入できます。</p>
+                    ) : (
+                      <div className="max-h-[300px] overflow-y-scroll space-y-3 pr-2 custom-scrollbar">
+                        {purchasedScenarios.map(s => {
+                          const ticketCount = s.purchasedTickets?.[currentUser?.id || ""] || 0;
+                          const currentChar = charSelects[s.id] || "";
+                          const currentGiftInput = giftInputs[s.id] || "";
+
+                          return (
+                            <div key={s.id} className="bg-slate-900 border border-slate-700 rounded-lg p-3 flex flex-col gap-2">
+                              <div className="flex items-start gap-3">
+                                <img src={s.imageUrl || NO_IMAGE_SCENARIO} className="w-12 h-12 object-cover rounded border border-slate-600" />
+                                <div className="flex-1">
+                                  <h4 className="text-sm font-bold text-white">{s.title}</h4>
+                                  <p className="text-[10px] text-amber-400 mt-1">残りプレイ可能回数: {ticketCount} 回</p>
+                                  <div className="mt-2">
+                                    <button onClick={() => setReportTarget({type:'scenario', id:s.id, name:s.title})} className="text-[10px] text-slate-400 hover:text-red-400 bg-slate-800 px-2 py-1 rounded border border-slate-700">🚩 通報</button>
+                                  </div>
+                                </div>
+                              </div>
+
+                              <div className="bg-slate-800 p-2 rounded mt-1 border border-slate-700">
+                                {s.presetCharacters.length === 0 ? (
+                                  <p className="text-[10px] text-red-400 text-center">キャラクターが未登録です</p>
+                                ) : (
+                                  <div className="flex flex-col gap-2">
+                                    <select value={currentChar} onChange={(e) => setCharSelects({...charSelects, [s.id]: e.target.value})} className="w-full bg-slate-900 text-xs p-1.5 rounded text-white">
+                                      <option value="" disabled>自分のキャラクターを選択...</option>
+                                      {s.presetCharacters.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+                                    </select>
+                                    <button onClick={() => handleCreateRoom(s)} disabled={!currentChar} className="bg-amber-600 hover:bg-amber-500 disabled:bg-slate-600 text-white text-xs font-bold py-1.5 rounded shadow-lg shadow-amber-900/50">
+                                      このシナリオで遊ぶ (-1 回)
+                                    </button>
+                                  </div>
+                                )}
+                              </div>
+
+                              <div className="bg-slate-800 p-2 rounded mt-1 border border-slate-700 flex gap-2">
+                                <input type="text" value={currentGiftInput} onChange={(e) => setGiftInputs({...giftInputs, [s.id]: e.target.value})} placeholder="相手のIDをペースト" className="flex-1 bg-slate-900 text-[10px] p-1.5 rounded text-white" />
+                                <button onClick={() => handleGiftTicket(s)} disabled={!currentGiftInput} className="bg-amber-600 hover:bg-amber-500 disabled:bg-slate-600 text-white text-[10px] px-2 rounded font-bold">
+                                  1回分譲渡する
+                                </button>
+                              </div>
+                            </div>
+                          )
+                        })}
                       </div>
                     )}
                   </div>
