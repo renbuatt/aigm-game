@@ -114,6 +114,8 @@ export default function Home() {
   const [scenarioAppealTarget, setScenarioAppealTarget] = useState<Scenario | null>(null);
   const [scenarioAppealText, setScenarioAppealText] = useState("");
 
+  const [shopScenarioId, setShopScenarioId] = useState<string>(""); 
+
   const availableScenarios = scenarios.filter(s => !s.isBanned);
   const createdScenarios = availableScenarios.filter(s => s.authorId === currentUser?.id);
   const purchasedScenarios = availableScenarios.filter(s => s.authorId !== currentUser?.id && s.purchasedTickets && currentUser && s.purchasedTickets[currentUser.id] > 0);
@@ -261,6 +263,18 @@ export default function Home() {
     const { error } = await supabase.from('scenarios').update({ purchased_tickets: newTickets }).eq('id', scenario.id);
     if (!error) { alert(`「${scenario.title}」を購入しました！\nマイ・シナリオにプレイ権が ${addLimit} 回分追加されました。`); submitEvaluation(); } 
     else { alert("エラーが発生しました: " + error.message); }
+  };
+
+  const buyScenario = async (scenario: Scenario) => {
+    if (!currentUser) return;
+    if (confirm(`「${scenario.title}」のプレイチケットを ${scenario.price || 500} G で購入しますか？\n（※現在はテスト用のデモ決済です）`)) {
+      const currentTickets = scenario.purchasedTickets || {};
+      const addLimit = scenario.playLimit || 1;
+      const newTickets = { ...currentTickets, [currentUser.id]: (currentTickets[currentUser.id] || 0) + addLimit };
+      const { error } = await supabase.from('scenarios').update({ purchased_tickets: newTickets }).eq('id', scenario.id);
+      if (!error) { alert(`プレイチケット（${addLimit}回分）の購入が完了しました！\n「マイ・シナリオ」から部屋を立てることができます。`); setShopScenarioId(""); await fetchData(); } 
+      else { alert("エラーが発生しました: " + error.message); }
+    }
   };
 
   const handleGiftTicket = async (scenario: Scenario) => {
@@ -423,6 +437,7 @@ ${aiPlayersText}
         throw new Error("Gemini APIキーが設定されていません。（.env.local または Vercelの設定を確認してください）");
       }
 
+      // ★ 最新モデル Gemini 3.5 Flash-Lite に変更しました！
       const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-3.5-flash-lite:generateContent?key=${apiKey}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -433,7 +448,11 @@ ${aiPlayersText}
         })
       });
       
-      if (!res.ok) throw new Error("AIサーバーの応答エラーが発生しました。");
+      if (!res.ok) {
+        const errText = await res.text();
+        console.error("Gemini API Error:", errText);
+        throw new Error(`AIサーバーの応答エラーが発生しました。詳細: ${res.statusText}`);
+      }
       const resData = await res.json();
       const aiText = resData.candidates?.[0]?.content?.parts?.[0]?.text || "（AIの返答がありません）";
 
@@ -729,6 +748,7 @@ ${aiPlayersText}
         </div>
       )}
 
+      {/* シナリオBAN実行モーダル (Admin) */}
       {banTargetScenario && (
         <div className="absolute inset-0 bg-black/80 z-50 flex items-center justify-center p-4">
           <div className="bg-slate-800 border border-slate-700 rounded-xl p-6 w-full max-w-lg shadow-2xl">
@@ -752,6 +772,7 @@ ${aiPlayersText}
         </div>
       )}
 
+      {/* ユーザーBAN実行モーダル (Admin) */}
       {banTargetUser && (
         <div className="absolute inset-0 bg-black/80 z-50 flex items-center justify-center p-4">
           <div className="bg-slate-800 border border-red-700/50 rounded-xl p-6 w-full max-w-lg shadow-2xl">
