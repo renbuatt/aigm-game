@@ -72,6 +72,9 @@ export default function Home() {
   const [editingScenario, setEditingScenario] = useState<Scenario | null>(null);
   const [editingCharIndex, setEditingCharIndex] = useState<number | null>(null);
   
+  const [selectedScenarioId, setSelectedScenarioId] = useState<string>("");
+  const [shopScenarioId, setShopScenarioId] = useState<string>(""); 
+  
   const [charSelects, setCharSelects] = useState<Record<string, string>>({});
   const [giftInputs, setGiftInputs] = useState<Record<string, string>>({});
 
@@ -98,7 +101,7 @@ export default function Home() {
 
   const [banTargetUser, setBanTargetUser] = useState<UserProfile | null>(null);
   const [banReason, setBanReason] = useState("");
-  const [banAppeals, setBanAppeals] = useState<BanAppeal[]>([]);
+  const [banAppeals, setBanApp appeals] = useState<BanAppeal[]>([]);
   const [appealText, setAppealText] = useState("");
 
   const [userSearchQuery, setUserSearchQuery] = useState("");
@@ -114,11 +117,9 @@ export default function Home() {
   const [scenarioAppealTarget, setScenarioAppealTarget] = useState<Scenario | null>(null);
   const [scenarioAppealText, setScenarioAppealText] = useState("");
 
-  // ★ シナリオを「自作」と「購入済み」に明確に分割
   const availableScenarios = scenarios.filter(s => !s.isBanned);
   const createdScenarios = availableScenarios.filter(s => s.authorId === currentUser?.id);
   const purchasedScenarios = availableScenarios.filter(s => s.authorId !== currentUser?.id && s.purchasedTickets && currentUser && s.purchasedTickets[currentUser.id] > 0);
-  
   const availableRooms = rooms.filter(r => !r.scenario?.isBanned);
 
   const defaultScene: Scene = { id: "scene_main", name: "メインルーム", memberIds: [] };
@@ -265,6 +266,18 @@ export default function Home() {
     else { alert("エラーが発生しました: " + error.message); }
   };
 
+  const buyScenario = async (scenario: Scenario) => {
+    if (!currentUser) return;
+    if (confirm(`「${scenario.title}」のプレイチケットを ${scenario.price || 500} G で購入しますか？\n（※現在はテスト用のデモ決済です）`)) {
+      const currentTickets = scenario.purchasedTickets || {};
+      const addLimit = scenario.playLimit || 1;
+      const newTickets = { ...currentTickets, [currentUser.id]: (currentTickets[currentUser.id] || 0) + addLimit };
+      const { error } = await supabase.from('scenarios').update({ purchased_tickets: newTickets }).eq('id', scenario.id);
+      if (!error) { alert(`プレイチケット（${addLimit}回分）の購入が完了しました！\n「マイ・シナリオ」から部屋を立てることができます。`); setShopScenarioId(""); await fetchData(); } 
+      else { alert("エラーが発生しました: " + error.message); }
+    }
+  };
+
   const handleGiftTicket = async (scenario: Scenario) => {
     const targetUserId = giftInputs[scenario.id];
     if (!scenario || !targetUserId || !currentUser) return;
@@ -299,9 +312,6 @@ export default function Home() {
     else { alert("エラーが発生しました: " + error.message); }
   };
 
-  // ==========================================
-  // 管理画面処理
-  // ==========================================
   const fetchAdminData = async () => {
     const { data: usersData } = await supabase.from('profiles').select('*').order('created_at', { ascending: false });
     if (usersData) { setAllUsers(usersData.map((d: any) => ({ id: d.id, handleName: d.handle_name, avatarUrl: d.avatar_url, bio: d.bio, discordId: d.discord_id, ratingSum: d.rating_sum || 0, ratingCount: d.rating_count || 0, isAdmin: d.is_admin || false, isBanned: d.is_banned || false, email: d.email }))); }
@@ -367,6 +377,94 @@ export default function Home() {
   const sendWarningNotification = async () => { if (!warningModalUser || !warningTitle || !warningText) return; await supabase.from('notifications').insert({ user_id: warningModalUser.id, title: warningTitle, message: warningText }); alert("警告通知を送信しました。"); setWarningModalUser(null); setWarningTitle(""); setWarningText(""); };
   const markNotificationAsRead = async (notifId: string) => { await supabase.from('notifications').update({ is_read: true }).eq('id', notifId); setMyNotifications(myNotifications.map(n => n.id === notifId ? { ...n, isRead: true } : n)); };
 
+  // ==========================================
+  // ★ 1. ゲーム進行（AI API連動＆AIプレイヤー実装）
+  // ==========================================
+
+  const callAIGM = async (extraUserContext?: string) => {
+    if (!activeRoom || !joinedCharacter || !myScene) return;
+    setIsLoading(true);
+    
+    try {
+      if (extraUserContext) {
+        await supabase.from('ai_memory').insert({ room_id: activeRoom.id, role: 'user', content: extraUserContext });
+      }
+
+      const { data: memoryData } = await supabase.from('ai_memory')
+        .select('*')
+        .eq('room_id', activeRoom.id)
+        .order('created_at', { ascending: true });
+
+      const history = (memoryData || []).map(m => ({
+        role: m.role === 'assistant' ? 'model' : 'user',
+        parts: [{ text: m.content }]
+      }));
+
+      if (history.length === 0) {
+        history.push({ role: 'user', parts: [{ text: "セッションを開始してください。" }]});
+      }
+
+      // ★ AIプレイヤー（選ばれなかった残りのキャラクター）の抽出
+      const aiPlayers = activeRoom.scenario?.presetCharacters.filter(c => c.id !== joinedCharacter.id) || [];
+      const aiPlayersText = aiPlayers.length > 0 
+        ? aiPlayers.map(c => `・${c.name} (${c.job}) | HP:${c.hp} SAN:${c.san}% STR:${c.str} DEX:${c.dex} INT:${c.int} CON:${c.con}\n  設定: ${c.personality}`).join("\n\n")
+        : "なし（ソロプレイ）";
+
+      const sysPrompt = `
+あなたはTRPGの優秀で臨場感あふれるAIゲームマスターです。
+
+【シナリオ・あらすじ設定】
+タイトル: ${activeRoom.scenario?.title}
+世界観: ${activeRoom.scenario?.setting}
+プロット: ${activeRoom.scenario?.plot}
+NPC一覧: ${activeRoom.scenario?.npcList}
+
+【人間プレイヤー(PL)情報】
+名前: ${joinedCharacter.name} (${joinedCharacter.job})
+設定: ${joinedCharacter.personality}
+ステータス: HP:${joinedCharacter.hp} / SAN:${joinedCharacter.san}% / STR:${joinedCharacter.str} / DEX:${joinedCharacter.dex} / INT:${joinedCharacter.int} / CON:${joinedCharacter.con}
+
+【AIが担当する同行プレイヤー（PLの仲間）】
+${aiPlayersText}
+
+【GMとしての絶対ルール】
+1. PLの行動やダイス結果に対して、情景を細かく描写し、物語をプロットに沿って進行させてください。
+2. 【重要】「AI担当の同行プレイヤー」がいる場合、彼らはNPCではなく「PLと同じ立場の仲間」です。彼らの自律的な思考、PLへの会話（例：アリス「私も行くわ！」）、必要なダイスロールの提案などを描写に組み込んでください。
+3. 常に「現在の状況・目的・NPCの状態」を内部で把握（キャッシュ）し、矛盾がないように進行してください。
+4. 会話は自然で劇的な日本語で行い、PLとのキャッチボールを大切にしてください。長すぎる一人語りは避けてください。
+`;
+
+      const apiKey = process.env.NEXT_PUBLIC_GEMINI_API_KEY;
+      if (!apiKey) {
+        throw new Error("Gemini APIキーが設定されていません。（.env.local または Vercelの設定を確認してください）");
+      }
+
+      // Gemini 3.5 Flash Lite
+      const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-3.5-flash-lite:generateContent?key=${apiKey}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          systemInstruction: { parts: [{ text: sysPrompt }] },
+          contents: history,
+          generationConfig: { temperature: 0.75 }
+        })
+      });
+      
+      if (!res.ok) throw new Error("AIサーバーの応答エラーが発生しました。");
+      const resData = await res.json();
+      const aiText = resData.candidates?.[0]?.content?.parts?.[0]?.text || "（AIの返答がありません）";
+
+      await supabase.from('ai_memory').insert({ room_id: activeRoom.id, role: 'assistant', content: aiText });
+      setMessages((prev) => [...prev, { sender: "gm", text: aiText, type: "ic", sceneId: myScene?.id }]);
+
+    } catch (err: any) {
+      alert("AIエラー: " + err.message);
+      setMessages((prev) => [...prev, { sender: "gm", text: `（システムエラー: ${err.message}）`, type: "system", sceneId: myScene?.id }]);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
   const handleCreateRoom = async (scenario: Scenario) => {
     const charId = charSelects[scenario.id];
     if (!currentUser || !scenario || !charId) { alert("エラー: キャラクターが選択されていません。"); return; }
@@ -400,10 +498,13 @@ export default function Home() {
   };
 
   const startGame = async () => {
-    if(!activeRoom) return;
+    if(!activeRoom || !myScene) return;
     await supabase.from('rooms').update({ status: 'playing' }).eq('id', activeRoom.id);
     setActiveRoom({...activeRoom, status: 'playing'});
-    setMessages(prev => [...prev, { sender: "gm", text: `【システム】ホストがゲームを開始しました。\nAI GM「これよりセッションを開始します。」`, type: "system", sceneId: myScene.id }]);
+    setMessages(prev => [...prev, { sender: "gm", text: `【システム】ゲームを開始しました。AI GMを呼び出しています...`, type: "system", sceneId: myScene.id }]);
+    
+    // 開始時にAI呼び出し
+    await callAIGM(`【システムコマンド】セッションが開始されました。プロットに従い、導入部分の情景描写を行い、プレイヤーに行動を促してください。`);
   };
 
   const endGame = async () => {
@@ -413,33 +514,38 @@ export default function Home() {
     setTimeout(() => { setCurrentView("evaluation"); }, 3000);
   };
 
-  const handleSend = () => {
+  const handleSend = async () => {
     if (!input.trim() || isLoading || !activeRoom || !joinedCharacter || !currentUser || !myScene) return;
-    const userMsg: Message = { sender: "player", text: input, type: msgType, sceneId: myScene.id };
+    const currentInput = input;
+    const userMsg: Message = { sender: "player", text: currentInput, type: msgType, sceneId: myScene.id };
     setMessages((prev) => [...prev, userMsg]);
-    setInput(""); setIsLoading(true);
-    setTimeout(() => {
-      const replyText = msgType === "ic" ? `AI GM「（${myScene.name}にて）行動を処理します…」` : `AI GM (OOC)「了解しました: ${userMsg.text}」`;
-      setMessages((prev) => [...prev, { sender: "gm", text: replyText, type: msgType, sceneId: myScene.id }]);
-      setIsLoading(false);
-    }, 1000);
+    setInput(""); 
+    
+    const context = msgType === "ic" ? `【${joinedCharacter.name}の行動宣言】\n${currentInput}` : `【プレイヤーのメタ発言(OOC)】\n${currentInput}`;
+    await callAIGM(context);
   };
 
-  const roll1d100 = (targetValue: number, label: string) => {
-    if(!myScene) return;
+  const roll1d100 = async (targetValue: number, label: string) => {
+    if(!myScene || !activeRoom || isLoading) return;
     const res = Math.floor(Math.random() * 100) + 1;
     const isSuccess = res <= targetValue;
-    setMessages((prev) => [...prev, { sender: "player", text: `🎲 ${label} (1d100 ≦ ${targetValue}%) ➔ 出目: ${res} 【${isSuccess ? "成功" : "失敗"}】`, type: "ic", sceneId: myScene.id }]);
+    const msgText = `🎲 ${label} (1d100 ≦ ${targetValue}%) ➔ 出目: ${res} 【${isSuccess ? "成功" : "失敗"}】`;
+    setMessages((prev) => [...prev, { sender: "player", text: msgText, type: "ic", sceneId: myScene.id }]);
+    
+    await callAIGM(`【システム判定結果】${joinedCharacter?.name}が${label}ロールを行いました。\n結果: ${msgText}\nこの結果を踏まえてGMとして情景描写と結果の処理を行ってください。`);
   };
 
-  const roll3d6 = (targetValue: number, label: string) => {
-    if(!myScene) return;
+  const roll3d6 = async (targetValue: number, label: string) => {
+    if(!myScene || !activeRoom || isLoading) return;
     const d1 = Math.floor(Math.random() * 6) + 1;
     const d2 = Math.floor(Math.random() * 6) + 1;
     const d3 = Math.floor(Math.random() * 6) + 1;
     const res = d1 + d2 + d3;
     const isSuccess = res <= targetValue;
-    setMessages((prev) => [...prev, { sender: "player", text: `🎲 ${label} (3d6 ≦ ${targetValue}) ➔ 出目: ${res} [${d1},${d2},${d3}] 【${isSuccess ? "成功" : "失敗"}】`, type: "ic", sceneId: myScene.id }]);
+    const msgText = `🎲 ${label} (3d6 ≦ ${targetValue}) ➔ 出目: ${res} [${d1},${d2},${d3}] 【${isSuccess ? "成功" : "失敗"}】`;
+    setMessages((prev) => [...prev, { sender: "player", text: msgText, type: "ic", sceneId: myScene.id }]);
+    
+    await callAIGM(`【システム判定結果】${joinedCharacter?.name}が${label}ロールを行いました。\n結果: ${msgText}\nこの結果を踏まえてGMとして情景描写と結果の処理を行ってください。`);
   };
 
   const submitEvaluation = async () => {
@@ -607,6 +713,7 @@ export default function Home() {
         </div>
       )}
 
+      {/* ユーザー・シナリオ通報モーダル */}
       {reportTarget && (
         <div className="absolute inset-0 bg-black/80 z-50 flex items-center justify-center p-4">
           <div className="bg-slate-800 border border-red-700/50 rounded-xl p-6 w-full max-w-lg shadow-2xl">
@@ -623,6 +730,7 @@ export default function Home() {
         </div>
       )}
 
+      {/* シナリオ修正完了申請モーダル */}
       {scenarioAppealTarget && (
         <div className="absolute inset-0 bg-black/80 z-50 flex items-center justify-center p-4">
           <div className="bg-slate-800 border border-amber-700/50 rounded-xl p-6 w-full max-w-lg shadow-2xl">
@@ -639,6 +747,7 @@ export default function Home() {
         </div>
       )}
 
+      {/* シナリオBAN実行モーダル (Admin) */}
       {banTargetScenario && (
         <div className="absolute inset-0 bg-black/80 z-50 flex items-center justify-center p-4">
           <div className="bg-slate-800 border border-slate-700 rounded-xl p-6 w-full max-w-lg shadow-2xl">
@@ -662,6 +771,7 @@ export default function Home() {
         </div>
       )}
 
+      {/* ユーザーBAN実行モーダル (Admin) */}
       {banTargetUser && (
         <div className="absolute inset-0 bg-black/80 z-50 flex items-center justify-center p-4">
           <div className="bg-slate-800 border border-red-700/50 rounded-xl p-6 w-full max-w-lg shadow-2xl">
@@ -779,7 +889,6 @@ export default function Home() {
                 </div>
               ) : (
                 <>
-                  {/* ★ 作成したシナリオ */}
                   <div className="bg-slate-800 border border-slate-700 rounded-xl p-4 flex flex-col shadow-lg border-t-2 border-t-emerald-500">
                     <div className="flex justify-between items-center mb-3">
                       <h2 className="text-sm font-bold text-emerald-400">📜 作成したシナリオ</h2>
