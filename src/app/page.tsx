@@ -101,7 +101,8 @@ export default function Home() {
 
   const [banTargetUser, setBanTargetUser] = useState<UserProfile | null>(null);
   const [banReason, setBanReason] = useState("");
-  const [banAppeals, setBanApp appeals] = useState<BanAppeal[]>([]);
+  // ★ ここを修正しました（setBanApp appeals -> setBanAppeals）
+  const [banAppeals, setBanAppeals] = useState<BanAppeal[]>([]);
   const [appealText, setAppealText] = useState("");
 
   const [userSearchQuery, setUserSearchQuery] = useState("");
@@ -312,6 +313,9 @@ export default function Home() {
     else { alert("エラーが発生しました: " + error.message); }
   };
 
+  // ==========================================
+  // 管理画面処理
+  // ==========================================
   const fetchAdminData = async () => {
     const { data: usersData } = await supabase.from('profiles').select('*').order('created_at', { ascending: false });
     if (usersData) { setAllUsers(usersData.map((d: any) => ({ id: d.id, handleName: d.handle_name, avatarUrl: d.avatar_url, bio: d.bio, discordId: d.discord_id, ratingSum: d.rating_sum || 0, ratingCount: d.rating_count || 0, isAdmin: d.is_admin || false, isBanned: d.is_banned || false, email: d.email }))); }
@@ -404,7 +408,6 @@ export default function Home() {
         history.push({ role: 'user', parts: [{ text: "セッションを開始してください。" }]});
       }
 
-      // ★ AIプレイヤー（選ばれなかった残りのキャラクター）の抽出
       const aiPlayers = activeRoom.scenario?.presetCharacters.filter(c => c.id !== joinedCharacter.id) || [];
       const aiPlayersText = aiPlayers.length > 0 
         ? aiPlayers.map(c => `・${c.name} (${c.job}) | HP:${c.hp} SAN:${c.san}% STR:${c.str} DEX:${c.dex} INT:${c.int} CON:${c.con}\n  設定: ${c.personality}`).join("\n\n")
@@ -439,7 +442,6 @@ ${aiPlayersText}
         throw new Error("Gemini APIキーが設定されていません。（.env.local または Vercelの設定を確認してください）");
       }
 
-      // Gemini 3.5 Flash Lite
       const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-3.5-flash-lite:generateContent?key=${apiKey}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -503,7 +505,6 @@ ${aiPlayersText}
     setActiveRoom({...activeRoom, status: 'playing'});
     setMessages(prev => [...prev, { sender: "gm", text: `【システム】ゲームを開始しました。AI GMを呼び出しています...`, type: "system", sceneId: myScene.id }]);
     
-    // 開始時にAI呼び出し
     await callAIGM(`【システムコマンド】セッションが開始されました。プロットに従い、導入部分の情景描写を行い、プレイヤーに行動を促してください。`);
   };
 
@@ -889,6 +890,7 @@ ${aiPlayersText}
                 </div>
               ) : (
                 <>
+                  {/* ★ 作成したシナリオ */}
                   <div className="bg-slate-800 border border-slate-700 rounded-xl p-4 flex flex-col shadow-lg border-t-2 border-t-emerald-500">
                     <div className="flex justify-between items-center mb-3">
                       <h2 className="text-sm font-bold text-emerald-400">📜 作成したシナリオ</h2>
