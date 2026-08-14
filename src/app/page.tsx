@@ -72,9 +72,6 @@ export default function Home() {
   const [editingScenario, setEditingScenario] = useState<Scenario | null>(null);
   const [editingCharIndex, setEditingCharIndex] = useState<number | null>(null);
   
-  const [selectedScenarioId, setSelectedScenarioId] = useState<string>("");
-  const [shopScenarioId, setShopScenarioId] = useState<string>(""); 
-  
   const [charSelects, setCharSelects] = useState<Record<string, string>>({});
   const [giftInputs, setGiftInputs] = useState<Record<string, string>>({});
 
@@ -101,7 +98,6 @@ export default function Home() {
 
   const [banTargetUser, setBanTargetUser] = useState<UserProfile | null>(null);
   const [banReason, setBanReason] = useState("");
-  // ★ ここを修正しました（setBanApp appeals -> setBanAppeals）
   const [banAppeals, setBanAppeals] = useState<BanAppeal[]>([]);
   const [appealText, setAppealText] = useState("");
 
@@ -141,8 +137,8 @@ export default function Home() {
     let loadedScenarios: Scenario[] = [];
     if (scData && scData.length > 0) {
       loadedScenarios = scData.map((d: any) => ({
-        id: d.id, title: d.title, system: d.system, tags: d.tags, setting: d.setting,
-        npcList: d.npc_list, plot: d.plot, imageUrl: d.image_url, presetCharacters: d.preset_characters || [],
+        id: d.id, title: d.title, system: d.system || "", tags: d.tags || "", setting: d.setting || "",
+        npcList: d.npc_list || "", plot: d.plot || "", imageUrl: d.image_url || "", presetCharacters: d.preset_characters || [],
         ratingSum: d.rating_sum || 0, ratingCount: d.rating_count || 0,
         authorId: d.author_id, price: d.price || 500, playLimit: d.play_limit || 1, giftLimit: d.gift_limit || 1,
         purchasedTickets: d.purchased_tickets || {}, isBanned: d.is_banned || false 
@@ -238,8 +234,8 @@ export default function Home() {
   const saveScenario = async () => {
     if (!editingScenario || !currentUser) return;
     const dbData = { 
-      title: editingScenario.title, system: editingScenario.system, tags: editingScenario.tags, setting: editingScenario.setting, 
-      npc_list: editingScenario.npcList, plot: editingScenario.plot, image_url: editingScenario.imageUrl, preset_characters: editingScenario.presetCharacters,
+      title: editingScenario.title, system: editingScenario.system || "", tags: editingScenario.tags || "", setting: editingScenario.setting || "", 
+      npc_list: editingScenario.npcList || "", plot: editingScenario.plot || "", image_url: editingScenario.imageUrl || "", preset_characters: editingScenario.presetCharacters,
       rating_sum: editingScenario.ratingSum, rating_count: editingScenario.ratingCount,
       author_id: currentUser.id, purchased_tickets: editingScenario.purchasedTickets || {},
       price: editingScenario.price || 500, play_limit: editingScenario.playLimit || 1, gift_limit: editingScenario.giftLimit || 1 
@@ -265,18 +261,6 @@ export default function Home() {
     const { error } = await supabase.from('scenarios').update({ purchased_tickets: newTickets }).eq('id', scenario.id);
     if (!error) { alert(`「${scenario.title}」を購入しました！\nマイ・シナリオにプレイ権が ${addLimit} 回分追加されました。`); submitEvaluation(); } 
     else { alert("エラーが発生しました: " + error.message); }
-  };
-
-  const buyScenario = async (scenario: Scenario) => {
-    if (!currentUser) return;
-    if (confirm(`「${scenario.title}」のプレイチケットを ${scenario.price || 500} G で購入しますか？\n（※現在はテスト用のデモ決済です）`)) {
-      const currentTickets = scenario.purchasedTickets || {};
-      const addLimit = scenario.playLimit || 1;
-      const newTickets = { ...currentTickets, [currentUser.id]: (currentTickets[currentUser.id] || 0) + addLimit };
-      const { error } = await supabase.from('scenarios').update({ purchased_tickets: newTickets }).eq('id', scenario.id);
-      if (!error) { alert(`プレイチケット（${addLimit}回分）の購入が完了しました！\n「マイ・シナリオ」から部屋を立てることができます。`); setShopScenarioId(""); await fetchData(); } 
-      else { alert("エラーが発生しました: " + error.message); }
-    }
   };
 
   const handleGiftTicket = async (scenario: Scenario) => {
@@ -313,9 +297,6 @@ export default function Home() {
     else { alert("エラーが発生しました: " + error.message); }
   };
 
-  // ==========================================
-  // 管理画面処理
-  // ==========================================
   const fetchAdminData = async () => {
     const { data: usersData } = await supabase.from('profiles').select('*').order('created_at', { ascending: false });
     if (usersData) { setAllUsers(usersData.map((d: any) => ({ id: d.id, handleName: d.handle_name, avatarUrl: d.avatar_url, bio: d.bio, discordId: d.discord_id, ratingSum: d.rating_sum || 0, ratingCount: d.rating_count || 0, isAdmin: d.is_admin || false, isBanned: d.is_banned || false, email: d.email }))); }
@@ -748,7 +729,6 @@ ${aiPlayersText}
         </div>
       )}
 
-      {/* シナリオBAN実行モーダル (Admin) */}
       {banTargetScenario && (
         <div className="absolute inset-0 bg-black/80 z-50 flex items-center justify-center p-4">
           <div className="bg-slate-800 border border-slate-700 rounded-xl p-6 w-full max-w-lg shadow-2xl">
@@ -772,7 +752,6 @@ ${aiPlayersText}
         </div>
       )}
 
-      {/* ユーザーBAN実行モーダル (Admin) */}
       {banTargetUser && (
         <div className="absolute inset-0 bg-black/80 z-50 flex items-center justify-center p-4">
           <div className="bg-slate-800 border border-red-700/50 rounded-xl p-6 w-full max-w-lg shadow-2xl">
@@ -890,7 +869,7 @@ ${aiPlayersText}
                 </div>
               ) : (
                 <>
-                  {/* ★ 作成したシナリオ */}
+                  {/* 作成したシナリオ */}
                   <div className="bg-slate-800 border border-slate-700 rounded-xl p-4 flex flex-col shadow-lg border-t-2 border-t-emerald-500">
                     <div className="flex justify-between items-center mb-3">
                       <h2 className="text-sm font-bold text-emerald-400">📜 作成したシナリオ</h2>
@@ -956,7 +935,7 @@ ${aiPlayersText}
                     )}
                   </div>
 
-                  {/* ★ 購入したシナリオ */}
+                  {/* 購入したシナリオ */}
                   <div className="bg-slate-800 border border-slate-700 rounded-xl p-4 flex flex-col mt-4 shadow-lg border-t-2 border-t-amber-500">
                     <h2 className="text-sm font-bold text-amber-400 mb-3">🎟️ 購入したシナリオ</h2>
                     {purchasedScenarios.length === 0 ? (
@@ -1021,6 +1000,7 @@ ${aiPlayersText}
         <div className="flex-1 flex flex-col items-center p-6 max-w-4xl mx-auto w-full min-h-0 overflow-y-auto">
           <h2 className="text-2xl font-bold text-amber-400 mb-6 w-full">{editingScenario.id ? "シナリオ・セット編集" : "シナリオ・セット新規作成"}</h2>
           {editingCharIndex !== null ? (
+            /* ★ キャラクター設定画面：全ステータス（SAN, HP, STR, DEX, INT, CON）を完備 */
             <div className="w-full bg-slate-800 border border-slate-700 rounded-xl p-5 space-y-4 shadow-2xl">
               <h3 className="text-lg font-bold text-emerald-400 mb-2 border-b border-slate-700 pb-2">キャラクター設定</h3>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -1030,31 +1010,37 @@ ${aiPlayersText}
               
               <div className="bg-slate-900 border border-slate-700 rounded-lg p-4">
                 <h4 className="text-xs font-bold text-amber-400 mb-3">ステータス設定</h4>
-                <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                  <div><label className="text-[10px] text-slate-400 block mb-1">SAN (1〜100%)</label><input type="number" min="1" max="100" value={editingScenario.presetCharacters[editingCharIndex].san} onChange={(e) => { const newC = [...editingScenario.presetCharacters]; newC[editingCharIndex].san = Number(e.target.value); setEditingScenario({ ...editingScenario, presetCharacters: newC }); }} className="w-full bg-slate-800 border border-slate-600 rounded p-1 text-sm text-white text-center" /></div>
-                  <div><label className="text-[10px] text-slate-400 block mb-1">HP (自由値)</label><input type="number" value={editingScenario.presetCharacters[editingCharIndex].hp} onChange={(e) => { const newC = [...editingScenario.presetCharacters]; newC[editingCharIndex].hp = Number(e.target.value); setEditingScenario({ ...editingScenario, presetCharacters: newC }); }} className="w-full bg-slate-800 border border-slate-600 rounded p-1 text-sm text-white text-center" /></div>
-                  <div><label className="text-[10px] text-slate-400 block mb-1">STR (3〜18)</label><input type="number" min="3" max="18" value={editingScenario.presetCharacters[editingCharIndex].str} onChange={(e) => { const newC = [...editingScenario.presetCharacters]; newC[editingCharIndex].str = Number(e.target.value); setEditingScenario({ ...editingScenario, presetCharacters: newC }); }} className="w-full bg-slate-800 border border-slate-600 rounded p-1 text-sm text-white text-center" /></div>
-                  <div><label className="text-[10px] text-slate-400 block mb-1">DEX (3〜18)</label><input type="number" min="3" max="18" value={editingScenario.presetCharacters[editingCharIndex].dex} onChange={(e) => { const newC = [...editingScenario.presetCharacters]; newC[editingCharIndex].dex = Number(e.target.value); setEditingScenario({ ...editingScenario, presetCharacters: newC }); }} className="w-full bg-slate-800 border border-slate-600 rounded p-1 text-sm text-white text-center" /></div>
+                <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
+                  <div><label className="text-[10px] text-slate-400 block mb-1">SAN (1〜100%)</label><input type="number" min="1" max="100" value={editingScenario.presetCharacters[editingCharIndex].san} onChange={(e) => { const newC = [...editingScenario.presetCharacters]; newC[editingCharIndex].san = Number(e.target.value); setEditingScenario({ ...editingScenario, presetCharacters: newC }); }} className="w-full bg-slate-800 border border-slate-600 rounded p-1.5 text-sm text-white text-center" /></div>
+                  <div><label className="text-[10px] text-slate-400 block mb-1">HP (自由値)</label><input type="number" value={editingScenario.presetCharacters[editingCharIndex].hp} onChange={(e) => { const newC = [...editingScenario.presetCharacters]; newC[editingCharIndex].hp = Number(e.target.value); setEditingScenario({ ...editingScenario, presetCharacters: newC }); }} className="w-full bg-slate-800 border border-slate-600 rounded p-1.5 text-sm text-white text-center" /></div>
+                  <div><label className="text-[10px] text-slate-400 block mb-1">STR (3〜18)</label><input type="number" min="3" max="18" value={editingScenario.presetCharacters[editingCharIndex].str} onChange={(e) => { const newC = [...editingScenario.presetCharacters]; newC[editingCharIndex].str = Number(e.target.value); setEditingScenario({ ...editingScenario, presetCharacters: newC }); }} className="w-full bg-slate-800 border border-slate-600 rounded p-1.5 text-sm text-white text-center" /></div>
+                  <div><label className="text-[10px] text-slate-400 block mb-1">DEX (3〜18)</label><input type="number" min="3" max="18" value={editingScenario.presetCharacters[editingCharIndex].dex} onChange={(e) => { const newC = [...editingScenario.presetCharacters]; newC[editingCharIndex].dex = Number(e.target.value); setEditingScenario({ ...editingScenario, presetCharacters: newC }); }} className="w-full bg-slate-800 border border-slate-600 rounded p-1.5 text-sm text-white text-center" /></div>
+                  <div><label className="text-[10px] text-slate-400 block mb-1">INT (3〜18)</label><input type="number" min="3" max="18" value={editingScenario.presetCharacters[editingCharIndex].int} onChange={(e) => { const newC = [...editingScenario.presetCharacters]; newC[editingCharIndex].int = Number(e.target.value); setEditingScenario({ ...editingScenario, presetCharacters: newC }); }} className="w-full bg-slate-800 border border-slate-600 rounded p-1.5 text-sm text-white text-center" /></div>
+                  <div><label className="text-[10px] text-slate-400 block mb-1">CON (3〜18)</label><input type="number" min="3" max="18" value={editingScenario.presetCharacters[editingCharIndex].con} onChange={(e) => { const newC = [...editingScenario.presetCharacters]; newC[editingCharIndex].con = Number(e.target.value); setEditingScenario({ ...editingScenario, presetCharacters: newC }); }} className="w-full bg-slate-800 border border-slate-600 rounded p-1.5 text-sm text-white text-center" /></div>
                 </div>
               </div>
 
-              <div><label className="text-xs text-slate-400 block mb-1">性格・特徴 (ハンドアウト内容)</label><textarea value={editingScenario.presetCharacters[editingCharIndex].personality} onChange={(e) => { const newC = [...editingScenario.presetCharacters]; newC[editingCharIndex].personality = e.target.value; setEditingScenario({ ...editingScenario, presetCharacters: newC }); }} className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white h-20" /></div>
-              <button onClick={() => setEditingCharIndex(null)} className="w-full bg-emerald-600 hover:bg-emerald-500 text-white font-semibold py-3 rounded-lg mt-2">シナリオ編集に戻る</button>
+              <div><label className="text-xs text-slate-400 block mb-1">性格・特徴 (ハンドアウト内容)</label><textarea value={editingScenario.presetCharacters[editingCharIndex].personality} onChange={(e) => { const newC = [...editingScenario.presetCharacters]; newC[editingCharIndex].personality = e.target.value; setEditingScenario({ ...editingScenario, presetCharacters: newC }); }} className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white h-24" /></div>
+              <button onClick={() => setEditingCharIndex(null)} className="w-full bg-emerald-600 hover:bg-emerald-500 text-white font-semibold py-3 rounded-lg mt-2">キャラクター設定を確定して戻る</button>
             </div>
           ) : (
+            /* ★ シナリオ基本設定画面：プロット、世界観、NPC一覧をすべて網羅 */
             <div className="w-full grid grid-cols-1 md:grid-cols-2 gap-6">
               <div className="bg-slate-800 border border-slate-700 rounded-xl p-5 space-y-4">
                 <h3 className="text-lg font-bold text-amber-400 border-b border-slate-700 pb-2">基本設定</h3>
-                <div><label className="text-sm text-amber-200 block mb-1">シナリオタイトル</label><input type="text" value={editingScenario.title} onChange={(e) => setEditingScenario({ ...editingScenario, title: e.target.value })} className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white" /></div>
+                <div><label className="text-xs text-amber-200 block mb-1">シナリオタイトル</label><input type="text" value={editingScenario.title} onChange={(e) => setEditingScenario({ ...editingScenario, title: e.target.value })} className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white" /></div>
                 
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mt-2 bg-slate-900/50 p-3 rounded-lg border border-slate-700/50">
-                  <div><label className="text-[10px] text-amber-200 block mb-1">販売価格 (G)</label><input type="number" min="0" value={editingScenario.price || 0} onChange={(e) => setEditingScenario({ ...editingScenario, price: Number(e.target.value) })} className="w-full bg-slate-900 border border-slate-700 rounded p-2 text-sm text-white" /></div>
-                  <div><label className="text-[10px] text-amber-200 block mb-1">購入時の付与数 (回)</label><input type="number" min="1" value={editingScenario.playLimit || 1} onChange={(e) => setEditingScenario({ ...editingScenario, playLimit: Number(e.target.value) })} className="w-full bg-slate-900 border border-slate-700 rounded p-2 text-sm text-white" /></div>
-                  <div><label className="text-[10px] text-emerald-400 block mb-1">プレゼント時の付与数 (回)</label><input type="number" min="1" value={editingScenario.giftLimit || 1} onChange={(e) => setEditingScenario({ ...editingScenario, giftLimit: Number(e.target.value) })} className="w-full bg-slate-900 border border-slate-700 rounded p-2 text-sm text-white" /></div>
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-3 bg-slate-900/50 p-3 rounded-lg border border-slate-700/50">
+                  <div><label className="text-[10px] text-amber-200 block mb-1">販売価格 (G)</label><input type="number" min="0" value={editingScenario.price || 0} onChange={(e) => setEditingScenario({ ...editingScenario, price: Number(e.target.value) })} className="w-full bg-slate-900 border border-slate-700 rounded p-1.5 text-xs text-white" /></div>
+                  <div><label className="text-[10px] text-amber-200 block mb-1">購入時の付与数</label><input type="number" min="1" value={editingScenario.playLimit || 1} onChange={(e) => setEditingScenario({ ...editingScenario, playLimit: Number(e.target.value) })} className="w-full bg-slate-900 border border-slate-700 rounded p-1.5 text-xs text-white" /></div>
+                  <div><label className="text-[10px] text-emerald-400 block mb-1">プレゼント付与数</label><input type="number" min="1" value={editingScenario.giftLimit || 1} onChange={(e) => setEditingScenario({ ...editingScenario, giftLimit: Number(e.target.value) })} className="w-full bg-slate-900 border border-slate-700 rounded p-1.5 text-xs text-white" /></div>
                 </div>
 
-                <div><label className="text-sm text-amber-200 block mb-1">プロット (AI用)</label><textarea value={editingScenario.plot} onChange={(e) => setEditingScenario({ ...editingScenario, plot: e.target.value })} className="w-full h-40 bg-slate-900 border border-slate-700 rounded-lg p-3 text-sm text-white" /></div>
+                <div><label className="text-xs text-amber-200 block mb-1">世界観・設定</label><textarea value={editingScenario.setting || ""} onChange={(e) => setEditingScenario({ ...editingScenario, setting: e.target.value })} className="w-full h-16 bg-slate-900 border border-slate-700 rounded-lg p-2.5 text-xs text-white" placeholder="舞台や背景（例：1920年代アメリカ、現代日本の孤島など）" /></div>
+                <div><label className="text-xs text-amber-200 block mb-1">NPC一覧</label><textarea value={editingScenario.npcList || ""} onChange={(e) => setEditingScenario({ ...editingScenario, npcList: e.target.value })} className="w-full h-16 bg-slate-900 border border-slate-700 rounded-lg p-2.5 text-xs text-white" placeholder="登場するNPCの名前や役割" /></div>
+                <div><label className="text-xs text-amber-200 block mb-1">プロット (AI GM用進行計画)</label><textarea value={editingScenario.plot} onChange={(e) => setEditingScenario({ ...editingScenario, plot: e.target.value })} className="w-full h-32 bg-slate-900 border border-slate-700 rounded-lg p-2.5 text-xs text-white" placeholder="物語の導入、ギミック、判定、結末" /></div>
               </div>
+              
               <div className="space-y-4">
                 <div className="bg-slate-800 border border-slate-700 rounded-xl p-5">
                   <div className="flex justify-between items-center mb-4 border-b border-slate-700 pb-2">
@@ -1062,7 +1048,15 @@ ${aiPlayersText}
                     <button onClick={() => { const newChar: Character = { id: `c${Date.now()}`, name: "新規キャラ", job: "", personality: "", imageUrl: "", hp: 10, san: 50, str: 10, dex: 10, int: 10, con: 10, wis: 10, cha: 10 }; setEditingScenario({ ...editingScenario, presetCharacters: [...editingScenario.presetCharacters, newChar] }); setEditingCharIndex(editingScenario.presetCharacters.length); }} className="text-xs bg-emerald-600/20 text-emerald-400 px-3 py-1.5 rounded">＋ 追加</button>
                   </div>
                   <div className="space-y-3">
-                    {editingScenario.presetCharacters.map((char, idx) => (<div key={char.id} className="flex items-center gap-3 bg-slate-900 border border-slate-700 p-3 rounded-lg"><div className="flex-1"><p className="text-sm font-bold text-white">{char.name}</p></div><button onClick={() => setEditingCharIndex(idx)} className="text-xs bg-slate-700 px-3 py-2 rounded text-white">編集</button></div>))}
+                    {editingScenario.presetCharacters.map((char, idx) => (
+                      <div key={char.id} className="flex items-center justify-between bg-slate-900 border border-slate-700 p-3 rounded-lg">
+                        <div>
+                          <p className="text-sm font-bold text-white">{char.name} ({char.job || "職業未設定"})</p>
+                          <p className="text-[10px] text-slate-400">HP:{char.hp} | SAN:{char.san}% | STR:{char.str} DEX:{char.dex} INT:{char.int} CON:{char.con}</p>
+                        </div>
+                        <button onClick={() => setEditingCharIndex(idx)} className="text-xs bg-slate-700 px-3 py-2 rounded text-white hover:bg-slate-600">編集</button>
+                      </div>
+                    ))}
                   </div>
                 </div>
                 <div className="flex gap-3"><button onClick={() => setCurrentView("lobby")} className="flex-1 bg-slate-700 text-white font-semibold py-3 rounded-lg">キャンセル</button><button onClick={saveScenario} className="flex-1 bg-amber-600 text-white font-semibold py-3 rounded-lg">保存する</button></div>
