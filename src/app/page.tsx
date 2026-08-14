@@ -49,12 +49,13 @@ type Room = {
   id: string; scenario_id: string; scenario?: Scenario; 
   host_name: string; status: "recruiting" | "playing" | "finished"; scenes: Scene[]; 
   host_id?: string;
-  privacy: "open" | "secret";      // ★ 追加
-  host_message: string;            // ★ 追加
-  joined_users: Record<string, string>; // ★ 追加 (userId -> charId)
+  privacy: "open" | "secret";      
+  host_message: string;            
+  joined_users: Record<string, string>; 
 };
 
-type Message = { sender: "player" | "gm" | "ai_player"; text: string; type?: "ic" | "ooc" | "system"; sceneId?: string; charName?: string; };
+// ★ Message型に channel を追加して表示領域を分けられるようにしました
+type Message = { sender: "player" | "gm" | "ai_player"; text: string; type?: "ic" | "ooc" | "system"; sceneId?: string; charName?: string; channel?: ChatTab | "system"; };
 type ChatTab = "story" | "consult" | "gm";
 
 const NO_IMAGE_SCENARIO = "https://images.unsplash.com/photo-1614729939124-03290b5609ce?auto=format&fit=crop&w=400&q=80";
@@ -75,6 +76,7 @@ export default function Home() {
   const [editingScenario, setEditingScenario] = useState<Scenario | null>(null);
   const [editingCharIndex, setEditingCharIndex] = useState<number | null>(null);
   
+  const [charSelects, setCharSelects] = useState<Record<string, string>>({});
   const [giftInputs, setGiftInputs] = useState<Record<string, string>>({});
 
   const [rooms, setRooms] = useState<Room[]>([]);
@@ -86,6 +88,8 @@ export default function Home() {
   const [input, setInput] = useState("");
   const [chatTab, setChatTab] = useState<ChatTab>("story");
   const [isLoading, setIsLoading] = useState(false);
+  
+  const [consultWithAI, setConsultWithAI] = useState<boolean>(true);
 
   const [ratingScenario, setRatingScenario] = useState<number>(5);
   const [ratingGM, setRatingGM] = useState<number>(5);
@@ -117,9 +121,7 @@ export default function Home() {
   const [scenarioAppealTarget, setScenarioAppealTarget] = useState<Scenario | null>(null);
   const [scenarioAppealText, setScenarioAppealText] = useState("");
 
-  // ★ 部屋作成モーダル用のステート
   const [roomConfigModal, setRoomConfigModal] = useState<{ scenario: Scenario, charId: string, privacy: 'open'|'secret', message: string } | null>(null);
-  // ★ シークレット部屋検索用のステート
   const [secretRoomIdSearch, setSecretRoomIdSearch] = useState("");
   const [searchedSecretRoom, setSearchedSecretRoom] = useState<Room | null>(null);
 
@@ -131,6 +133,8 @@ export default function Home() {
   const defaultScene: Scene = { id: "scene_main", name: "メインルーム", memberIds: [] };
   const myScene = activeRoom?.scenes?.find(s => joinedCharacter && s.memberIds.includes(joinedCharacter.id)) || activeRoom?.scenes?.[0] || defaultScene;
   const myActiveRoom = rooms.find(r => currentUser && r.host_id === currentUser.id && r.status !== 'finished');
+
+  const isScenarioEnded = messages.some(m => m.text.includes('[SCENARIO_END]')) || activeRoom?.status === 'finished';
 
   const fetchData = async () => {
     const { data: scData } = await supabase.from('scenarios').select('*').order('id', { ascending: false });
@@ -177,7 +181,6 @@ export default function Home() {
     setCurrentUser(profileData);
     await fetchNotifications(userId);
 
-    // ★ ゲストでも進行中の部屋に自動復帰
     if (!profileData.isBanned && !currentMaintenance) {
       const activeMyRoom = roomsData.find(r => r.status === 'playing' && r.joined_users && r.joined_users[userId]);
       if (activeMyRoom && activeMyRoom.scenario) {
@@ -320,6 +323,18 @@ export default function Home() {
     else { alert("エラーが発生しました: " + error.message); }
   };
 
+  const buyScenario = async (scenario: Scenario) => {
+    if (!currentUser) return;
+    if (confirm(`「${scenario.title}」のプレイチケットを ${scenario.price || 500} G で購入しますか？\n（※現在はテスト用のデモ決済です）`)) {
+      const currentTickets = scenario.purchasedTickets || {};
+      const addLimit = scenario.playLimit || 1;
+      const newTickets = { ...currentTickets, [currentUser.id]: (currentTickets[currentUser.id] || 0) + addLimit };
+      const { error } = await supabase.from('scenarios').update({ purchased_tickets: newTickets }).eq('id', scenario.id);
+      if (!error) { alert(`プレイチケット（${addLimit}回分）の購入が完了しました！\n「マイ・シナリオ」から部屋を立てることができます。`); setShopScenarioId(""); await fetchData(); } 
+      else { alert("エラーが発生しました: " + error.message); }
+    }
+  };
+
   const handleGiftTicket = async (scenario: Scenario) => {
     const targetUserId = giftInputs[scenario.id];
     if (!scenario || !targetUserId || !currentUser) return;
@@ -403,7 +418,7 @@ export default function Home() {
 
 
   // ==========================================
-  // ★ ゲーム進行（AI連携・タブ分岐・離脱処理）
+  // ★ ゲーム進行（AI連携・タブ分岐・自動終了検知）
   // ==========================================
 
   const callAIGM = async (extraUserContext?: string, targetTab: ChatTab = "story") => {
@@ -439,7 +454,8 @@ export default function Home() {
 【重要：GMの絶対ルール（行動判定と時間管理）】
 1. PLたちが【相談】を終え、明確な「行動宣言」を出した時のみ物語を進行させてください。
 2. リスクや不確実性を伴う行動には、勝手に結果を決めず必ずダイスロール（1d100の技能/SAN判定、または3d6のステータス判定）を要求してください。結果が出るまで描写を待機してください。
-3. このシナリオの想定プレイ時間は現実時間で「約${activeRoom.scenario?.playTime || 60}分」です。現在のやり取りの回数から残り時間を推測し、適切なタイミングでクライマックスとエンディングへ誘導してください。ダラダラと長引かせないこと。
+3. このシナリオの想定プレイ時間は現実時間で「約${activeRoom.scenario?.playTime || 60}分」です。現在のやり取りの回数から残り時間を推測し、適切なタイミングでクライマックスとエンディングへ誘導してください。
+4. 【エンディングの処理】物語が結末（クリア、または全滅などのゲームオーバー）を迎えた場合、最後の情景描写の末尾に必ず [SCENARIO_END] というシステムタグを記述してください。
 `;
       } else if (targetTab === "consult") {
         roleInstruction = `
@@ -497,17 +513,17 @@ ${roleInstruction}
       await supabase.from('ai_memory').insert({ room_id: activeRoom.id, role: 'assistant', content: aiText });
       
       const msgSender = targetTab === "consult" ? "ai_player" : "gm";
-      setMessages((prev) => [...prev, { sender: msgSender, text: aiText, type: targetTab === "gm" ? "ooc" : "ic", sceneId: myScene?.id, charName: targetTab === "consult" ? "AI相棒" : "AI GM" }]);
+      // ★ 保存時に channel を指定
+      setMessages((prev) => [...prev, { sender: msgSender, text: aiText, type: targetTab === "gm" ? "ooc" : "ic", sceneId: myScene?.id, charName: targetTab === "consult" ? "AI相棒" : "AI GM", channel: targetTab }]);
 
     } catch (err: any) {
       alert("AIエラー: " + err.message);
-      setMessages((prev) => [...prev, { sender: "gm", text: `（システムエラー: ${err.message}）`, type: "system", sceneId: myScene?.id }]);
+      setMessages((prev) => [...prev, { sender: "gm", text: `（システムエラー: ${err.message}）`, type: "system", sceneId: myScene?.id, channel: "system" }]);
     } finally {
       setIsLoading(false);
     }
   };
 
-  // ★ 部屋作成実行 (設定モーダルから呼ばれる)
   const executeCreateRoom = async () => {
     if (!currentUser || !roomConfigModal) return;
     const { scenario, charId, privacy, message } = roomConfigModal;
@@ -539,17 +555,15 @@ ${roleInstruction}
       const hostChar = scenario.presetCharacters.find(c => c.id === charId);
       if (hostChar) {
         setActiveRoom(newRoom); setJoinedCharacter(hostChar);
-        setMessages([{ sender: "gm", text: `【入室完了】プレイヤー全員の準備が整うまでお待ちください。`, type: "system", sceneId: newRoom.scenes?.[0]?.id }]);
+        setMessages([{ sender: "gm", text: `【入室完了】プレイヤー全員の準備が整うまでお待ちください。`, type: "system", sceneId: newRoom.scenes?.[0]?.id, channel: "system" }]);
         setCurrentView("game");
       }
     }
   };
 
-  // ★ 部屋参加実行 (重複防止)
   const executeJoinRoom = async (room: Room, charId: string) => {
     if (!currentUser || !room || !charId) return;
     
-    // 最新状態をチェックしてキャラ被りを防ぐ
     const { data: latestRoom } = await supabase.from('rooms').select('joined_users').eq('id', room.id).single();
     const currentUsers = latestRoom?.joined_users || {};
     if (Object.values(currentUsers).includes(charId)) {
@@ -565,16 +579,15 @@ ${roleInstruction}
     if (char) {
       const updatedRoom = { ...room, joined_users: newUsers };
       setActiveRoom(updatedRoom); setJoinedCharacter(char);
-      setMessages([{ sender: "gm", text: `【入室完了】${char.name}として参加しました！ホストの開始をお待ちください。`, type: "system", sceneId: room.scenes?.[0]?.id }]);
+      setMessages([{ sender: "gm", text: `【入室完了】${char.name}として参加しました！ホストの開始をお待ちください。`, type: "system", sceneId: room.scenes?.[0]?.id, channel: "system" }]);
       setCurrentView("game");
     }
   };
 
-  // ★ 観戦モード参加
   const spectateRoom = (room: Room) => {
     setActiveRoom(room);
-    setJoinedCharacter(null); // 観戦者はキャラ無し
-    setMessages([{ sender: "gm", text: `【観戦モード】部屋に入室しました。チャットやダイスは使用できません。`, type: "system", sceneId: room.scenes?.[0]?.id }]);
+    setJoinedCharacter(null); 
+    setMessages([{ sender: "gm", text: `【観戦モード】部屋に入室しました。チャットやダイスは使用できません。`, type: "system", sceneId: room.scenes?.[0]?.id, channel: "system" }]);
     setCurrentView("game");
   };
 
@@ -593,17 +606,23 @@ ${roleInstruction}
 
     await supabase.from('rooms').update({ status: 'playing' }).eq('id', activeRoom.id);
     setActiveRoom({...activeRoom, status: 'playing'});
-    setMessages(prev => [...prev, { sender: "gm", text: `【システム】ゲームを開始しました。AI GMを呼び出しています...`, type: "system", sceneId: myScene.id }]);
+    setMessages(prev => [...prev, { sender: "gm", text: `【システム】ゲームを開始しました。AI GMを呼び出しています...`, type: "system", sceneId: myScene.id, channel: "system" }]);
     
-    await callAIGM(`【システムコマンド】セッションが開始されました。プロットに従い、導入部分の情景描写を行い、プレイヤーに行動方針の相談を促してください。`);
+    await callAIGM(`【システムコマンド】セッションが開始されました。プロットに従い、導入部分の情景描写を行い、プレイヤーに行動方針の相談を促してください。`, "story");
   };
 
-  // ★ 離脱・終了処理
+  const endGame = async () => {
+    if(!activeRoom) return;
+    if (currentUser?.id === activeRoom.host_id) {
+      await supabase.from('rooms').update({ status: 'finished' }).eq('id', activeRoom.id);
+    }
+    setCurrentView("evaluation");
+  };
+
   const leaveGame = async () => {
     if (!activeRoom || !currentUser) return;
     
     if (!joinedCharacter) {
-      // 観戦者の退出
       setCurrentView("lobby"); setActiveRoom(null); return;
     }
 
@@ -612,18 +631,15 @@ ${roleInstruction}
     const remainingPlayers = Object.keys(activeRoom.joined_users || {}).filter(id => id !== currentUser.id).length;
 
     if (isRecruiting) {
-      // 募集中なら単に名簿から抜ける
       const newUsers = { ...activeRoom.joined_users };
       delete newUsers[currentUser.id];
       await supabase.from('rooms').update({ joined_users: newUsers }).eq('id', activeRoom.id);
       if (isHost && remainingPlayers === 0) {
-         // ホストが抜け、誰もいないなら部屋を削除または終了
          await supabase.from('rooms').update({ status: 'finished' }).eq('id', activeRoom.id);
       }
       setCurrentView("lobby"); setActiveRoom(null); setJoinedCharacter(null); return;
     }
 
-    // プレイ中の場合
     if (remainingPlayers === 0) {
       const confirmLeave = confirm("【警告】\n他に人間プレイヤーがいないため、退出すると部屋は完全に閉じられ、現在のセッションに二度と復帰できなくなります。\n本当によろしいですか？");
       if (confirmLeave) {
@@ -633,7 +649,6 @@ ${roleInstruction}
     } else {
       const confirmLeave = confirm("自分のキャラクターをAIに引き継がせて離脱します。よろしいですか？");
       if (confirmLeave) {
-        // 名簿から自分を消す (これにより復帰不可になり、AIとして扱われる)
         const newUsers = { ...activeRoom.joined_users };
         delete newUsers[currentUser.id];
         await supabase.from('rooms').update({ joined_users: newUsers }).eq('id', activeRoom.id);
@@ -644,8 +659,18 @@ ${roleInstruction}
 
   const handleSend = async () => {
     if (!input.trim() || isLoading || !activeRoom || !joinedCharacter || !currentUser || !myScene) return;
+    
+    if (chatTab === "consult" && !consultWithAI) {
+      const currentInput = input;
+      // ★ プレイヤーの入力も channel を保存
+      const userMsg: Message = { sender: "player", text: currentInput, type: "ic", sceneId: myScene.id, charName: joinedCharacter.name, channel: chatTab };
+      setMessages((prev) => [...prev, userMsg]);
+      setInput("");
+      return;
+    }
+
     const currentInput = input;
-    const userMsg: Message = { sender: "player", text: currentInput, type: chatTab === "story" ? "ic" : "ooc", sceneId: myScene.id, charName: joinedCharacter.name };
+    const userMsg: Message = { sender: "player", text: currentInput, type: chatTab === "story" ? "ic" : "ooc", sceneId: myScene.id, charName: joinedCharacter.name, channel: chatTab };
     setMessages((prev) => [...prev, userMsg]);
     setInput(""); 
     
@@ -672,7 +697,8 @@ ${roleInstruction}
       msgText = `🎲 ${label} (3d6 ≦ ${targetValue}) ➔ 出目: ${res} [${d1},${d2},${d3}] 【${isSuccess ? "成功" : "失敗"}】`;
     }
 
-    setMessages((prev) => [...prev, { sender: "player", text: msgText, type: "ic", sceneId: myScene.id, charName: joinedCharacter.name }]);
+    // ★ ダイスロールは story タブへ表示
+    setMessages((prev) => [...prev, { sender: "player", text: msgText, type: "ic", sceneId: myScene.id, charName: joinedCharacter.name, channel: "story" }]);
     await callAIGM(`【システム判定結果】${joinedCharacter.name}が${label}ロールを行いました。\n結果: ${msgText}\nこの結果を踏まえてGMとして情景描写を行ってください。`, "story");
   };
 
@@ -680,7 +706,7 @@ ${roleInstruction}
 
   return (
     <main className="h-screen w-full bg-slate-900 text-slate-100 flex flex-col font-sans overflow-hidden">
-      {/* 管理画面、ログイン等は省略せずに維持 */}
+      
       {currentView === "admin" && currentUser?.isAdmin && (
         <div className="flex-1 flex flex-col p-6 w-full overflow-y-auto min-h-0 max-w-5xl mx-auto">
           <div className="bg-slate-800 border border-slate-700 rounded-2xl p-8 w-full shadow-2xl space-y-6 relative">
@@ -713,7 +739,6 @@ ${roleInstruction}
         </div>
       )}
 
-      {/* ★ 部屋作成モーダル */}
       {roomConfigModal && (
         <div className="absolute inset-0 bg-black/80 z-50 flex items-center justify-center p-4">
           <div className="bg-slate-800 border border-emerald-700/50 rounded-xl p-6 w-full max-w-lg shadow-2xl">
@@ -764,7 +789,6 @@ ${roleInstruction}
             <div className="lg:col-span-2 flex flex-col gap-4">
               <div className="flex justify-between items-end">
                 <h2 className="text-xl font-bold text-blue-400">🌐 募集中のセッション</h2>
-                {/* ★ シークレット検索 */}
                 <div className="flex gap-2">
                   <input type="text" placeholder="シークレット部屋ID" value={secretRoomIdSearch} onChange={e=>setSecretRoomIdSearch(e.target.value)} className="bg-slate-800 border border-slate-700 rounded px-2 py-1 text-xs text-white w-40" />
                   <button onClick={() => { const r = rooms.find(x => x.id === secretRoomIdSearch); if(r){ setSearchedSecretRoom(r); }else{ alert("部屋が見つかりません"); } }} className="bg-slate-700 px-3 py-1 rounded text-xs font-bold">検索</button>
@@ -791,7 +815,6 @@ ${roleInstruction}
                   </div>
                 )}
 
-                {/* ★ オープンな部屋のみ表示 */}
                 {availableRooms.filter(r => r.privacy === 'open' || r.host_id === currentUser.id).length === 0 ? <p className="text-slate-400 text-sm p-4 text-center">現在募集中のセッションはありません。</p> : 
                   availableRooms.filter(r => r.privacy === 'open' || r.host_id === currentUser.id).map((room) => {
                   
@@ -982,10 +1005,14 @@ ${roleInstruction}
           </header>
 
           <div className="flex-1 overflow-y-scroll space-y-3 p-4 bg-slate-800/80 rounded-xl border border-slate-700 mb-3 min-h-0">
-            {messages.map((msg, index) => {
+            {/* ★ 選択中のタブに合わせてメッセージをフィルタリングして表示 */}
+            {messages.filter(msg => msg.type === "system" || msg.channel === chatTab).map((msg, index) => {
               const isMe = msg.sender === "player";
               const isAIPlayer = msg.sender === "ai_player";
               const isSystem = msg.type === "system";
+              
+              const displayText = msg.text.replace('[SCENARIO_END]', '').trim();
+              if (!displayText && !isSystem) return null;
               
               let bgColor = isMe ? "bg-blue-600/90 ml-auto" : (isAIPlayer ? "bg-indigo-600/80 mr-auto border-l-4 border-indigo-400" : "bg-slate-700/90 mr-auto border-l-4 border-emerald-500");
               if (isSystem) bgColor = "bg-slate-900/80 mx-auto border border-slate-700 text-center";
@@ -996,7 +1023,7 @@ ${roleInstruction}
                     {msg.charName || (isMe && joinedCharacter ? joinedCharacter.name : (msg.sender === "gm" ? "AI GM" : "SYSTEM"))} 
                     {!isSystem && msg.type && ` [${msg.type.toUpperCase()}]`}
                   </span>
-                  <p className="text-sm whitespace-pre-wrap leading-relaxed">{msg.text}</p>
+                  <p className="text-sm whitespace-pre-wrap leading-relaxed">{displayText}</p>
                 </div>
               )
             })}
@@ -1004,16 +1031,27 @@ ${roleInstruction}
           </div>
 
           <div className="bg-slate-800 border border-slate-700 rounded-xl p-3 flex flex-col gap-2 shadow-lg">
-            {joinedCharacter ? (
+            {isScenarioEnded ? (
+              <button onClick={endGame} className="w-full bg-amber-600 hover:bg-amber-500 text-white font-bold py-4 rounded-xl shadow-lg animate-pulse text-lg">
+                🎉 セッション終了！評価画面へ進む
+              </button>
+            ) : joinedCharacter ? (
               <>
-                <div className="flex gap-2 border-b border-slate-700 pb-2">
+                <div className="flex gap-2 border-b border-slate-700 pb-2 items-center">
                   <button onClick={() => setChatTab("story")} className={`text-xs font-bold px-4 py-2 rounded-t-lg transition ${chatTab === "story" ? "bg-emerald-600/20 text-emerald-400 border-b-2 border-emerald-500" : "text-slate-400 hover:text-white"}`}>📖 行動宣言 (GMへ)</button>
                   <button onClick={() => setChatTab("consult")} className={`text-xs font-bold px-4 py-2 rounded-t-lg transition ${chatTab === "consult" ? "bg-indigo-600/20 text-indigo-400 border-b-2 border-indigo-500" : "text-slate-400 hover:text-white"}`}>🗣️ 相談 (PL・AI相棒へ)</button>
                   <button onClick={() => setChatTab("gm")} className={`text-xs font-bold px-4 py-2 rounded-t-lg transition ${chatTab === "gm" ? "bg-amber-600/20 text-amber-400 border-b-2 border-amber-500" : "text-slate-400 hover:text-white"}`}>⚙️ GMへのメタ質問</button>
+
+                  {chatTab === "consult" && (
+                    <label className="ml-auto text-[10px] flex items-center gap-1.5 text-indigo-300 bg-slate-900 px-2 py-1 rounded border border-slate-600 cursor-pointer hover:bg-slate-800 transition">
+                      <input type="checkbox" checked={consultWithAI} onChange={(e) => setConsultWithAI(e.target.checked)} className="accent-indigo-500 w-3 h-3" />
+                      AI相棒にも意見を求める
+                    </label>
+                  )}
                 </div>
                 <div className="flex gap-2 pt-1">
                   <input type="text" value={input} onChange={(e) => setInput(e.target.value)} onKeyDown={(e) => e.key === "Enter" && handleSend()} 
-                    placeholder={chatTab === "story" ? "例：鍵穴を覗き込みます。" : (chatTab === "consult" ? "例：ねえ、この扉どうやって開けようか？" : "例：今の状況でもう一度目星は振れますか？")} 
+                    placeholder={chatTab === "story" ? "例：鍵穴を覗き込みます。" : (chatTab === "consult" ? (consultWithAI ? "例：ねえ、この扉どうやって開けようか？ (AI相棒が返答します)" : "例：PL同士の作戦会議メモ (AIは反応しません)") : "例：今の状況でもう一度目星は振れますか？")} 
                     className="flex-1 bg-slate-900 border border-slate-600 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-emerald-500 transition" />
                   <button onClick={handleSend} disabled={isLoading} className={`text-white px-6 py-2 rounded-lg text-sm font-bold shadow transition ${chatTab === "story" ? "bg-emerald-600 hover:bg-emerald-500" : (chatTab === "consult" ? "bg-indigo-600 hover:bg-indigo-500" : "bg-amber-600 hover:bg-amber-500")} disabled:opacity-50`}>送信</button>
                 </div>
@@ -1043,7 +1081,7 @@ ${roleInstruction}
               </div>
               
               <div className="border-t border-slate-700 pt-4">
-                <label className="text-sm text-white font-bold block mb-2">👑 GM(ホスト)の評価: {activeRoom.host_name}</label>
+                <label className="text-sm text-white font-bold block mb-2">👑 プレイヤー（ホスト・GM）の評価: {activeRoom.host_name}</label>
                 <div className="flex gap-2 text-2xl text-blue-400 cursor-pointer justify-center">
                   {[1,2,3,4,5].map(star => (
                     <span key={star} onClick={() => setRatingGM(star)} className="hover:scale-125 transition">{star <= ratingGM ? "★" : "☆"}</span>
