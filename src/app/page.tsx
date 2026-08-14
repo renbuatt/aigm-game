@@ -377,7 +377,7 @@ export default function Home() {
   const markNotificationAsRead = async (notifId: string) => { await supabase.from('notifications').update({ is_read: true }).eq('id', notifId); setMyNotifications(myNotifications.map(n => n.id === notifId ? { ...n, isRead: true } : n)); };
 
   // ==========================================
-  // ★ 1. ゲーム進行（AI API連動＆AIプレイヤー実装）
+  // ★ 1. ゲーム進行（AI API連動＆エラー詳細表示強化）
   // ==========================================
 
   const callAIGM = async (extraUserContext?: string) => {
@@ -437,7 +437,6 @@ ${aiPlayersText}
         throw new Error("Gemini APIキーが設定されていません。（.env.local または Vercelの設定を確認してください）");
       }
 
-      // ★ 最新モデル Gemini 3.5 Flash-Lite に変更しました！
       const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-3.5-flash-lite:generateContent?key=${apiKey}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -448,11 +447,20 @@ ${aiPlayersText}
         })
       });
       
+      // ★ エラー時の詳細を確実にキャッチして表示する修正
       if (!res.ok) {
         const errText = await res.text();
         console.error("Gemini API Error:", errText);
-        throw new Error(`AIサーバーの応答エラーが発生しました。詳細: ${res.statusText}`);
+        let errorDetail = res.statusText;
+        try {
+          const errJson = JSON.parse(errText);
+          if (errJson.error && errJson.error.message) {
+            errorDetail = errJson.error.message;
+          }
+        } catch(e) {}
+        throw new Error(`AIサーバーの応答エラーが発生しました。\n詳細: ${errorDetail || errText}`);
       }
+      
       const resData = await res.json();
       const aiText = resData.candidates?.[0]?.content?.parts?.[0]?.text || "（AIの返答がありません）";
 
