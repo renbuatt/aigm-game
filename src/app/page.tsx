@@ -91,7 +91,6 @@ export default function Home() {
   
   const [consultWithAI, setConsultWithAI] = useState<boolean>(true);
 
-  // ★ チーム分け機能用のステート
   const [splitSuggestions, setSplitSuggestions] = useState<string[]>([]);
   const [draftAction, setDraftAction] = useState("");
   const [draftMembers, setDraftMembers] = useState<string[]>([""]);
@@ -215,7 +214,6 @@ export default function Home() {
     prevMessagesLength.current = messages.length;
   }, [messages, myScene?.id]);
 
-  // ★ TypeScriptエラー（Nullチェック）を修正した部分
   useEffect(() => {
     if (activeRoom && isSplitMode && currentUser?.id === activeRoom.host_id && activeRoom.status === 'playing') {
       const nonMainScenes = activeRoom.scenes.filter(s => s.id !== 'scene_main');
@@ -600,8 +598,10 @@ export default function Home() {
 【重要：GMの絶対ルール（行動判定と時間管理）】
 1. PLたちが明確な「行動宣言」を出した時のみ物語を進行させてください。
 2. リスクや不確実性を伴う行動には必ずダイスロールを要求し、結果が出るまで描写を待機してください。
-3. 想定プレイ時間は約${activeRoom.scenario?.playTime || 60}分です。適切なペースでエンディングへ誘導してください。
-4. 【エンディングの処理】物語が結末を迎えた場合、最後の情景描写の末尾に必ず [SCENARIO_END] というシステムタグを記述してください。
+3. 【行動のヒント禁止】PLに具体的な行動の例や選択肢（例：「〇〇して逃げる」「〇〇を攻撃する」など）を絶対に提示しないでください。PL自身に考えさせてください。
+4. 【ダイスの自己処理禁止】GM自身がダイスを振ったり、PLのSAN値やステータスを勝手に推測・仮定してはいけません。必ずプロンプトに記載された【人間PL】の正確な数値を使用し、PLが画面のダイスボタンを振って結果が送信されるのを待機してください。
+5. 想定プレイ時間は約${activeRoom.scenario?.playTime || 60}分です。適切なペースでエンディングへ誘導してください。
+6. 【エンディングの処理】物語が結末を迎えた場合、最後の情景描写の末尾に必ず [SCENARIO_END] というシステムタグを記述してください。
 
 ${isSplitMode && myScene.id !== 'scene_main' ? `
 【チーム分割中の対応（超重要）】
@@ -620,14 +620,19 @@ ${isSplitMode && myScene.id !== 'scene_main' ? `
 ${isSplitMode && myScene.id !== 'scene_main' ? `※現在別行動中です。同じチームにいるAI相棒だけが返答してください。` : ''}
 `;
       } else if (targetTab === "gm") {
-        roleInstruction = `【重要：GMへのメタ質問対応】現在は「GMへの質問・ルール確認」の時間です。物語は進めず、ルールの裁定などのシステム的な回答のみを行ってください。`;
+        roleInstruction = `
+【重要：GMへのメタ質問対応】
+現在は「GMへの質問・ルール確認」の時間です。物語は進めず、ルールの裁定などのシステム的な回答のみを行ってください。
+【ヒントの要求について】
+もしPLが謎解きや行動の「ヒント」を要求した場合、無条件で教えずに「ヒント（アイデア・ひらめき）を得るにはSAN値を1d3（または固定値）減少させる必要があります。よろしければ【行動宣言】タブでSANダイスを振って、その旨を宣言してください」と代償を提示してください。
+`;
       }
 
       const sysPrompt = `あなたはTRPGの優秀なAIシステムです。
 タイトル: ${activeRoom.scenario?.title}
 世界観: ${activeRoom.scenario?.setting}
 プロット: ${activeRoom.scenario?.plot}
-【人間PL】名前: ${joinedCharacter.name}
+【人間PL】名前: ${joinedCharacter.name} / ステータス: HP:${joinedCharacter.hp} SAN:${joinedCharacter.san}% STR:${joinedCharacter.str} DEX:${joinedCharacter.dex} INT:${joinedCharacter.int} CON:${joinedCharacter.con}
 【AI相棒】\n${aiPlayersText}
 ${roleInstruction}`;
 
@@ -866,6 +871,14 @@ ${roleInstruction}`;
   const exportToPDF = async (type: 'chat' | 'summary' | 'novel') => {
     if (!activeRoom) return;
 
+    // ★ クリック直後にウィンドウを開く（ポップアップブロック対策）
+    const printWindow = window.open('', '_blank');
+    if (!printWindow) {
+      alert("ポップアップがブロックされました。ブラウザの設定でポップアップを許可してください。");
+      return;
+    }
+    printWindow.document.write('<div style="padding: 20px; font-family: sans-serif; color: #333;">生成中...しばらくお待ちください。（AI執筆中の場合は十数秒かかることがあります）</div>');
+
     const endIndex = messages.findIndex(m => m.text.includes('[SCENARIO_END]'));
     const baseMessages = endIndex !== -1 ? messages.slice(0, endIndex + 1) : messages;
     
@@ -876,7 +889,7 @@ ${roleInstruction}`;
     if (type === 'chat') {
       contentHtml = targetMessages.map(m => {
         const senderName = m.charName || (m.sender === "player" ? "プレイヤー" : m.sender === "gm" ? "AI GM" : "システム");
-        const text = m.text.replace('[SCENARIO_END]', '').trim();
+        const text = m.text.replace(/\[SPLIT_PROPOSAL:.*?\]/, '').replace('[SCENARIO_END]', '').trim();
         if (!text) return "";
         return `<div style="margin-bottom: 12px; border-bottom: 1px dashed #eee; padding-bottom: 8px;">
                   <strong style="color: #2c3e50;">${senderName}</strong><br>
@@ -890,7 +903,7 @@ ${roleInstruction}`;
         ? "以下のTRPGセッションのチャットログを読み込み、物語のあらすじ・結末として分かりやすく要約してください。\n※ログには「GMへの行動宣言」と「キャラクター同士の相談・会話」が含まれています。キャラクター同士の相談内容も物語の展開として要約に含めてください。"
         : "以下のTRPGセッションのチャットログを読み込み、セリフや情景描写を補完して臨場感あふれる小説形式に書き直してください。\n※ログには「GMへの行動宣言」と「キャラクター同士の相談・会話」が含まれています。キャラクターたちの作戦会議や掛け合いも、彼らの生きたセリフや心理描写として小説内に自然に盛り込んでください。";
       
-      const logText = targetMessages.map(m => `${m.charName || (m.sender === 'gm' ? 'GM' : 'システム')}: ${m.text.replace('[SCENARIO_END]', '').trim()}`).join('\n');
+      const logText = targetMessages.map(m => `${m.charName || (m.sender === 'gm' ? 'GM' : 'システム')}: ${m.text.replace(/\[SPLIT_PROPOSAL:.*?\]/, '').replace('[SCENARIO_END]', '').trim()}`).join('\n');
       
       try {
         const apiKey = process.env.NEXT_PUBLIC_GEMINI_API_KEY;
@@ -912,44 +925,40 @@ ${roleInstruction}`;
       } catch(e: any) {
         alert("エクスポート生成エラー: " + e.message);
         setIsExporting(false);
+        printWindow.close();
         return;
       }
       setIsExporting(false);
     }
 
-    const printWindow = window.open('', '_blank');
-    if (printWindow) {
-      printWindow.document.write(`
-        <!DOCTYPE html>
-        <html>
-          <head>
-            <meta charset="utf-8">
-            <title>${activeRoom.scenario?.title} - ${type === 'chat' ? 'チャットログ' : type === 'summary' ? '要約データ' : 'リプレイ小説'}</title>
-            <style>
-              body { font-family: 'Hiragino Kaku Gothic ProN', 'Meiryo', sans-serif; padding: 40px; color: #333; max-width: 800px; margin: 0 auto; }
-              h1 { font-size: 24px; border-bottom: 2px solid #2c3e50; padding-bottom: 10px; margin-bottom: 30px; color: #2c3e50; }
-              @media print { body { padding: 0; } }
-            </style>
-          </head>
-          <body>
-            <h1>${activeRoom.scenario?.title} - ${type === 'chat' ? 'チャットログ' : type === 'summary' ? 'あらすじ要約' : 'リプレイ小説'}</h1>
-            ${contentHtml}
-            <script>
-              setTimeout(() => { window.print(); window.close(); }, 500);
-            </script>
-          </body>
-        </html>
-      `);
-      printWindow.document.close();
-    } else {
-      alert("ポップアップがブロックされました。ブラウザの設定でポップアップを許可してください。");
-      setIsExporting(false);
-    }
+    printWindow.document.open();
+    printWindow.document.write(`
+      <!DOCTYPE html>
+      <html>
+        <head>
+          <meta charset="utf-8">
+          <title>${activeRoom.scenario?.title} - ${type === 'chat' ? 'チャットログ' : type === 'summary' ? '要約データ' : 'リプレイ小説'}</title>
+          <style>
+            body { font-family: 'Hiragino Kaku Gothic ProN', 'Meiryo', sans-serif; padding: 40px; color: #333; max-width: 800px; margin: 0 auto; }
+            h1 { font-size: 24px; border-bottom: 2px solid #2c3e50; padding-bottom: 10px; margin-bottom: 30px; color: #2c3e50; }
+            @media print { body { padding: 0; } }
+          </style>
+        </head>
+        <body>
+          <h1>${activeRoom.scenario?.title} - ${type === 'chat' ? 'チャットログ' : type === 'summary' ? 'あらすじ要約' : 'リプレイ小説'}</h1>
+          ${contentHtml}
+          <script>
+            setTimeout(() => { window.print(); window.close(); }, 500);
+          </script>
+        </body>
+      </html>
+    `);
+    printWindow.document.close();
   };
 
   const unreadCount = myNotifications.filter(n => !n.isRead).length;
 
-  const isChatDisabled = !!(isLoading || (isSplitMode && myScene?.isMerged === true && chatTab !== 'consult'));
+  const isChatDisabled = Boolean(isLoading || (isSplitMode && myScene?.isMerged === true && chatTab !== 'consult'));
 
   return (
     <main className="h-screen w-full bg-slate-900 text-slate-100 flex flex-col font-sans overflow-hidden">
@@ -1080,6 +1089,26 @@ ${roleInstruction}`;
         </div>
       )}
 
+      {currentView === "banned" && (
+        <div className="flex-1 flex flex-col items-center justify-center p-6 w-full overflow-y-auto min-h-0">
+          <div className="bg-slate-800 border border-red-700/50 rounded-2xl p-8 w-full max-w-lg shadow-2xl space-y-6 relative mt-10">
+            <h1 className="text-3xl font-extrabold text-red-500 border-b border-slate-700 pb-4">⛔ アカウント利用停止</h1>
+            <p className="text-slate-300 text-sm leading-relaxed">規約違反によりアカウントが停止されています。</p>
+            <button onClick={handleLogout} className="w-full bg-slate-700 hover:bg-slate-600 text-white font-bold py-3 rounded-xl mt-4">ログアウト</button>
+          </div>
+        </div>
+      )}
+
+      {currentView === "maintenance" && (
+        <div className="flex-1 flex flex-col items-center justify-center p-6 w-full min-h-0 overflow-y-auto">
+          <div className="bg-slate-800 border border-slate-700 rounded-2xl p-8 w-full max-w-md shadow-2xl text-center space-y-6">
+            <h1 className="text-4xl font-extrabold text-amber-500 mb-2">🚧 メンテナンス中</h1>
+            <p className="text-slate-300 text-sm leading-relaxed">現在システムメンテナンスを行っております。</p>
+            <button onClick={handleLogout} className="bg-slate-700 hover:bg-slate-600 text-white font-bold py-2 px-6 rounded-xl mt-4">戻る</button>
+          </div>
+        </div>
+      )}
+
       {currentView === "login" && (
         <div className="flex-1 flex flex-col items-center justify-center p-6 w-full min-h-0 overflow-y-auto">
           <div className="bg-slate-800 border border-slate-700 rounded-2xl p-8 w-full max-w-md shadow-2xl">
@@ -1092,6 +1121,98 @@ ${roleInstruction}`;
             </form>
             <div className="mt-4"><button onClick={handleGoogleAuth} disabled={authLoading} className="w-full bg-white text-slate-800 font-bold py-3 rounded-xl hover:bg-slate-200">Googleでログイン</button></div>
             <div className="text-center mt-6"><button onClick={() => setIsLoginMode(!isLoginMode)} type="button" className="text-sm text-emerald-400 underline">{isLoginMode ? "新規登録はこちら" : "ログインはこちら"}</button></div>
+          </div>
+        </div>
+      )}
+
+      {/* ユーザー・シナリオ通報モーダル */}
+      {reportTarget && (
+        <div className="absolute inset-0 bg-black/80 z-50 flex items-center justify-center p-4">
+          <div className="bg-slate-800 border border-red-700/50 rounded-xl p-6 w-full max-w-lg shadow-2xl">
+            <h3 className="text-xl font-bold text-red-400 mb-2">🚩 {reportTarget.type === 'user' ? "ユーザー" : "シナリオ"}を通報する</h3>
+            <p className="text-xs text-slate-400 mb-4">対象: {reportTarget.name}</p>
+            <div className="space-y-3 mb-4">
+              <textarea value={reportReason} onChange={e=>setReportReason(e.target.value)} placeholder="不適切な発言や、規約違反の内容を詳しく記入してください。" className="w-full h-32 bg-slate-900 border border-slate-700 rounded p-3 text-sm text-white" />
+            </div>
+            <div className="flex gap-4">
+              <button onClick={() => { setReportTarget(null); setReportReason(""); }} className="flex-1 bg-slate-700 hover:bg-slate-600 py-3 rounded text-sm font-bold">キャンセル</button>
+              <button onClick={submitUserReport} disabled={!reportReason.trim()} className="flex-1 bg-red-600 hover:bg-red-500 disabled:bg-slate-600 py-3 rounded text-sm font-bold shadow-lg shadow-red-900/50">運営に送信する</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* シナリオ修正完了申請モーダル */}
+      {scenarioAppealTarget && (
+        <div className="absolute inset-0 bg-black/80 z-50 flex items-center justify-center p-4">
+          <div className="bg-slate-800 border border-amber-700/50 rounded-xl p-6 w-full max-w-lg shadow-2xl">
+            <h3 className="text-xl font-bold text-amber-400 mb-2">📝 再審査（修正完了）の申請</h3>
+            <p className="text-xs text-slate-400 mb-4">対象シナリオ: {scenarioAppealTarget.title}</p>
+            <div className="space-y-3 mb-4">
+              <textarea value={scenarioAppealText} onChange={e=>setScenarioAppealText(e.target.value)} placeholder="修正した箇所や、非公開措置へのコメントを入力してください。" className="w-full h-32 bg-slate-900 border border-slate-700 rounded p-3 text-sm text-white" />
+            </div>
+            <div className="flex gap-4">
+              <button onClick={() => { setScenarioAppealTarget(null); setScenarioAppealText(""); }} className="flex-1 bg-slate-700 hover:bg-slate-600 py-3 rounded text-sm font-bold">キャンセル</button>
+              <button onClick={submitScenarioAppeal} disabled={!scenarioAppealText.trim()} className="flex-1 bg-amber-600 hover:bg-amber-500 disabled:bg-slate-600 py-3 rounded text-sm font-bold shadow-lg shadow-amber-900/50">運営に申請を送信する</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* シナリオBAN実行モーダル (Admin) */}
+      {banTargetScenario && (
+        <div className="absolute inset-0 bg-black/80 z-50 flex items-center justify-center p-4">
+          <div className="bg-slate-800 border border-slate-700 rounded-xl p-6 w-full max-w-lg shadow-2xl">
+            <h3 className="text-xl font-bold text-white mb-2">⚙️ シナリオの管理措置</h3>
+            <p className="text-xs text-slate-400 mb-4">対象: {banTargetScenario.title}</p>
+            <div className="space-y-3 mb-4">
+              <textarea value={scenarioBanReason} onChange={e=>setScenarioBanReason(e.target.value)} placeholder="措置の理由を入力してください（作者にメールで通知されます）" className="w-full h-32 bg-slate-900 border border-slate-700 rounded p-3 text-sm text-white" />
+            </div>
+            <div className="flex flex-col gap-3">
+              <div className="flex gap-2">
+                {!banTargetScenario.isBanned ? (
+                  <button onClick={() => executeScenarioBan('soft')} disabled={!scenarioBanReason.trim()} className="flex-1 bg-amber-600 hover:bg-amber-500 disabled:bg-slate-600 py-3 rounded text-sm font-bold shadow-lg">一時非公開にする</button>
+                ) : (
+                  <button onClick={() => executeScenarioBan('unban')} className="flex-1 bg-emerald-600 hover:bg-emerald-500 py-3 rounded text-sm font-bold shadow-lg">非公開を解除する</button>
+                )}
+                <button onClick={() => executeScenarioBan('hard')} disabled={!scenarioBanReason.trim()} className="flex-1 bg-red-600 hover:bg-red-500 disabled:bg-slate-600 py-3 rounded text-sm font-bold shadow-lg">完全に削除する</button>
+              </div>
+              <button onClick={() => setBanTargetScenario(null)} className="w-full bg-slate-700 hover:bg-slate-600 py-3 rounded text-sm font-bold mt-2">キャンセル</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ユーザーBAN実行モーダル (Admin) */}
+      {banTargetUser && (
+        <div className="absolute inset-0 bg-black/80 z-50 flex items-center justify-center p-4">
+          <div className="bg-slate-800 border border-red-700/50 rounded-xl p-6 w-full max-w-lg shadow-2xl">
+            <h3 className="text-xl font-bold text-red-500 mb-2">⛔ ユーザーをBANする</h3>
+            <p className="text-xs text-slate-400 mb-4">対象: {banTargetUser.handleName} ({banTargetUser.email})</p>
+            <div className="space-y-3 mb-4">
+              <textarea value={banReason} onChange={e=>setBanReason(e.target.value)} placeholder="通報ログ・BANの理由を入力してください" className="w-full h-32 bg-slate-900 border border-slate-700 rounded p-3 text-sm text-white" />
+            </div>
+            <div className="flex gap-4">
+              <button onClick={() => setBanTargetUser(null)} className="flex-1 bg-slate-700 hover:bg-slate-600 py-3 rounded text-sm font-bold">キャンセル</button>
+              <button onClick={executeBan} disabled={!banReason.trim()} className="flex-1 bg-red-600 hover:bg-red-500 disabled:bg-slate-600 py-3 rounded text-sm font-bold shadow-lg shadow-red-900/50">BANを実行する</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {showMailbox && (
+        <div className="absolute inset-0 bg-black/80 z-50 flex items-center justify-center p-4">
+          <div className="bg-slate-800 border border-slate-700 rounded-xl p-6 w-full max-w-lg shadow-2xl flex flex-col max-h-[80vh]">
+            <div className="flex justify-between items-center mb-4"><h3 className="text-xl font-bold">✉️ 受信箱</h3><button onClick={() => setShowMailbox(false)} className="text-xl">×</button></div>
+            <div className="h-[400px] overflow-y-scroll space-y-3 pr-2">
+              {myNotifications.length === 0 ? <p className="text-sm text-slate-500 text-center py-8">お知らせはありません。</p> : myNotifications.map(n => (
+                <div key={n.id} className={`p-4 rounded-lg border ${n.isRead ? 'bg-slate-900 border-slate-700' : 'bg-slate-800 border-blue-500/50'}`}>
+                  <h4 className="font-bold text-sm">{n.title}</h4>
+                  <p className="text-xs text-slate-300 whitespace-pre-wrap mt-2">{n.message}</p>
+                  {!n.isRead && <button onClick={() => markNotificationAsRead(n.id)} className="text-[10px] bg-slate-700 px-3 py-1 rounded mt-3">既読にする</button>}
+                </div>
+              ))}
+            </div>
           </div>
         </div>
       )}
