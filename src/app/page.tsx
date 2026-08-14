@@ -484,11 +484,6 @@ export default function Home() {
   const sendWarningNotification = async () => { if (!warningModalUser || !warningTitle || !warningText) return; await supabase.from('notifications').insert({ user_id: warningModalUser.id, title: warningTitle, message: warningText }); alert("警告通知を送信しました。"); setWarningModalUser(null); setWarningTitle(""); setWarningText(""); };
   const markNotificationAsRead = async (notifId: string) => { await supabase.from('notifications').update({ is_read: true }).eq('id', notifId); setMyNotifications(myNotifications.map(n => n.id === notifId ? { ...n, isRead: true } : n)); };
 
-
-  // ==========================================
-  // ★ ゲーム進行（AI連携・タブ分岐・自動終了検知）
-  // ==========================================
-
   const callAIGM = async (extraUserContext?: string, targetTab: ChatTab = "story") => {
     if (!activeRoom || !joinedCharacter || !myScene) return;
     setIsLoading(true);
@@ -779,15 +774,12 @@ ${roleInstruction}
     }
   };
 
-  // ★ PDFエクスポート処理
   const exportToPDF = async (type: 'chat' | 'summary' | 'novel') => {
     if (!activeRoom) return;
 
-    // 感想戦を除外した本編のみのメッセージを抽出
     const endIndex = messages.findIndex(m => m.text.includes('[SCENARIO_END]'));
     const baseMessages = endIndex !== -1 ? messages.slice(0, endIndex + 1) : messages;
     
-    // ★ GMへのメタ質問（gmタブ）は除外
     const targetMessages = baseMessages.filter(m => m.channel !== 'gm');
 
     let contentHtml = "";
@@ -805,7 +797,6 @@ ${roleInstruction}
     } else {
       setIsExporting(true);
       
-      // ★ 相談内容を含めるようにAIへ指示を強化
       const prompt = type === 'summary' 
         ? "以下のTRPGセッションのチャットログを読み込み、物語のあらすじ・結末として分かりやすく要約してください。\n※ログには「GMへの行動宣言」と「キャラクター同士の相談・会話」が含まれています。キャラクター同士の相談内容も物語の展開として要約に含めてください。"
         : "以下のTRPGセッションのチャットログを読み込み、セリフや情景描写を補完して臨場感あふれる小説形式に書き直してください。\n※ログには「GMへの行動宣言」と「キャラクター同士の相談・会話」が含まれています。キャラクターたちの作戦会議や掛け合いも、彼らの生きたセリフや心理描写として小説内に自然に盛り込んでください。";
@@ -884,7 +875,6 @@ ${roleInstruction}
               <div><h3 className="font-bold text-white mb-1">メンテナンスモード</h3></div>
               <button onClick={toggleMaintenance} className={`px-4 py-2 rounded-lg font-bold text-sm ${isMaintenance ? 'bg-red-600' : 'bg-slate-700'}`}>{isMaintenance ? "🔴 メンテ中" : "🟢 稼働中"}</button>
             </div>
-            {/* ... other admin UI ... */}
           </div>
         </div>
       )}
@@ -1171,25 +1161,6 @@ ${roleInstruction}
           </header>
 
           <div className="flex-1 overflow-y-scroll space-y-3 p-4 bg-slate-800/80 rounded-xl border border-slate-700 mb-3 min-h-0">
-            {isScenarioEnded && (
-              activeRoom.status === 'finished' ? (
-                <div className="bg-amber-900/50 border border-amber-500 rounded p-2 flex justify-between items-center mb-2">
-                  <span className="text-amber-400 text-sm font-bold">🎉 感想戦モード（AIは停止しています）</span>
-                  <button onClick={() => setCurrentView("evaluation")} className="bg-amber-600 hover:bg-amber-500 text-white text-xs font-bold px-4 py-2 rounded shadow">
-                    評価して退出する
-                  </button>
-                </div>
-              ) : currentUser?.id === activeRoom.host_id ? (
-                <button onClick={endGame} className="w-full bg-amber-600 hover:bg-amber-500 text-white font-bold py-3 rounded-xl shadow-lg animate-pulse text-sm mb-2">
-                  🎉 セッション完了！感想戦モードへ移行する
-                </button>
-              ) : (
-                <div className="bg-amber-900/50 border border-amber-500 rounded p-2 text-center text-amber-400 text-sm font-bold mb-2">
-                  🎉 エンディング到達！ホストの完了操作をお待ちください...
-                </div>
-              )
-            )}
-
             {messages.filter(msg => msg.type === "system" || msg.channel === chatTab).map((msg, index) => {
               const isMe = msg.sender === "player";
               const isAIPlayer = msg.sender === "ai_player";
@@ -1215,6 +1186,27 @@ ${roleInstruction}
           </div>
 
           <div className="bg-slate-800 border border-slate-700 rounded-xl p-3 flex flex-col gap-2 shadow-lg">
+            
+            {/* ★ 終了バナーをここに固定表示 */}
+            {isScenarioEnded && (
+              activeRoom.status === 'finished' ? (
+                <div className="bg-amber-900/50 border border-amber-500 rounded p-2 flex justify-between items-center mb-2">
+                  <span className="text-amber-400 text-sm font-bold">🎉 感想戦モード（AIは停止しています）</span>
+                  <button onClick={() => setCurrentView("evaluation")} className="bg-amber-600 hover:bg-amber-500 text-white text-xs font-bold px-4 py-2 rounded shadow">
+                    評価して退出する
+                  </button>
+                </div>
+              ) : currentUser?.id === activeRoom.host_id ? (
+                <button onClick={endGame} className="w-full bg-amber-600 hover:bg-amber-500 text-white font-bold py-2 rounded-xl shadow-lg animate-pulse text-sm mb-2">
+                  🎉 セッション完了！感想戦モードへ移行する
+                </button>
+              ) : (
+                <div className="bg-amber-900/50 border border-amber-500 rounded p-2 text-center text-amber-400 text-sm font-bold mb-2">
+                  🎉 エンディング到達！ホストの完了操作をお待ちください...
+                </div>
+              )
+            )}
+
             {joinedCharacter ? (
               activeRoom.status === 'finished' ? (
                 <div className="flex gap-2 pt-1">
