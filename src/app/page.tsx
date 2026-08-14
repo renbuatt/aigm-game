@@ -565,6 +565,7 @@ export default function Home() {
     await callAIGM(`【システムコマンド】全チームの別行動が終了し、一箇所に合流しました。これまでの各チームの報告を踏まえ、合流時の情景描写と今後の展開を提示してください。`, "story");
   };
 
+  // ★ AIへの絶対ルールを強化（安易な成功・忖度の禁止を追加）
   const callAIGM = async (extraUserContext?: string, targetTab: ChatTab = "story") => {
     if (!activeRoom || !joinedCharacter || !myScene) return;
     setIsLoading(true);
@@ -595,13 +596,14 @@ export default function Home() {
       let roleInstruction = "";
       if (targetTab === "story") {
         roleInstruction = `
-【重要：GMの絶対ルール（行動判定と時間管理）】
+【重要：GMの絶対ルール（行動判定とゲーム性の担保）】
 1. PLたちが明確な「行動宣言」を出した時のみ物語を進行させてください。
 2. リスクや不確実性を伴う行動には必ずダイスロールを要求し、結果が出るまで描写を待機してください。
 3. 【行動のヒント禁止】PLに具体的な行動の例や選択肢（例：「〇〇して逃げる」「〇〇を攻撃する」など）を絶対に提示しないでください。PL自身に考えさせてください。
 4. 【ダイスの自己処理禁止】GM自身がダイスを振ったり、PLのSAN値やステータスを勝手に推測・仮定してはいけません。必ずプロンプトに記載された【人間PL】の正確な数値を使用し、PLが画面のダイスボタンを振って結果が送信されるのを待機してください。
-5. 想定プレイ時間は約${activeRoom.scenario?.playTime || 60}分です。適切なペースでエンディングへ誘導してください。
-6. 【エンディングの処理】物語が結末を迎えた場合、最後の情景描写の末尾に必ず [SCENARIO_END] というシステムタグを記述してください。
+5. 【安易な成功・AIの忖度厳禁（最重要）】PLの行動が論理的に不自然であったり、シナリオの解決条件（例：特定のアイテムを『燃やす』『特定の手順で破壊する』など）を正確に満たしていない場合は、絶対に成功させてはいけません。「ただ投げつけただけ」「間違ったアイテムを使った」などの甘いプレイには、容赦なく「効果がなかった」「状況が悪化した（敵の反撃やダメージなど）」として厳しく処理してください。AIとしてのPLへの忖度や接待プレイは、TRPGの緊迫感を損なうため固く禁じます。
+6. 【ゲーム性の重視】想定プレイ時間（約${activeRoom.scenario?.playTime || 60}分）はあくまで目安です。時間を守るために無理やりご都合主義なハッピーエンドに急ぐくらいなら、時間が延びても構わないので、論理的整合性と緊迫感のある試練を優先してください。
+7. 【エンディングの処理】物語が結末（クリア、または全滅などのゲームオーバー）を迎えた場合、最後の情景描写の末尾に必ず [SCENARIO_END] というシステムタグを記述してください。
 
 ${isSplitMode && myScene.id !== 'scene_main' ? `
 【チーム分割中の対応（超重要）】
@@ -871,7 +873,6 @@ ${roleInstruction}`;
   const exportToPDF = async (type: 'chat' | 'summary' | 'novel') => {
     if (!activeRoom) return;
 
-    // ★ クリック直後にウィンドウを開く（ポップアップブロック対策）
     const printWindow = window.open('', '_blank');
     if (!printWindow) {
       alert("ポップアップがブロックされました。ブラウザの設定でポップアップを許可してください。");
@@ -901,7 +902,7 @@ ${roleInstruction}`;
       
       const prompt = type === 'summary' 
         ? "以下のTRPGセッションのチャットログを読み込み、物語のあらすじ・結末として分かりやすく要約してください。\n※ログには「GMへの行動宣言」と「キャラクター同士の相談・会話」が含まれています。キャラクター同士の相談内容も物語の展開として要約に含めてください。"
-        : "以下のTRPGセッションのチャットログを読み込み、セリフや情景描写を補完して臨場感あふれる小説形式に書き直してください。\n※ログには「GMへの行動宣言」と「キャラクター同士の相談・会話」が含まれています。キャラクターたちの作戦会議や掛け合いも、彼らの生きたセリフや心理描写として小説内に自然に盛り込んでください。";
+        : "以下のTRPGセッションのチャットログを元に、プロの小説家が書いたような臨場感あふれる【本格的なリプレイ小説】を執筆してください。\n\n【執筆の条件】\n1. 単調な事実の羅列（〜した。〜と言った）を避け、五感（光、音、匂い、温度など）を刺激する情景描写と、キャラクターの深い心理描写を大幅に肉付けしてください。\n2. プレイヤー間の「相談」や「作戦会議」は、キャラクター同士の緊迫感や関係性が伝わる魅力的な会話劇（ダイアログ）として昇華してください。\n3. ダイスロールの成否はシステム的な数値として書くのではなく、「間一髪での回避」「絶望的な見落とし」などのドラマチックな演出に変換してください。\n4. 起承転結のペース配分を意識し、読者を惹きつける一つの完成された短編小説に仕上げてください。";
       
       const logText = targetMessages.map(m => `${m.charName || (m.sender === 'gm' ? 'GM' : 'システム')}: ${m.text.replace(/\[SPLIT_PROPOSAL:.*?\]/, '').replace('[SCENARIO_END]', '').trim()}`).join('\n');
       
@@ -958,7 +959,7 @@ ${roleInstruction}`;
 
   const unreadCount = myNotifications.filter(n => !n.isRead).length;
 
-  const isChatDisabled = Boolean(isLoading || (isSplitMode && myScene?.isMerged === true && chatTab !== 'consult'));
+  const isChatDisabled = !!(isLoading || (isSplitMode && myScene?.isMerged === true && chatTab !== 'consult'));
 
   return (
     <main className="h-screen w-full bg-slate-900 text-slate-100 flex flex-col font-sans overflow-hidden">
