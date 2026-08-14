@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { createClient } from "@supabase/supabase-js";
 
 // --- Supabaseクライアント ---
@@ -124,8 +124,12 @@ export default function Home() {
   const [secretRoomIdSearch, setSecretRoomIdSearch] = useState("");
   const [searchedSecretRoom, setSearchedSecretRoom] = useState<Room | null>(null);
   
-  // ★ ここが消えていたので復活させました！
   const [shopScenarioId, setShopScenarioId] = useState<string>(""); 
+
+  // ★ 新着メッセージ通知バッジ用のステートとRef
+  const [unreadIndicators, setUnreadIndicators] = useState({ story: false, consult: false, gm: false });
+  const chatTabRef = useRef<ChatTab>(chatTab);
+  const prevMessagesLength = useRef(0);
 
   const availableScenarios = scenarios.filter(s => !s.isBanned);
   const createdScenarios = availableScenarios.filter(s => s.authorId === currentUser?.id);
@@ -137,6 +141,34 @@ export default function Home() {
   const myActiveRoom = rooms.find(r => currentUser && r.host_id === currentUser.id && r.status !== 'finished');
 
   const isScenarioEnded = messages.some(m => m.text.includes('[SCENARIO_END]')) || activeRoom?.status === 'finished';
+
+  // ★ タブ切り替えと新着バッジの更新
+  useEffect(() => {
+    chatTabRef.current = chatTab;
+  }, [chatTab]);
+
+  useEffect(() => {
+    if (messages.length > prevMessagesLength.current) {
+      const newMsgs = messages.slice(prevMessagesLength.current);
+      setUnreadIndicators(prev => {
+        const next = { ...prev };
+        let changed = false;
+        newMsgs.forEach(m => {
+          if (m.channel && m.channel !== "system" && m.channel !== chatTabRef.current) {
+            next[m.channel as keyof typeof next] = true;
+            changed = true;
+          }
+        });
+        return changed ? next : prev;
+      });
+    }
+    prevMessagesLength.current = messages.length;
+  }, [messages]);
+
+  const handleTabClick = (tab: ChatTab) => {
+    setChatTab(tab);
+    setUnreadIndicators(prev => ({ ...prev, [tab]: false }));
+  };
 
   const fetchData = async () => {
     const { data: scData } = await supabase.from('scenarios').select('*').order('id', { ascending: false });
@@ -457,7 +489,8 @@ export default function Home() {
 1. PLたちが【相談】を終え、明確な「行動宣言」を出した時のみ物語を進行させてください。
 2. リスクや不確実性を伴う行動には、勝手に結果を決めず必ずダイスロール（1d100の技能/SAN判定、または3d6のステータス判定）を要求してください。結果が出るまで描写を待機してください。
 3. このシナリオの想定プレイ時間は現実時間で「約${activeRoom.scenario?.playTime || 60}分」です。現在のやり取りの回数から残り時間を推測し、適切なタイミングでクライマックスとエンディングへ誘導してください。
-4. 【エンディングの処理】物語が結末（クリア、または全滅などのゲームオーバー）を迎えた場合、最後の情景描写の末尾に必ず [SCENARIO_END] というシステムタグを記述してください。
+4. 【AI相棒の行動処理】AI相棒がPLとは別の行動（別の場所の探索など）を宣言した場合、PLの行動の添え物として省略せず、AI相棒のステータスに基づいて成否を判定し、その探索過程と結果をしっかりと独立して描写してください。
+5. 【エンディングの処理】物語が結末（クリア、または全滅などのゲームオーバー）を迎えた場合、最後の情景描写の末尾に必ず [SCENARIO_END] というシステムタグを記述してください。
 `;
       } else if (targetTab === "consult") {
         roleInstruction = `
@@ -1037,9 +1070,18 @@ ${roleInstruction}
             ) : joinedCharacter ? (
               <>
                 <div className="flex gap-2 border-b border-slate-700 pb-2 items-center">
-                  <button onClick={() => setChatTab("story")} className={`text-xs font-bold px-4 py-2 rounded-t-lg transition ${chatTab === "story" ? "bg-emerald-600/20 text-emerald-400 border-b-2 border-emerald-500" : "text-slate-400 hover:text-white"}`}>📖 行動宣言 (GMへ)</button>
-                  <button onClick={() => setChatTab("consult")} className={`text-xs font-bold px-4 py-2 rounded-t-lg transition ${chatTab === "consult" ? "bg-indigo-600/20 text-indigo-400 border-b-2 border-indigo-500" : "text-slate-400 hover:text-white"}`}>🗣️ 相談 (PL・AI相棒へ)</button>
-                  <button onClick={() => setChatTab("gm")} className={`text-xs font-bold px-4 py-2 rounded-t-lg transition ${chatTab === "gm" ? "bg-amber-600/20 text-amber-400 border-b-2 border-amber-500" : "text-slate-400 hover:text-white"}`}>⚙️ GMへのメタ質問</button>
+                  <button onClick={() => handleTabClick("story")} className={`relative text-xs font-bold px-4 py-2 rounded-t-lg transition ${chatTab === "story" ? "bg-emerald-600/20 text-emerald-400 border-b-2 border-emerald-500" : "text-slate-400 hover:text-white"}`}>
+                    📖 行動宣言 (GMへ)
+                    {unreadIndicators.story && <span className="absolute top-1 right-1 w-2 h-2 bg-red-500 rounded-full animate-pulse"></span>}
+                  </button>
+                  <button onClick={() => handleTabClick("consult")} className={`relative text-xs font-bold px-4 py-2 rounded-t-lg transition ${chatTab === "consult" ? "bg-indigo-600/20 text-indigo-400 border-b-2 border-indigo-500" : "text-slate-400 hover:text-white"}`}>
+                    🗣️ 相談 (PL・AI相棒へ)
+                    {unreadIndicators.consult && <span className="absolute top-1 right-1 w-2 h-2 bg-red-500 rounded-full animate-pulse"></span>}
+                  </button>
+                  <button onClick={() => handleTabClick("gm")} className={`relative text-xs font-bold px-4 py-2 rounded-t-lg transition ${chatTab === "gm" ? "bg-amber-600/20 text-amber-400 border-b-2 border-amber-500" : "text-slate-400 hover:text-white"}`}>
+                    ⚙️ GMへのメタ質問
+                    {unreadIndicators.gm && <span className="absolute top-1 right-1 w-2 h-2 bg-red-500 rounded-full animate-pulse"></span>}
+                  </button>
 
                   {chatTab === "consult" && (
                     <label className="ml-auto text-[10px] flex items-center gap-1.5 text-indigo-300 bg-slate-900 px-2 py-1 rounded border border-slate-600 cursor-pointer hover:bg-slate-800 transition">
