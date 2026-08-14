@@ -54,7 +54,6 @@ type Room = {
   joined_users: Record<string, string>; 
 };
 
-// ★ Message型に channel を追加して表示領域を分けられるようにしました
 type Message = { sender: "player" | "gm" | "ai_player"; text: string; type?: "ic" | "ooc" | "system"; sceneId?: string; charName?: string; channel?: ChatTab | "system"; };
 type ChatTab = "story" | "consult" | "gm";
 
@@ -124,6 +123,9 @@ export default function Home() {
   const [roomConfigModal, setRoomConfigModal] = useState<{ scenario: Scenario, charId: string, privacy: 'open'|'secret', message: string } | null>(null);
   const [secretRoomIdSearch, setSecretRoomIdSearch] = useState("");
   const [searchedSecretRoom, setSearchedSecretRoom] = useState<Room | null>(null);
+  
+  // ★ ここが消えていたので復活させました！
+  const [shopScenarioId, setShopScenarioId] = useState<string>(""); 
 
   const availableScenarios = scenarios.filter(s => !s.isBanned);
   const createdScenarios = availableScenarios.filter(s => s.authorId === currentUser?.id);
@@ -513,7 +515,6 @@ ${roleInstruction}
       await supabase.from('ai_memory').insert({ room_id: activeRoom.id, role: 'assistant', content: aiText });
       
       const msgSender = targetTab === "consult" ? "ai_player" : "gm";
-      // ★ 保存時に channel を指定
       setMessages((prev) => [...prev, { sender: msgSender, text: aiText, type: targetTab === "gm" ? "ooc" : "ic", sceneId: myScene?.id, charName: targetTab === "consult" ? "AI相棒" : "AI GM", channel: targetTab }]);
 
     } catch (err: any) {
@@ -662,7 +663,6 @@ ${roleInstruction}
     
     if (chatTab === "consult" && !consultWithAI) {
       const currentInput = input;
-      // ★ プレイヤーの入力も channel を保存
       const userMsg: Message = { sender: "player", text: currentInput, type: "ic", sceneId: myScene.id, charName: joinedCharacter.name, channel: chatTab };
       setMessages((prev) => [...prev, userMsg]);
       setInput("");
@@ -697,7 +697,6 @@ ${roleInstruction}
       msgText = `🎲 ${label} (3d6 ≦ ${targetValue}) ➔ 出目: ${res} [${d1},${d2},${d3}] 【${isSuccess ? "成功" : "失敗"}】`;
     }
 
-    // ★ ダイスロールは story タブへ表示
     setMessages((prev) => [...prev, { sender: "player", text: msgText, type: "ic", sceneId: myScene.id, charName: joinedCharacter.name, channel: "story" }]);
     await callAIGM(`【システム判定結果】${joinedCharacter.name}が${label}ロールを行いました。\n結果: ${msgText}\nこの結果を踏まえてGMとして情景描写を行ってください。`, "story");
   };
@@ -719,6 +718,7 @@ ${roleInstruction}
               <div><h3 className="font-bold text-white mb-1">メンテナンスモード</h3></div>
               <button onClick={toggleMaintenance} className={`px-4 py-2 rounded-lg font-bold text-sm ${isMaintenance ? 'bg-red-600' : 'bg-slate-700'}`}>{isMaintenance ? "🔴 メンテ中" : "🟢 稼働中"}</button>
             </div>
+            {/* ... other admin UI ... */}
           </div>
         </div>
       )}
@@ -1005,7 +1005,6 @@ ${roleInstruction}
           </header>
 
           <div className="flex-1 overflow-y-scroll space-y-3 p-4 bg-slate-800/80 rounded-xl border border-slate-700 mb-3 min-h-0">
-            {/* ★ 選択中のタブに合わせてメッセージをフィルタリングして表示 */}
             {messages.filter(msg => msg.type === "system" || msg.channel === chatTab).map((msg, index) => {
               const isMe = msg.sender === "player";
               const isAIPlayer = msg.sender === "ai_player";
