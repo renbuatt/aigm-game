@@ -144,7 +144,7 @@ export default function Home() {
 
   const defaultScene: Scene = { id: "scene_main", name: "メインルーム", memberIds: [] };
   const myScene = activeRoom?.scenes?.find(s => joinedCharacter && s.memberIds.includes(joinedCharacter.id)) || activeRoom?.scenes?.[0] || defaultScene;
-  const isSplitMode = activeRoom && activeRoom.scenes.length > 1;
+  const isSplitMode = activeRoom ? (activeRoom.scenes?.length > 1) : false;
 
   const isScenarioEnded = messages.some(m => m.text.includes('[SCENARIO_END]')) || activeRoom?.status === 'finished';
 
@@ -183,7 +183,11 @@ export default function Home() {
 
       const roomChannel = supabase.channel(`room_sync_${activeRoom.id}`)
         .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'rooms', filter: `id=eq.${activeRoom.id}` }, (payload) => {
-          setActiveRoom(payload.new as Room);
+          setActiveRoom(prev => {
+            if (!prev) return payload.new as Room;
+            // payload.new には joined_users などは入っているが scenario オブジェクトはないため、prevから引き継ぐ
+            return { ...prev, ...payload.new, scenario: prev.scenario };
+          });
         })
         .subscribe();
 
@@ -272,7 +276,8 @@ export default function Home() {
     await fetchNotifications(userId);
 
     if (!profileData.isBanned && !currentMaintenance) {
-      const activeMyRoom = roomsData.find(r => (r.status === 'playing' || r.status === 'splitting') && r.joined_users && r.joined_users[userId]);
+      // ★ 募集中の部屋も復帰対象に含めることでリロード時の離脱を防ぐ
+      const activeMyRoom = roomsData.find(r => (r.status === 'playing' || r.status === 'splitting' || r.status === 'recruiting') && r.joined_users && r.joined_users[userId]);
       if (activeMyRoom && activeMyRoom.scenario) {
         const charId = activeMyRoom.joined_users[userId];
         const char = activeMyRoom.scenario.presetCharacters.find(c => c.id === charId);
@@ -442,7 +447,7 @@ export default function Home() {
     else { alert("エラーが発生しました: " + error.message); }
   };
 
-  // ★ 管理機能の完全復元
+  // ★ 管理画面の関数をすべて復元！
   const fetchAdminData = async () => {
     const { data: usersData } = await supabase.from('profiles').select('*').order('created_at', { ascending: false });
     if (usersData) { setAllUsers(usersData.map((d: any) => ({ id: d.id, handleName: d.handle_name, avatarUrl: d.avatar_url, bio: d.bio, discordId: d.discord_id, ratingSum: d.rating_sum || 0, ratingCount: d.rating_count || 0, isAdmin: d.is_admin || false, isBanned: d.is_banned || false, email: d.email }))); }
@@ -678,32 +683,6 @@ ${roleInstruction}`;
     }
   };
 
-  const handleSend = async () => {
-    if (!input.trim() || isLoading || !activeRoom || !joinedCharacter || !currentUser || !myScene) return;
-    
-    const currentInput = input;
-    const isFinished = activeRoom.status === 'finished';
-
-    if (isFinished || (chatTab === "consult" && !consultWithAI)) {
-      await pushMessage(activeRoom.id, { sender: "player", text: currentInput, type: isFinished ? "ooc" : "ic", sceneId: myScene.id, charName: joinedCharacter.name, channel: chatTab });
-      setInput("");
-      return;
-    }
-
-    await pushMessage(activeRoom.id, { sender: "player", text: currentInput, type: chatTab === "story" ? "ic" : "ooc", sceneId: myScene.id, charName: joinedCharacter.name, channel: chatTab });
-    setInput(""); 
-    
-    const teamPrefix = isSplitMode && myScene.id !== 'scene_main' ? `[${myScene.name}チーム - ${joinedCharacter.name}] ` : `${joinedCharacter.name}「`;
-    const teamSuffix = isSplitMode && myScene.id !== 'scene_main' ? `` : `」`;
-
-    let context = "";
-    if (chatTab === "story") context = `【行動宣言】${teamPrefix}${currentInput}${teamSuffix}`;
-    else if (chatTab === "consult") context = `【PL間相談】${teamPrefix}${currentInput}${teamSuffix}`;
-    else context = `【GMへの質問】PL: ${currentInput}`;
-
-    await callAIGM(context, chatTab);
-  };
-
   const executeCreateRoom = async () => {
     if (!currentUser || !roomConfigModal) return;
     const { scenario, charId, privacy, message } = roomConfigModal;
@@ -719,7 +698,7 @@ ${roleInstruction}`;
       if (ticketError) { alert("チケットの消費処理に失敗しました。"); return; }
     }
 
-    const initialScenes: Scene[] = [{ id: `scene_main`, name: "メインルーム", memberIds: scenario.presetCharacters.map(c => c.id) }];
+    const initialScenes: Scene[] = [{ id: `scene_main_${Date.now()}`, name: "メインルーム", memberIds: scenario.presetCharacters.map(c => c.id) }];
     
     const { data, error } = await supabase.from('rooms').insert({ 
       scenario_id: scenario.id, host_name: currentUser.handleName, host_id: currentUser.id, 
@@ -846,6 +825,32 @@ ${roleInstruction}`;
     }
   };
 
+  const handleSend = async () => {
+    if (!input.trim() || isLoading || !activeRoom || !joinedCharacter || !currentUser || !myScene) return;
+    
+    const currentInput = input;
+    const isFinished = activeRoom.status === 'finished';
+
+    if (isFinished || (chatTab === "consult" && !consultWithAI)) {
+      await pushMessage(activeRoom.id, { sender: "player", text: currentInput, type: isFinished ? "ooc" : "ic", sceneId: myScene.id, charName: joinedCharacter.name, channel: chatTab });
+      setInput("");
+      return;
+    }
+
+    await pushMessage(activeRoom.id, { sender: "player", text: currentInput, type: chatTab === "story" ? "ic" : "ooc", sceneId: myScene.id, charName: joinedCharacter.name, channel: chatTab });
+    setInput(""); 
+    
+    const teamPrefix = isSplitMode && myScene.id !== 'scene_main' ? `[${myScene.name}チーム - ${joinedCharacter.name}] ` : `${joinedCharacter.name}「`;
+    const teamSuffix = isSplitMode && myScene.id !== 'scene_main' ? `` : `」`;
+
+    let context = "";
+    if (chatTab === "story") context = `【行動宣言】${teamPrefix}${currentInput}${teamSuffix}`;
+    else if (chatTab === "consult") context = `【PL間相談】${teamPrefix}${currentInput}${teamSuffix}`;
+    else context = `【GMへの質問】PL: ${currentInput}`;
+
+    await callAIGM(context, chatTab);
+  };
+
   const rollDice = async (targetValue: number, label: string, is1d100: boolean) => {
     if(!myScene || !activeRoom || isLoading || !joinedCharacter) return;
     let res = 0; let isSuccess = false; let msgText = "";
@@ -954,7 +959,8 @@ ${roleInstruction}`;
 
   const unreadCount = myNotifications.filter(n => !n.isRead).length;
 
-  const isInputDisabled = Boolean(isLoading || (isSplitMode && myScene?.isMerged === true && chatTab !== 'consult'));
+  // ★ TypeScriptエラーを完全に解消するための変数
+  const isChatDisabled = !!(isLoading || (isSplitMode && myScene?.isMerged === true && chatTab !== 'consult'));
 
   return (
     <main className="h-screen w-full bg-slate-900 text-slate-100 flex flex-col font-sans overflow-hidden">
@@ -1085,26 +1091,6 @@ ${roleInstruction}`;
         </div>
       )}
 
-      {currentView === "banned" && (
-        <div className="flex-1 flex flex-col items-center justify-center p-6 w-full overflow-y-auto min-h-0">
-          <div className="bg-slate-800 border border-red-700/50 rounded-2xl p-8 w-full max-w-lg shadow-2xl space-y-6 relative mt-10">
-            <h1 className="text-3xl font-extrabold text-red-500 border-b border-slate-700 pb-4">⛔ アカウント利用停止</h1>
-            <p className="text-slate-300 text-sm leading-relaxed">規約違反によりアカウントが停止されています。</p>
-            <button onClick={handleLogout} className="w-full bg-slate-700 hover:bg-slate-600 text-white font-bold py-3 rounded-xl mt-4">ログアウト</button>
-          </div>
-        </div>
-      )}
-
-      {currentView === "maintenance" && (
-        <div className="flex-1 flex flex-col items-center justify-center p-6 w-full min-h-0 overflow-y-auto">
-          <div className="bg-slate-800 border border-slate-700 rounded-2xl p-8 w-full max-w-md shadow-2xl text-center space-y-6">
-            <h1 className="text-4xl font-extrabold text-amber-500 mb-2">🚧 メンテナンス中</h1>
-            <p className="text-slate-300 text-sm leading-relaxed">現在システムメンテナンスを行っております。</p>
-            <button onClick={handleLogout} className="bg-slate-700 hover:bg-slate-600 text-white font-bold py-2 px-6 rounded-xl mt-4">戻る</button>
-          </div>
-        </div>
-      )}
-
       {currentView === "login" && (
         <div className="flex-1 flex flex-col items-center justify-center p-6 w-full min-h-0 overflow-y-auto">
           <div className="bg-slate-800 border border-slate-700 rounded-2xl p-8 w-full max-w-md shadow-2xl">
@@ -1117,98 +1103,6 @@ ${roleInstruction}`;
             </form>
             <div className="mt-4"><button onClick={handleGoogleAuth} disabled={authLoading} className="w-full bg-white text-slate-800 font-bold py-3 rounded-xl hover:bg-slate-200">Googleでログイン</button></div>
             <div className="text-center mt-6"><button onClick={() => setIsLoginMode(!isLoginMode)} type="button" className="text-sm text-emerald-400 underline">{isLoginMode ? "新規登録はこちら" : "ログインはこちら"}</button></div>
-          </div>
-        </div>
-      )}
-
-      {/* ユーザー・シナリオ通報モーダル */}
-      {reportTarget && (
-        <div className="absolute inset-0 bg-black/80 z-50 flex items-center justify-center p-4">
-          <div className="bg-slate-800 border border-red-700/50 rounded-xl p-6 w-full max-w-lg shadow-2xl">
-            <h3 className="text-xl font-bold text-red-400 mb-2">🚩 {reportTarget.type === 'user' ? "ユーザー" : "シナリオ"}を通報する</h3>
-            <p className="text-xs text-slate-400 mb-4">対象: {reportTarget.name}</p>
-            <div className="space-y-3 mb-4">
-              <textarea value={reportReason} onChange={e=>setReportReason(e.target.value)} placeholder="不適切な発言や、規約違反の内容を詳しく記入してください。" className="w-full h-32 bg-slate-900 border border-slate-700 rounded p-3 text-sm text-white" />
-            </div>
-            <div className="flex gap-4">
-              <button onClick={() => { setReportTarget(null); setReportReason(""); }} className="flex-1 bg-slate-700 hover:bg-slate-600 py-3 rounded text-sm font-bold">キャンセル</button>
-              <button onClick={submitUserReport} disabled={!reportReason.trim()} className="flex-1 bg-red-600 hover:bg-red-500 disabled:bg-slate-600 py-3 rounded text-sm font-bold shadow-lg shadow-red-900/50">運営に送信する</button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* シナリオ修正完了申請モーダル */}
-      {scenarioAppealTarget && (
-        <div className="absolute inset-0 bg-black/80 z-50 flex items-center justify-center p-4">
-          <div className="bg-slate-800 border border-amber-700/50 rounded-xl p-6 w-full max-w-lg shadow-2xl">
-            <h3 className="text-xl font-bold text-amber-400 mb-2">📝 再審査（修正完了）の申請</h3>
-            <p className="text-xs text-slate-400 mb-4">対象シナリオ: {scenarioAppealTarget.title}</p>
-            <div className="space-y-3 mb-4">
-              <textarea value={scenarioAppealText} onChange={e=>setScenarioAppealText(e.target.value)} placeholder="修正した箇所や、非公開措置へのコメントを入力してください。" className="w-full h-32 bg-slate-900 border border-slate-700 rounded p-3 text-sm text-white" />
-            </div>
-            <div className="flex gap-4">
-              <button onClick={() => { setScenarioAppealTarget(null); setScenarioAppealText(""); }} className="flex-1 bg-slate-700 hover:bg-slate-600 py-3 rounded text-sm font-bold">キャンセル</button>
-              <button onClick={submitScenarioAppeal} disabled={!scenarioAppealText.trim()} className="flex-1 bg-amber-600 hover:bg-amber-500 disabled:bg-slate-600 py-3 rounded text-sm font-bold shadow-lg shadow-amber-900/50">運営に申請を送信する</button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* シナリオBAN実行モーダル (Admin) */}
-      {banTargetScenario && (
-        <div className="absolute inset-0 bg-black/80 z-50 flex items-center justify-center p-4">
-          <div className="bg-slate-800 border border-slate-700 rounded-xl p-6 w-full max-w-lg shadow-2xl">
-            <h3 className="text-xl font-bold text-white mb-2">⚙️ シナリオの管理措置</h3>
-            <p className="text-xs text-slate-400 mb-4">対象: {banTargetScenario.title}</p>
-            <div className="space-y-3 mb-4">
-              <textarea value={scenarioBanReason} onChange={e=>setScenarioBanReason(e.target.value)} placeholder="措置の理由を入力してください（作者にメールで通知されます）" className="w-full h-32 bg-slate-900 border border-slate-700 rounded p-3 text-sm text-white" />
-            </div>
-            <div className="flex flex-col gap-3">
-              <div className="flex gap-2">
-                {!banTargetScenario.isBanned ? (
-                  <button onClick={() => executeScenarioBan('soft')} disabled={!scenarioBanReason.trim()} className="flex-1 bg-amber-600 hover:bg-amber-500 disabled:bg-slate-600 py-3 rounded text-sm font-bold shadow-lg">一時非公開にする</button>
-                ) : (
-                  <button onClick={() => executeScenarioBan('unban')} className="flex-1 bg-emerald-600 hover:bg-emerald-500 py-3 rounded text-sm font-bold shadow-lg">非公開を解除する</button>
-                )}
-                <button onClick={() => executeScenarioBan('hard')} disabled={!scenarioBanReason.trim()} className="flex-1 bg-red-600 hover:bg-red-500 disabled:bg-slate-600 py-3 rounded text-sm font-bold shadow-lg">完全に削除する</button>
-              </div>
-              <button onClick={() => setBanTargetScenario(null)} className="w-full bg-slate-700 hover:bg-slate-600 py-3 rounded text-sm font-bold mt-2">キャンセル</button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* ユーザーBAN実行モーダル (Admin) */}
-      {banTargetUser && (
-        <div className="absolute inset-0 bg-black/80 z-50 flex items-center justify-center p-4">
-          <div className="bg-slate-800 border border-red-700/50 rounded-xl p-6 w-full max-w-lg shadow-2xl">
-            <h3 className="text-xl font-bold text-red-500 mb-2">⛔ ユーザーをBANする</h3>
-            <p className="text-xs text-slate-400 mb-4">対象: {banTargetUser.handleName} ({banTargetUser.email})</p>
-            <div className="space-y-3 mb-4">
-              <textarea value={banReason} onChange={e=>setBanReason(e.target.value)} placeholder="通報ログ・BANの理由を入力してください" className="w-full h-32 bg-slate-900 border border-slate-700 rounded p-3 text-sm text-white" />
-            </div>
-            <div className="flex gap-4">
-              <button onClick={() => setBanTargetUser(null)} className="flex-1 bg-slate-700 hover:bg-slate-600 py-3 rounded text-sm font-bold">キャンセル</button>
-              <button onClick={executeBan} disabled={!banReason.trim()} className="flex-1 bg-red-600 hover:bg-red-500 disabled:bg-slate-600 py-3 rounded text-sm font-bold shadow-lg shadow-red-900/50">BANを実行する</button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {showMailbox && (
-        <div className="absolute inset-0 bg-black/80 z-50 flex items-center justify-center p-4">
-          <div className="bg-slate-800 border border-slate-700 rounded-xl p-6 w-full max-w-lg shadow-2xl flex flex-col max-h-[80vh]">
-            <div className="flex justify-between items-center mb-4"><h3 className="text-xl font-bold">✉️ 受信箱</h3><button onClick={() => setShowMailbox(false)} className="text-xl">×</button></div>
-            <div className="h-[400px] overflow-y-scroll space-y-3 pr-2">
-              {myNotifications.length === 0 ? <p className="text-sm text-slate-500 text-center py-8">お知らせはありません。</p> : myNotifications.map(n => (
-                <div key={n.id} className={`p-4 rounded-lg border ${n.isRead ? 'bg-slate-900 border-slate-700' : 'bg-slate-800 border-blue-500/50'}`}>
-                  <h4 className="font-bold text-sm">{n.title}</h4>
-                  <p className="text-xs text-slate-300 whitespace-pre-wrap mt-2">{n.message}</p>
-                  {!n.isRead && <button onClick={() => markNotificationAsRead(n.id)} className="text-[10px] bg-slate-700 px-3 py-1 rounded mt-3">既読にする</button>}
-                </div>
-              ))}
-            </div>
           </div>
         </div>
       )}
@@ -1533,7 +1427,7 @@ ${roleInstruction}`;
               </div>
             </div>
             
-            <div className="flex flex-wrap items-center gap-2 justify-end max-w-md">
+            <div className="flex flex-wrap items-center gap-2 justify-end">
               {joinedCharacter && (
                 <>
                   <button onClick={() => rollDice(joinedCharacter.san, "SAN", true)} className="bg-cyan-700 hover:bg-cyan-600 text-white text-[10px] px-2 py-1.5 rounded font-bold shadow-lg">🎲 SAN({joinedCharacter.san}%)</button>
@@ -1544,8 +1438,13 @@ ${roleInstruction}`;
                 </>
               )}
 
-              {/* ★ チーム分け開始ボタン（ホストのみ・AIから提案がなくても手動で押せる） */}
-              {currentUser?.id === activeRoom.host_id && activeRoom.status === "playing" && !isScenarioEnded && !isSplitMode && (
+              {/* ★ ゲーム開始ボタン */}
+              {(currentUser?.id === activeRoom.host_id || currentUser?.handleName === activeRoom.host_name) && activeRoom.status === "recruiting" && joinedCharacter && (
+                <button onClick={startGame} className="bg-emerald-600 hover:bg-emerald-500 text-white text-[10px] font-bold px-4 py-2 rounded animate-pulse ml-2 shadow-lg shadow-emerald-900/50">▶ ゲーム開始</button>
+              )}
+
+              {/* ★ チーム分け開始ボタン */}
+              {(currentUser?.id === activeRoom.host_id || currentUser?.handleName === activeRoom.host_name) && activeRoom.status === "playing" && !isScenarioEnded && !isSplitMode && (
                  <button onClick={startSplitting} className="bg-blue-700 hover:bg-blue-600 text-white text-[10px] font-bold px-3 py-1.5 rounded shadow-lg ml-2">👥 チーム分け</button>
               )}
             </div>
@@ -1553,7 +1452,6 @@ ${roleInstruction}`;
 
           <div className="flex-1 overflow-y-scroll space-y-3 p-4 bg-slate-800/80 rounded-xl border border-slate-700 mb-3 min-h-0">
             {messages.filter(msg => {
-              // チーム分割中は、メインルームの過去ログ ＋ 自分のチームのログ ＋ システムログ だけ表示
               if (msg.type === "system") return true;
               if (!isSplitMode) return msg.channel === chatTab;
               return (!msg.sceneId || msg.sceneId === 'scene_main' || msg.sceneId === myScene.id) && msg.channel === chatTab;
@@ -1602,7 +1500,6 @@ ${roleInstruction}`;
               )
             )}
 
-            {/* ★ チーム合流待ちのバナー表示 */}
             {isSplitMode && myScene.isMerged && activeRoom.status === 'playing' && (
               <div className="bg-indigo-900/50 border border-indigo-500 rounded p-2 text-center text-indigo-300 text-sm font-bold mb-2">
                 ⏳ {myScene.name}チームの行動を終了し、他チームの合流を待っています... (相談チャットのみ使用可能)
@@ -1655,9 +1552,9 @@ ${roleInstruction}`;
                     <input type="text" value={input} onChange={(e) => setInput(e.target.value)} onKeyDown={(e) => e.key === "Enter" && handleSend()} 
                       placeholder={chatTab === "story" ? "例：鍵穴を覗き込みます。" : (chatTab === "consult" ? (consultWithAI && !isScenarioEnded ? "例：ねえ、どうしようか？ (AI相棒が返答します)" : "例：PL同士の作戦会議メモ (AIは反応しません)") : "例：今の状況でもう一度目星は振れますか？")} 
                       className="flex-1 bg-slate-900 border border-slate-600 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-emerald-500 transition" 
-                      disabled={Boolean(isSplitMode && myScene.isMerged === true && chatTab !== 'consult')}
+                      disabled={isChatDisabled}
                     />
-                    <button onClick={handleSend} disabled={Boolean(isLoading || (isSplitMode && myScene.isMerged === true && chatTab !== 'consult'))} className={`text-white px-6 py-2 rounded-lg text-sm font-bold shadow transition ${chatTab === "story" ? "bg-emerald-600 hover:bg-emerald-500" : (chatTab === "consult" ? "bg-indigo-600 hover:bg-indigo-500" : "bg-amber-600 hover:bg-amber-500")} disabled:opacity-50`}>送信</button>
+                    <button onClick={handleSend} disabled={isChatDisabled} className={`text-white px-6 py-2 rounded-lg text-sm font-bold shadow transition ${chatTab === "story" ? "bg-emerald-600 hover:bg-emerald-500" : (chatTab === "consult" ? "bg-indigo-600 hover:bg-indigo-500" : "bg-amber-600 hover:bg-amber-500")} disabled:opacity-50`}>送信</button>
                   </div>
                 </>
               )
