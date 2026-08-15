@@ -7,7 +7,16 @@ type Props = {
   currentUser: UserProfile;
   joinedCharacter: Character | null;
   leaveGame: () => Promise<void>;
-  setReportTarget: React.Dispatch<React.SetStateAction<{type: 'user' | 'scenario', id: string, name: string} | null>>;
+  // ★ 通報の型を拡張
+  setReportTarget: React.Dispatch<React.SetStateAction<{
+    type: 'user' | 'scenario' | 'room';
+    id: string;
+    name: string;
+    roomId?: string;
+    scenarioId?: string;
+    scenarioName?: string;
+    availableUsers?: { id: string, name: string }[];
+  } | null>>;
   rollDice: (targetValue: number, label: string, is1d100: boolean) => Promise<void>;
   startGame: () => Promise<void>;
   startSplitting: () => void;
@@ -116,7 +125,26 @@ export default function GameView({
       <header className="bg-slate-800 border border-slate-700 rounded-xl p-3 mb-3 flex justify-between items-center shadow-md">
         <div className="flex items-center gap-4">
           <button onClick={leaveGame} className="text-xs bg-slate-700 hover:bg-slate-600 text-white px-3 py-1.5 rounded font-bold shadow">🚪 離脱 / 終了</button>
-          <button onClick={() => setReportTarget({type: 'scenario', id: activeRoom.scenario_id, name: activeRoom.scenario?.title || ""})} className="text-xs bg-slate-900 hover:bg-red-900/50 text-red-400 border border-slate-700 px-3 py-1.5 rounded font-bold">🚨 通報</button>
+          
+          {/* ★ 通報ボタンの機能を強化 */}
+          <button onClick={() => {
+            const users = Object.entries(activeRoom.joined_users || {})
+              .filter(([userId]) => userId !== currentUser.id)
+              .map(([userId, charId]) => {
+                const charName = activeRoom.scenario?.presetCharacters.find(c => c.id === charId)?.name || "不明";
+                return { id: userId, name: charName };
+              });
+            
+            setReportTarget({
+              type: 'room', 
+              id: activeRoom.id, 
+              name: "この部屋の進行・チャット全般", 
+              roomId: activeRoom.id,
+              scenarioId: activeRoom.scenario_id,
+              scenarioName: activeRoom.scenario?.title || "",
+              availableUsers: users
+            });
+          }} className="text-xs bg-slate-900 hover:bg-red-900/50 text-red-400 border border-slate-700 px-3 py-1.5 rounded font-bold">🚨 通報</button>
           
           <div className="flex flex-col ml-4">
             <span className="text-[10px] text-blue-400 font-bold border border-blue-500/50 bg-blue-900/30 px-2 py-0.5 rounded w-fit mb-1">
@@ -165,7 +193,7 @@ export default function GameView({
           const displayText = msg.text.replace(/\[SPLIT_PROPOSAL:.*?\]/, '').replace('[SCENARIO_END]', '').trim();
           if (!displayText && !isSystem) return null;
           
-          // ★ アバター画像の取得
+          // ★ アバター画像の取得（維持）
           let messageAvatar = "";
           if (!isSystem && activeRoom.scenario?.presetCharacters) {
               const character = activeRoom.scenario.presetCharacters.find(c => c.name === msg.charName);
