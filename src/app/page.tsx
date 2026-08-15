@@ -8,6 +8,7 @@ import {
   Character, Scenario, Scene, Room, Message, ChatTab 
 } from "../types";
 
+// ★ 分割したコンポーネントのインポート
 import LoginView from "../components/views/LoginView";
 import BannedView from "../components/views/BannedView";
 import MaintenanceView from "../components/views/MaintenanceView";
@@ -16,9 +17,6 @@ import AdminView from "../components/views/AdminView";
 import ScenarioEditView from "../components/views/ScenarioEditView";
 import LobbyView from "../components/views/LobbyView";
 import GameView from "../components/views/GameView";
-
-const NO_IMAGE_SCENARIO = "https://images.unsplash.com/photo-1614729939124-03290b5609ce?auto=format&fit=crop&w=400&q=80";
-const DEFAULT_AVATAR = "https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&w=150&q=80";
 
 export default function Home() {
   const [currentView, setCurrentView] = useState<ViewState>("login");
@@ -226,7 +224,7 @@ export default function Home() {
       profileData = { id: data.id, handleName: data.handle_name, avatarUrl: data.avatar_url, bio: data.bio, discordId: data.discord_id, ratingSum: data.rating_sum || 0, ratingCount: data.rating_count || 0, isAdmin: data.is_admin || false, isBanned: data.is_banned || false, email: data.email };
       if (data.email !== emailStr) await supabase.from('profiles').update({ email: emailStr }).eq('id', userId);
     } else {
-      const newProfile = { id: userId, handle_name: emailStr.split("@")[0], avatar_url: DEFAULT_AVATAR, bio: "よろしくお願いします。", discord_id: "", rating_sum: 0, rating_count: 0, is_admin: false, is_banned: false, email: emailStr };
+      const newProfile = { id: userId, handle_name: emailStr.split("@")[0], avatar_url: "https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&w=150&q=80", bio: "よろしくお願いします。", discord_id: "", rating_sum: 0, rating_count: 0, is_admin: false, is_banned: false, email: emailStr };
       await supabase.from('profiles').insert(newProfile);
       profileData = { id: userId, handleName: newProfile.handle_name, avatarUrl: newProfile.avatar_url, bio: newProfile.bio, discordId: newProfile.discord_id, ratingSum: 0, ratingCount: 0, isAdmin: false, isBanned: false, email: emailStr };
     }
@@ -362,48 +360,6 @@ export default function Home() {
     else { alert("エラーが発生しました: " + error.message); }
   };
 
-  const handleBuyInEvaluation = async () => {
-    if (!activeRoom || !activeRoom.scenario || !currentUser) return;
-    const scenario = activeRoom.scenario;
-    if (scenario.price && scenario.price > 0) {
-      if (!confirm(`【決済システムへ遷移します】\n金額: ${scenario.price} G\n（※現在はデモのため、OKを押すと決済完了として処理を進めます。）`)) return;
-    }
-    const currentTickets = scenario.purchasedTickets || {};
-    const addLimit = scenario.playLimit || 1;
-    const newTickets = { ...currentTickets, [currentUser.id]: (currentTickets[currentUser.id] || 0) + addLimit };
-    const { error } = await supabase.from('scenarios').update({ purchased_tickets: newTickets }).eq('id', scenario.id);
-    if (!error) { alert(`「${scenario.title}」を購入しました！\nマイ・シナリオにプレイ権が ${addLimit} 回分追加されました。`); submitEvaluation(); } 
-    else { alert("エラーが発生しました: " + error.message); }
-  };
-
-  const buyScenario = async (scenario: Scenario) => {
-    if (!currentUser) return;
-    if (confirm(`「${scenario.title}」のプレイチケットを ${scenario.price || 500} G で購入しますか？\n（※現在はテスト用のデモ決済です）`)) {
-      const currentTickets = scenario.purchasedTickets || {};
-      const addLimit = scenario.playLimit || 1;
-      const newTickets = { ...currentTickets, [currentUser.id]: (currentTickets[currentUser.id] || 0) + addLimit };
-      const { error } = await supabase.from('scenarios').update({ purchased_tickets: newTickets }).eq('id', scenario.id);
-      if (!error) { alert(`プレイチケット（${addLimit}回分）の購入が完了しました！\n「マイ・シナリオ」から部屋を立てることができます。`); setShopScenarioId(""); await fetchData(); } 
-      else { alert("エラーが発生しました: " + error.message); }
-    }
-  };
-
-  const handleGiftTicket = async (scenario: Scenario) => {
-    const targetUserId = giftInputs[scenario.id];
-    if (!scenario || !targetUserId || !currentUser) return;
-    const isAuthor = scenario.authorId === currentUser.id;
-    const giftAmount = isAuthor ? (scenario.giftLimit || 1) : 1;
-    const currentTickets = scenario.purchasedTickets || {};
-    let myTickets = currentTickets[currentUser.id] || 0;
-    if (!isAuthor && myTickets < giftAmount) { alert("プレゼントするチケットがありません。"); return; }
-    const newTickets = { ...currentTickets };
-    if (!isAuthor) newTickets[currentUser.id] = myTickets - giftAmount;
-    newTickets[targetUserId] = (newTickets[targetUserId] || 0) + giftAmount;
-    const { error } = await supabase.from('scenarios').update({ purchased_tickets: newTickets }).eq('id', scenario.id);
-    if (!error) { alert(`対象のユーザーにプレイチケットを ${giftAmount} 回分プレゼントしました！`); setGiftInputs({ ...giftInputs, [scenario.id]: "" }); await fetchData(); } 
-    else { alert("エラーが発生しました: " + error.message); }
-  };
-
   const fetchAdminData = async () => {
     const { data: usersData } = await supabase.from('profiles').select('*').order('created_at', { ascending: false });
     if (usersData) { setAllUsers(usersData.map((d: any) => ({ id: d.id, handleName: d.handle_name, avatarUrl: d.avatar_url, bio: d.bio, discordId: d.discord_id, ratingSum: d.rating_sum || 0, ratingCount: d.rating_count || 0, isAdmin: d.is_admin || false, isBanned: d.is_banned || false, email: d.email }))); }
@@ -466,7 +422,6 @@ export default function Home() {
 
   const resolveReport = async (reportId: string) => { await supabase.from('reports').update({ status: 'resolved' }).eq('id', reportId); fetchAdminData(); };
   const submitAppeal = async () => { if(!currentUser || !appealText) return; await supabase.from('ban_appeals').insert({ user_id: currentUser.id, reason: "不明", appeal_text: appealText, status: 'appealing' }); alert("調査依頼を送信しました。"); setAppealText(""); };
-  const sendWarningNotification = async () => { if (!warningModalUser || !warningTitle || !warningText) return; await supabase.from('notifications').insert({ user_id: warningModalUser.id, title: warningTitle, message: warningText }); alert("警告通知を送信しました。"); setWarningModalUser(null); setWarningTitle(""); setWarningText(""); };
   const markNotificationAsRead = async (notifId: string) => { await supabase.from('notifications').update({ is_read: true }).eq('id', notifId); setMyNotifications(myNotifications.map(n => n.id === notifId ? { ...n, isRead: true } : n)); };
 
   const startSplitting = () => {
@@ -522,11 +477,9 @@ export default function Home() {
 
     await pushMessage(activeRoom.id, { sender: "gm", text: `【システム】全チームが合流しました！`, type: "system", sceneId: 'scene_main', channel: "system" });
     
-    // ★ AIとの通信処理を新しく作ったファイル（ai.ts）経由に修正
     const extraUserContext = `【システムコマンド】全チームの別行動が終了し、一箇所に合流しました。これまでの各チームの報告を踏まえ、合流時の情景描写と今後の展開を提示してください。`;
     await callAIGM(extraUserContext, "story");
   };
-
 
   const callAIGM = async (extraUserContext?: string, targetTab: ChatTab = "story") => {
     if (!activeRoom || !joinedCharacter || !myScene) return;
@@ -600,7 +553,6 @@ ${isSplitMode && myScene.id !== 'scene_main' ? `※現在別行動中です。�
 【AI相棒】\n${aiPlayersText}
 ${roleInstruction}`;
 
-      // ★ 新しく作った ai.ts の関数を呼び出す
       const aiText = await generateAIResponse(sysPrompt, history);
 
       const splitMatch = aiText.match(/\[SPLIT_PROPOSAL:\s*(.+?)\]/);
@@ -849,7 +801,6 @@ ${roleInstruction}`;
       const logText = targetMessages.map(m => `${m.charName || (m.sender === 'gm' ? 'GM' : 'システム')}: ${m.text.replace(/\[SPLIT_PROPOSAL:.*?\]/, '').replace('[SCENARIO_END]', '').trim()}`).join('\n');
       
       try {
-        // ★ 新しく作った ai.ts の関数を呼び出す
         const generatedText = await generateAITextWithPrompt(prompt + "\n\n【チャットログ】\n" + logText);
         contentHtml = `<div style="white-space: pre-wrap; line-height: 1.8; color: #333; font-size: 14px;">${generatedText}</div>`;
       } catch(e: any) {
@@ -888,7 +839,7 @@ ${roleInstruction}`;
 
   const unreadCount = myNotifications.filter(n => !n.isRead).length;
 
-  const isChatDisabled = Boolean(isLoading || (isSplitMode && myScene?.isMerged === true && chatTab !== 'consult'));
+  const isChatDisabled = Boolean(isLoading || (isSplitMode && myScene && myScene.isMerged === true && chatTab !== 'consult'));
 
   return (
     <main className="h-screen w-full bg-slate-900 text-slate-100 flex flex-col font-sans overflow-hidden">
@@ -933,7 +884,91 @@ ${roleInstruction}`;
         />
       )}
 
-      {/* ユーザー・シナリオ通報モーダル */}
+      {currentView === "lobby" && currentUser && (
+        <LobbyView 
+          currentUser={currentUser}
+          handleLogout={handleLogout}
+          setShowMailbox={setShowMailbox}
+          unreadCount={unreadCount}
+          secretRoomIdSearch={secretRoomIdSearch}
+          setSecretRoomIdSearch={setSecretRoomIdSearch}
+          rooms={rooms}
+          searchedSecretRoom={searchedSecretRoom}
+          setSearchedSecretRoom={setSearchedSecretRoom}
+          executeJoinRoom={executeJoinRoom}
+          availableRooms={availableRooms}
+          spectateRoom={spectateRoom}
+          setEditingScenario={setEditingScenario}
+          setCurrentView={setCurrentView}
+          createdScenarios={createdScenarios}
+          deleteScenario={deleteScenario}
+          setRoomConfigModal={setRoomConfigModal}
+        />
+      )}
+
+      {currentView === "scenarioEdit" && editingScenario && (
+        <ScenarioEditView 
+          editingScenario={editingScenario}
+          setEditingScenario={setEditingScenario}
+          editingCharIndex={editingCharIndex}
+          setEditingCharIndex={setEditingCharIndex}
+          saveScenario={saveScenario}
+          setCurrentView={setCurrentView}
+        />
+      )}
+
+      {currentView === "game" && activeRoom && myScene && (
+        <GameView 
+          activeRoom={activeRoom}
+          myScene={myScene}
+          currentUser={currentUser!}
+          joinedCharacter={joinedCharacter}
+          leaveGame={leaveGame}
+          setReportTarget={setReportTarget as React.Dispatch<React.SetStateAction<{type: 'user' | 'scenario', id: string, name: string} | null>>}
+          rollDice={rollDice}
+          startGame={startGame}
+          startSplitting={startSplitting}
+          isSplitMode={isSplitMode}
+          chatTab={chatTab}
+          messages={messages}
+          isLoading={isLoading}
+          isScenarioEnded={isScenarioEnded}
+          setCurrentView={setCurrentView}
+          endGame={endGame}
+          input={input}
+          setInput={setInput}
+          handleSend={handleSend}
+          handleTabClick={handleTabClick}
+          unreadIndicators={unreadIndicators}
+          consultWithAI={consultWithAI}
+          setConsultWithAI={setConsultWithAI}
+          isChatDisabled={isChatDisabled}
+          mergeTeam={mergeTeam}
+          draftAction={draftAction}
+          setDraftAction={setDraftAction}
+          draftMembers={draftMembers}
+          setDraftMembers={setDraftMembers}
+          draftLeader={draftLeader}
+          setDraftLeader={setDraftLeader}
+          addTeamDraft={addTeamDraft}
+          finishSplitting={finishSplitting}
+        />
+      )}
+
+      {currentView === "evaluation" && activeRoom && (
+        <EvaluationView 
+          activeRoom={activeRoom}
+          ratingScenario={ratingScenario}
+          setRatingScenario={setRatingScenario}
+          ratingGM={ratingGM}
+          setRatingGM={setRatingGM}
+          submitEvaluation={submitEvaluation}
+          exportToPDF={exportToPDF}
+          isExporting={isExporting}
+        />
+      )}
+
+      {/* モーダル群（表示用） */}
       {reportTarget && (
         <div className="absolute inset-0 bg-black/80 z-50 flex items-center justify-center p-4">
           <div className="bg-slate-800 border border-red-700/50 rounded-xl p-6 w-full max-w-lg shadow-2xl">
@@ -950,7 +985,6 @@ ${roleInstruction}`;
         </div>
       )}
 
-      {/* シナリオ修正完了申請モーダル */}
       {scenarioAppealTarget && (
         <div className="absolute inset-0 bg-black/80 z-50 flex items-center justify-center p-4">
           <div className="bg-slate-800 border border-amber-700/50 rounded-xl p-6 w-full max-w-lg shadow-2xl">
@@ -967,7 +1001,6 @@ ${roleInstruction}`;
         </div>
       )}
 
-      {/* シナリオBAN実行モーダル (Admin) */}
       {banTargetScenario && (
         <div className="absolute inset-0 bg-black/80 z-50 flex items-center justify-center p-4">
           <div className="bg-slate-800 border border-slate-700 rounded-xl p-6 w-full max-w-lg shadow-2xl">
@@ -991,7 +1024,6 @@ ${roleInstruction}`;
         </div>
       )}
 
-      {/* ユーザーBAN実行モーダル (Admin) */}
       {banTargetUser && (
         <div className="absolute inset-0 bg-black/80 z-50 flex items-center justify-center p-4">
           <div className="bg-slate-800 border border-red-700/50 rounded-xl p-6 w-full max-w-lg shadow-2xl">
@@ -1061,89 +1093,6 @@ ${roleInstruction}`;
         </div>
       )}
 
-      {currentView === "lobby" && currentUser && (
-        <LobbyView 
-          currentUser={currentUser}
-          handleLogout={handleLogout}
-          setShowMailbox={setShowMailbox}
-          unreadCount={unreadCount}
-          secretRoomIdSearch={secretRoomIdSearch}
-          setSecretRoomIdSearch={setSecretRoomIdSearch}
-          rooms={rooms}
-          searchedSecretRoom={searchedSecretRoom}
-          setSearchedSecretRoom={setSearchedSecretRoom}
-          executeJoinRoom={executeJoinRoom}
-          availableRooms={availableRooms}
-          spectateRoom={spectateRoom}
-          setEditingScenario={setEditingScenario}
-          setCurrentView={setCurrentView}
-          createdScenarios={createdScenarios}
-          deleteScenario={deleteScenario}
-          setRoomConfigModal={setRoomConfigModal}
-        />
-      )}
-
-      {currentView === "scenarioEdit" && editingScenario && (
-        <ScenarioEditView 
-          editingScenario={editingScenario}
-          setEditingScenario={setEditingScenario}
-          editingCharIndex={editingCharIndex}
-          setEditingCharIndex={setEditingCharIndex}
-          saveScenario={saveScenario}
-          setCurrentView={setCurrentView}
-        />
-      )}
-
-      {currentView === "game" && activeRoom && myScene && (
-        <GameView 
-          activeRoom={activeRoom}
-          myScene={myScene}
-          currentUser={currentUser!}
-          joinedCharacter={joinedCharacter}
-          leaveGame={leaveGame}
-          setReportTarget={setReportTarget}
-          rollDice={rollDice}
-          startGame={startGame}
-          startSplitting={startSplitting}
-          isSplitMode={isSplitMode}
-          chatTab={chatTab}
-          messages={messages}
-          isLoading={isLoading}
-          isScenarioEnded={isScenarioEnded}
-          setCurrentView={setCurrentView}
-          endGame={endGame}
-          input={input}
-          setInput={setInput}
-          handleSend={handleSend}
-          handleTabClick={handleTabClick}
-          unreadIndicators={unreadIndicators}
-          consultWithAI={consultWithAI}
-          setConsultWithAI={setConsultWithAI}
-          isChatDisabled={isChatDisabled}
-          mergeTeam={mergeTeam}
-          draftAction={draftAction}
-          setDraftAction={setDraftAction}
-          draftMembers={draftMembers}
-          setDraftMembers={setDraftMembers}
-          draftLeader={draftLeader}
-          setDraftLeader={setDraftLeader}
-          addTeamDraft={addTeamDraft}
-          finishSplitting={finishSplitting}
-        />
-      )}
-
-      {currentView === "evaluation" && activeRoom && (
-        <EvaluationView 
-          activeRoom={activeRoom}
-          ratingScenario={ratingScenario}
-          setRatingScenario={setRatingScenario}
-          ratingGM={ratingGM}
-          setRatingGM={setRatingGM}
-          submitEvaluation={submitEvaluation}
-          exportToPDF={exportToPDF}
-          isExporting={isExporting}
-        />
-      )}
     </main>
   );
 }
