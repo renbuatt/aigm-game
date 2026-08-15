@@ -70,7 +70,7 @@ export default function Home() {
 
   const [banTargetUser, setBanTargetUser] = useState<UserProfile | null>(null);
   const [banReason, setBanReason] = useState("");
-  const [banAppeals, setBanAppeals] = useState<BanAppeal[]>([]);
+  const [banAppeals, setBanAppappeals] = useState<BanAppeal[]>([]);
   const [appealText, setAppealText] = useState("");
 
   const [userSearchQuery, setUserSearchQuery] = useState("");
@@ -81,7 +81,6 @@ export default function Home() {
 
   const [reports, setReports] = useState<Report[]>([]);
   
-  // ★ 通報ターゲットの型を拡張
   const [reportTarget, setReportTarget] = useState<{
     type: 'user' | 'scenario' | 'room';
     id: string;
@@ -357,14 +356,13 @@ export default function Home() {
     setActiveRoom(null); setJoinedCharacter(null); await fetchData(); setCurrentView("lobby");
   };
 
-  // ★ 通報送信ロジックの修正（room_idを含める）
   const submitUserReport = async () => {
     if (!currentUser || !reportTarget || !reportReason.trim()) return;
     const { error } = await supabase.from('reports').insert({
       reporter_id: currentUser.id, 
       target_type: reportTarget.type, 
       target_id: reportTarget.id, 
-      room_id: reportTarget.roomId || null, // 追加
+      room_id: reportTarget.roomId || null,
       reason: reportReason
     });
     if (!error) { 
@@ -391,10 +389,9 @@ export default function Home() {
     if (appealsData) { setBanAppeals(appealsData.map((d: any) => ({ id: d.id, userId: d.user_id, reason: d.reason, appealText: d.appeal_text, status: d.status, createdAt: d.created_at }))); }
     const { data: reportsData } = await supabase.from('reports').select('*').order('created_at', { ascending: false });
     if (reportsData) { 
-      // ★ AdminView に room_id を渡す
       setReports(reportsData.map((d: any) => ({ 
         id: d.id, reporterId: d.reporter_id, targetType: d.target_type, targetId: d.target_id, 
-        roomId: d.room_id || null, // ★ 追加
+        roomId: d.room_id || null,
         reason: d.reason, status: d.status, createdAt: d.created_at 
       }))); 
     }
@@ -875,6 +872,7 @@ ${roleInstruction}`;
   return (
     <main className="h-screen w-full bg-slate-900 text-slate-100 flex flex-col font-sans overflow-hidden">
       
+      {/* 画面群（1つずつのみ表示） */}
       {currentView === "admin" && currentUser?.isAdmin && (
         <AdminView 
           isMaintenance={isMaintenance}
@@ -956,7 +954,7 @@ ${roleInstruction}`;
           currentUser={currentUser!}
           joinedCharacter={joinedCharacter}
           leaveGame={leaveGame}
-          setReportTarget={setReportTarget as React.Dispatch<React.SetStateAction<any>>}
+          setReportTarget={setReportTarget as React.Dispatch<React.SetStateAction<{type: 'user' | 'scenario' | 'room', id: string, name: string, roomId?: string, scenarioId?: string, scenarioName?: string, availableUsers?: { id: string, name: string }[]} | null>>}
           rollDice={rollDice}
           startGame={startGame}
           startSplitting={startSplitting}
@@ -1000,9 +998,10 @@ ${roleInstruction}`;
         />
       )}
 
-      {/* ★ 改善された通報モーダルUI */}
+
+      {/* モーダル群（fixed z-[60]で最前面に完全固定） */}
       {reportTarget && (
-        <div className="absolute inset-0 bg-black/80 z-50 flex items-center justify-center p-4">
+        <div className="fixed inset-0 bg-black/80 z-[60] flex items-center justify-center p-4">
           <div className="bg-slate-800 border border-red-700/50 rounded-xl p-6 w-full max-w-lg shadow-2xl">
             <h3 className="text-xl font-bold text-red-400 mb-4">🚩 通報する</h3>
             
@@ -1047,7 +1046,7 @@ ${roleInstruction}`;
       )}
 
       {scenarioAppealTarget && (
-        <div className="absolute inset-0 bg-black/80 z-50 flex items-center justify-center p-4">
+        <div className="fixed inset-0 bg-black/80 z-[60] flex items-center justify-center p-4">
           <div className="bg-slate-800 border border-amber-700/50 rounded-xl p-6 w-full max-w-lg shadow-2xl">
             <h3 className="text-xl font-bold text-amber-400 mb-2">📝 再審査（修正完了）の申請</h3>
             <p className="text-xs text-slate-400 mb-4">対象シナリオ: {scenarioAppealTarget.title}</p>
@@ -1063,7 +1062,7 @@ ${roleInstruction}`;
       )}
 
       {banTargetScenario && (
-        <div className="absolute inset-0 bg-black/80 z-50 flex items-center justify-center p-4">
+        <div className="fixed inset-0 bg-black/80 z-[60] flex items-center justify-center p-4">
           <div className="bg-slate-800 border border-slate-700 rounded-xl p-6 w-full max-w-lg shadow-2xl">
             <h3 className="text-xl font-bold text-white mb-2">⚙️ シナリオの管理措置</h3>
             <p className="text-xs text-slate-400 mb-4">対象: {banTargetScenario.title}</p>
@@ -1086,7 +1085,7 @@ ${roleInstruction}`;
       )}
 
       {banTargetUser && (
-        <div className="absolute inset-0 bg-black/80 z-50 flex items-center justify-center p-4">
+        <div className="fixed inset-0 bg-black/80 z-[60] flex items-center justify-center p-4">
           <div className="bg-slate-800 border border-red-700/50 rounded-xl p-6 w-full max-w-lg shadow-2xl">
             <h3 className="text-xl font-bold text-red-500 mb-2">⛔ ユーザーをBANする</h3>
             <p className="text-xs text-slate-400 mb-4">対象: {banTargetUser.handleName} ({banTargetUser.email})</p>
@@ -1102,7 +1101,7 @@ ${roleInstruction}`;
       )}
 
       {showMailbox && (
-        <div className="absolute inset-0 bg-black/80 z-50 flex items-center justify-center p-4">
+        <div className="fixed inset-0 bg-black/80 z-[60] flex items-center justify-center p-4">
           <div className="bg-slate-800 border border-slate-700 rounded-xl p-6 w-full max-w-lg shadow-2xl flex flex-col max-h-[80vh]">
             <div className="flex justify-between items-center mb-4"><h3 className="text-xl font-bold">✉️ 受信箱</h3><button onClick={() => setShowMailbox(false)} className="text-xl">×</button></div>
             <div className="h-[400px] overflow-y-scroll space-y-3 pr-2">
@@ -1113,6 +1112,42 @@ ${roleInstruction}`;
                   {!n.isRead && <button onClick={() => markNotificationAsRead(n.id)} className="text-[10px] bg-slate-700 px-3 py-1 rounded mt-3">既読にする</button>}
                 </div>
               ))}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {roomConfigModal && (
+        <div className="fixed inset-0 bg-black/80 z-[60] flex items-center justify-center p-4">
+          <div className="bg-slate-800 border border-emerald-700/50 rounded-xl p-6 w-full max-w-lg shadow-2xl">
+            <h3 className="text-xl font-bold text-emerald-400 mb-4">🚪 部屋の作成: {roomConfigModal.scenario.title}</h3>
+            
+            <div className="space-y-4 mb-6">
+              <div>
+                <label className="text-xs text-slate-400 block mb-1">使用するキャラクター <span className="text-red-400">*</span></label>
+                <select value={roomConfigModal.charId} onChange={(e) => setRoomConfigModal({...roomConfigModal, charId: e.target.value})} className="w-full bg-slate-900 border border-slate-700 rounded p-2 text-sm text-white">
+                  <option value="" disabled>選択してください</option>
+                  {roomConfigModal.scenario.presetCharacters?.map(c => <option key={c.id} value={c.id}>{c.name} ({c.job})</option>)}
+                </select>
+              </div>
+
+              <div>
+                <label className="text-xs text-slate-400 block mb-1">公開設定</label>
+                <div className="flex gap-4">
+                  <label className="flex items-center gap-2 text-sm"><input type="radio" checked={roomConfigModal.privacy === 'open'} onChange={() => setRoomConfigModal({...roomConfigModal, privacy: 'open'})} /> 🔓 オープン（誰でも観戦可能）</label>
+                  <label className="flex items-center gap-2 text-sm"><input type="radio" checked={roomConfigModal.privacy === 'secret'} onChange={() => setRoomConfigModal({...roomConfigModal, privacy: 'secret'})} /> 🔒 シークレット（IDを知る人のみ）</label>
+                </div>
+              </div>
+
+              <div>
+                <label className="text-xs text-slate-400 block mb-1">ひとことメッセージ</label>
+                <input type="text" value={roomConfigModal.message} onChange={(e) => setRoomConfigModal({...roomConfigModal, message: e.target.value})} placeholder="例：初心者歓迎！ゆっくり遊びましょう" className="w-full bg-slate-900 border border-slate-700 rounded p-2 text-sm text-white" />
+              </div>
+            </div>
+
+            <div className="flex gap-4">
+              <button onClick={() => setRoomConfigModal(null)} className="flex-1 bg-slate-700 hover:bg-slate-600 py-3 rounded text-sm font-bold">キャンセル</button>
+              <button onClick={executeCreateRoom} disabled={!roomConfigModal.charId} className="flex-1 bg-emerald-600 hover:bg-emerald-500 disabled:bg-slate-600 py-3 rounded text-sm font-bold shadow-lg shadow-emerald-900/50">作成して入室</button>
             </div>
           </div>
         </div>
