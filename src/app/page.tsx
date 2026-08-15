@@ -481,6 +481,23 @@ export default function Home() {
 
   const finishSplitting = async () => {
     if (!activeRoom) return;
+    
+    const validMembers = draftMembers.filter(m => m !== "");
+    if (draftAction && validMembers.length > 0) {
+       if(confirm("作成途中のチームがあります。このチームも追加してから編成を完了しますか？\n（キャンセルを押すと、作成途中のチームは破棄されます）")) {
+           if (!draftLeader && validMembers.length > 0) { alert("リーダー（または代表者）を選択してください。"); return; }
+           
+           const newScene: Scene = {
+             id: `team_${Date.now()}`, name: draftAction, memberIds: validMembers, leaderId: draftLeader, isMerged: false
+           };
+           const updatedScenes = [...activeRoom.scenes, newScene];
+           await supabase.from('rooms').update({ scenes: updatedScenes, status: 'playing' }).eq('id', activeRoom.id);
+           setActiveRoom({ ...activeRoom, scenes: updatedScenes, status: 'playing' });
+           await pushMessage(activeRoom.id, { sender: "gm", text: `【システム】チーム分けが完了しました！各チームごとに独立して行動・相談を行ってください。`, type: "system", sceneId: "scene_main", channel: "system" });
+           return;
+       }
+    }
+
     await supabase.from('rooms').update({ status: 'playing' }).eq('id', activeRoom.id);
     setActiveRoom({ ...activeRoom, status: 'playing' });
     await pushMessage(activeRoom.id, { sender: "gm", text: `【システム】チーム分けが完了しました！各チームごとに独立して行動・相談を行ってください。`, type: "system", sceneId: "scene_main", channel: "system" });
@@ -537,9 +554,6 @@ export default function Home() {
         : "なし（ソロプレイ）";
 
       let roleInstruction = "";
-      
-      // ★ ここが一番の修正ポイント！
-      // 「相談（consult）」タブの時は、AIにシナリオのプロット（真相）をカンニングさせないように隠します。
       let scenarioPlotText = activeRoom.scenario?.plot || "";
 
       if (targetTab === "story") {
@@ -547,27 +561,21 @@ export default function Home() {
 【重要：GMの絶対ルール（行動判定とゲーム性の担保）】
 1. PLたちが明確な「行動宣言」を出した時のみ物語を進行させてください。
 2. リスクや不確実性を伴う行動には必ずダイスロールを要求し、結果が出るまで描写を待機してください。
-3. 【行動のヒント禁止】PLに具体的な行動の例や選択肢（例：「〇〇して逃げる」「〇〇を攻撃する」など）を絶対に提示しないでください。PL自身に考えさせてください。
+3. 【行動のヒント禁止】PLに具体的な行動の例や選択肢を絶対に提示しないでください。PL自身に考えさせてください。
 4. 【ダイスの自己処理禁止】GM自身がダイスを振ったり、PLのSAN値やステータスを勝手に推測・仮定してはいけません。必ずプロンプトに記載された【人間PL】の正確な数値を使用し、PLが画面のダイスボタンを振って結果が送信されるのを待機してください。
-5. 【安易な成功・AIの忖度厳禁（最重要）】PLの行動が論理的に不自然であったり、シナリオの解決条件（例：特定のアイテムを『燃やす』『特定の手順で破壊する』など）を正確に満たしていない場合は、絶対に成功させてはいけません。「ただ投げつけただけ」「間違ったアイテムを使った」などの甘いプレイには、容赦なく「効果がなかった」「状況が悪化した（敵の反撃やダメージなど）」として厳しく処理してください。AIとしてのPLへの忖度や接待プレイは、TRPGの緊迫感を損なうため固く禁じます。
-6. 【ゲーム性の重視】想定プレイ時間（約${activeRoom.scenario?.playTime || 60}分）はあくまで目安です。時間を守るために無理やりご都合主義なハッピーエンドに急ぐくらいなら、時間が延びても構わないので、論理的整合性と緊迫感のある試練を優先してください。
+5. 【安易な成功・AIの忖度厳禁】PLの行動が論理的に不自然であったり、シナリオの解決条件を正確に満たしていない場合は、絶対に成功させてはいけません。「ただ投げつけただけ」「間違ったアイテムを使った」などの甘いプレイには、容赦なく「効果がなかった」「状況が悪化した」として厳しく処理してください。
+6. 【ゲーム性の重視】想定プレイ時間（約${activeRoom.scenario?.playTime || 60}分）を目安に、論理的整合性と緊迫感のある試練を優先してください。
 7. 【エンディングの処理】物語が結末を迎えた場合、最後の情景描写の末尾に必ず [SCENARIO_END] というシステムタグを記述してください。
-8. 【ステータス変動の同期】ダメージや正気度(SAN)チェック失敗等により、PLやNPCのHP・SAN値が変動した場合、文章の末尾に必ず [STATUS_UPDATE: キャラクター名, HP:新しい値, SAN:新しい値] というタグを出力してください。（例：[STATUS_UPDATE: 神崎翔, HP:11, SAN:55]）
 
 ${isSplitMode && myScene.id !== 'scene_main' ? `
-【チーム分割中の対応（超重要）】
-現在、プレイヤー達は二手以上に分かれて行動しています。この発言は【${myScene.name}】チーム（メンバー: ${myScene.memberIds.map(id => activeRoom.scenario?.presetCharacters.find(c=>c.id===id)?.name).join(', ')}）のものです。
+【チーム分割中の対応】現在、プレイヤー達は二手以上に分かれて行動しています。この発言は【${myScene.name}】チーム（メンバー: ${myScene.memberIds.map(id => activeRoom.scenario?.presetCharacters.find(c=>c.id===id)?.name).join(', ')}）のものです。
 あなたは他チームの状況を一切考慮せず、このチームが現在いる場所の描写のみを行ってください。別のチームを勝手に合流させないでください。
 ` : `
-【チーム分けの提案】
-もし物語の展開上、PLたちが二手以上に分かれて行動すべき状況になった場合、GMとして分割を提案し、出力の最後に必ず "[SPLIT_PROPOSAL: 行動案A, 行動案B, 行動案C]" のようなシステムタグを含めてください（行動案は2〜4つ程度）。
+【チーム分けの提案】もし物語の展開上、PLたちが二手以上に分かれて行動すべき状況になった場合、GMとして分割を提案し、出力の最後に必ず "[SPLIT_PROPOSAL: 行動案A, 行動案B, 行動案C]" のようなシステムタグを含めてください。
 `}
 `;
       } else if (targetTab === "consult") {
-        // ★ プロットを隠ぺい
         scenarioPlotText = "【機密情報のため非公開（あなたはプレイヤーキャラクターなのでシナリオの真相や隠されたギミック、今後の展開を知りません。これまでのチャット履歴から推測して話してください）】";
-        
-        // ★ GMに乗っ取られないように制限を強化
         roleInstruction = `
 【重要：AIプレイヤーとしての振る舞い（絶対厳守ルール）】
 1. 現在は「プレイヤー間の相談時間」です。あなたはGMやナレーターではなく、AI相棒（${aiPlayersList.map(c=>c.name).join(", ")}）の立場で人間PLに返答してください。
@@ -582,6 +590,7 @@ ${isSplitMode && myScene.id !== 'scene_main' ? `※現在別行動中です。�
 現在は「GMへの質問・ルール確認」の時間です。物語は進めず、ルールの裁定などのシステム的な回答のみを行ってください。
 【ヒントの要求について】
 もしPLが謎解きや行動の「ヒント」を要求した場合、無条件で教えずに「ヒント（アイデア・ひらめき）を得るにはSAN値を1d3（または固定値）減少させる必要があります。よろしければ【行動宣言】タブでSANダイスを振って、その旨を宣言してください」と代償を提示してください。
+※警告：AI自身が代わりにダイスを振って数値を減らすことは絶対に禁止します！必ずPL自身に振らせてから結果を判定してください。
 `;
       }
 
@@ -591,6 +600,13 @@ ${isSplitMode && myScene.id !== 'scene_main' ? `※現在別行動中です。�
 プロット: ${scenarioPlotText}
 【人間PL】名前: ${joinedCharacter.name} / ステータス: HP:${joinedCharacter.hp} SAN:${joinedCharacter.san}% STR:${joinedCharacter.str} DEX:${joinedCharacter.dex} INT:${joinedCharacter.int} CON:${joinedCharacter.con}
 【AI相棒】\n${aiPlayersText}
+
+【共通の絶対システムルール】
+ダメージ処理や正気度(SAN)チェック等により、PLやNPCのHP・SAN値が減少・変動した場合は、いかなる状況・タブであっても、必ずあなたの出力テキストの【一番最後】に以下のシステムタグを1行で出力してください。
+[STATUS_UPDATE: キャラクター名, HP:新しい値, SAN:新しい値]
+（例：[STATUS_UPDATE: ${joinedCharacter.name}, HP:10, SAN:50]）
+※このタグが出力されないと画面のボタンの数値が連動しません。必ず出力してください。
+
 ${roleInstruction}`;
 
       const aiText = await generateAIResponse(sysPrompt, history);
@@ -604,14 +620,14 @@ ${roleInstruction}`;
       const statusRegex = /\[STATUS_UPDATE:\s*(.+?),\s*HP:\s*(\d+),\s*SAN:\s*(\d+)\]/g;
       let match;
       while ((match = statusRegex.exec(aiText)) !== null) {
-         const targetName = match[1].trim();
+         const targetName = match[1].trim().replace(/\s+/g, '');
          const newHp = parseInt(match[2], 10);
          const newSan = parseInt(match[3], 10);
          
-         if (joinedCharacter && joinedCharacter.name.includes(targetName)) {
+         if (joinedCharacter && joinedCharacter.name.replace(/\s+/g, '').includes(targetName)) {
              setJoinedCharacter(prev => prev ? { ...prev, hp: newHp, san: newSan } : null);
          }
-         setAiPlayersList(prev => prev.map(p => p.name.includes(targetName) ? { ...p, hp: newHp, san: newSan } : p));
+         setAiPlayersList(prev => prev.map(p => p.name.replace(/\s+/g, '').includes(targetName) ? { ...p, hp: newHp, san: newSan } : p));
       }
 
       await supabase.from('ai_memory').insert({ room_id: activeRoom.id, role: 'assistant', content: aiText });
@@ -801,6 +817,7 @@ ${roleInstruction}`;
     await callAIGM(context, chatTab);
   };
 
+  // ★ ダイスの送信先（channelとtype）を開いているタブに合わせる
   const rollDice = async (targetValue: number, label: string, is1d100: boolean) => {
     if(!myScene || !activeRoom || isLoading || !joinedCharacter) return;
     let res = 0; let isSuccess = false; let msgText = "";
@@ -816,10 +833,18 @@ ${roleInstruction}`;
       msgText = `🎲 ${label} (3d6 ≦ ${targetValue}) ➔ 出目: ${res} [${d1},${d2},${d3}] 【${isSuccess ? "成功" : "失敗"}】`;
     }
 
-    await pushMessage(activeRoom.id, { sender: "player", text: msgText, type: "ic", sceneId: myScene.id, charName: joinedCharacter.name, channel: "story" });
+    const msgType = chatTab === "gm" ? "ooc" : "ic";
+
+    await pushMessage(activeRoom.id, { sender: "player", text: msgText, type: msgType, sceneId: myScene.id, charName: joinedCharacter.name, channel: chatTab });
     
     if (activeRoom.status !== 'finished') {
-        await callAIGM(`【システム判定結果】${joinedCharacter.name}が${label}ロールを行いました。\n結果: ${msgText}\nこの結果を踏まえてGMとして情景描写を行ってください。`, "story");
+        let promptSuffix = "この結果を踏まえてGMとして情景描写を行ってください。";
+        if (chatTab === "gm") {
+            promptSuffix = "この結果を踏まえて、システム・ルールの裁定やヒントの提示を行ってください。";
+        } else if (chatTab === "consult") {
+            promptSuffix = "この結果を踏まえて、AI相棒としてリアクションを返してください。";
+        }
+        await callAIGM(`【システム判定結果】${joinedCharacter.name}が${label}ロールを行いました。\n結果: ${msgText}\n${promptSuffix}`, chatTab);
     }
   };
 
@@ -1005,6 +1030,7 @@ ${roleInstruction}`;
           setConsultWithAI={setConsultWithAI}
           isChatDisabled={isChatDisabled}
           mergeTeam={mergeTeam}
+          executeMergeAll={executeMergeAll}
           draftAction={draftAction}
           setDraftAction={setDraftAction}
           draftMembers={draftMembers}
