@@ -17,6 +17,10 @@ import ScenarioEditView from "../components/views/ScenarioEditView";
 import LobbyView from "../components/views/LobbyView";
 import GameView from "../components/views/GameView";
 
+// ★ 消してしまっていた初期画像の定義を復活
+const NO_IMAGE_SCENARIO = "https://images.unsplash.com/photo-1614729939124-03290b5609ce?auto=format&fit=crop&w=400&q=80";
+const DEFAULT_AVATAR = "https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&w=150&q=80";
+
 export default function Home() {
   const [currentView, setCurrentView] = useState<ViewState>("login");
   const [email, setEmail] = useState("");
@@ -466,7 +470,6 @@ export default function Home() {
   const sendWarningNotification = async () => { if (!warningModalUser || !warningTitle || !warningText) return; await supabase.from('notifications').insert({ user_id: warningModalUser.id, title: warningTitle, message: warningText }); alert("警告通知を送信しました。"); setWarningModalUser(null); setWarningTitle(""); setWarningText(""); };
   const markNotificationAsRead = async (notifId: string) => { await supabase.from('notifications').update({ is_read: true }).eq('id', notifId); setMyNotifications(myNotifications.map(n => n.id === notifId ? { ...n, isRead: true } : n)); };
 
-
   const startSplitting = () => {
     if (!activeRoom) return;
     supabase.from('rooms').update({ status: 'splitting' }).eq('id', activeRoom.id).then(() => {
@@ -915,8 +918,7 @@ ${roleInstruction}`;
 
   const unreadCount = myNotifications.filter(n => !n.isRead).length;
 
-  // ★ TypeScriptエラー（Nullチェック）を完全に回避した記述
-  const isChatDisabled = Boolean(isLoading || (isSplitMode && myScene && myScene.isMerged === true && chatTab !== 'consult'));
+  const isChatDisabled = Boolean(isLoading || (isSplitMode && myScene?.isMerged === true && chatTab !== 'consult'));
 
   return (
     <main className="h-screen w-full bg-slate-900 text-slate-100 flex flex-col font-sans overflow-hidden">
@@ -1129,7 +1131,7 @@ ${roleInstruction}`;
           currentUser={currentUser!}
           joinedCharacter={joinedCharacter}
           leaveGame={leaveGame}
-          setReportTarget={setReportTarget}
+          setReportTarget={setReportTarget as React.Dispatch<React.SetStateAction<{type: 'user' | 'scenario', id: string, name: string} | null>>}
           rollDice={rollDice}
           startGame={startGame}
           startSplitting={startSplitting}
