@@ -70,7 +70,6 @@ export default function Home() {
 
   const [banTargetUser, setBanTargetUser] = useState<UserProfile | null>(null);
   const [banReason, setBanReason] = useState("");
-  // ★ ここが setBanAppappeals になってしまっていたのを修正しました！
   const [banAppeals, setBanAppeals] = useState<BanAppeal[]>([]);
   const [appealText, setAppealText] = useState("");
 
@@ -539,6 +538,7 @@ export default function Home() {
 
       let roleInstruction = "";
       if (targetTab === "story") {
+        // ★ ルール8としてステータス変動の同期指示を追加しました
         roleInstruction = `
 【重要：GMの絶対ルール（行動判定とゲーム性の担保）】
 1. PLたちが明確な「行動宣言」を出した時のみ物語を進行させてください。
@@ -548,6 +548,7 @@ export default function Home() {
 5. 【安易な成功・AIの忖度厳禁（最重要）】PLの行動が論理的に不自然であったり、シナリオの解決条件（例：特定のアイテムを『燃やす』『特定の手順で破壊する』など）を正確に満たしていない場合は、絶対に成功させてはいけません。「ただ投げつけただけ」「間違ったアイテムを使った」などの甘いプレイには、容赦なく「効果がなかった」「状況が悪化した（敵の反撃やダメージなど）」として厳しく処理してください。AIとしてのPLへの忖度や接待プレイは、TRPGの緊迫感を損なうため固く禁じます。
 6. 【ゲーム性の重視】想定プレイ時間（約${activeRoom.scenario?.playTime || 60}分）はあくまで目安です。時間を守るために無理やりご都合主義なハッピーエンドに急ぐくらいなら、時間が延びても構わないので、論理的整合性と緊迫感のある試練を優先してください。
 7. 【エンディングの処理】物語が結末を迎えた場合、最後の情景描写の末尾に必ず [SCENARIO_END] というシステムタグを記述してください。
+8. 【ステータス変動の同期】ダメージや正気度(SAN)チェック失敗等により、PLやNPCのHP・SAN値が変動した場合、文章の末尾に必ず [STATUS_UPDATE: キャラクター名, HP:新しい値, SAN:新しい値] というタグを出力してください。（例：[STATUS_UPDATE: 神崎翔, HP:11, SAN:55]）
 
 ${isSplitMode && myScene.id !== 'scene_main' ? `
 【チーム分割中の対応（超重要）】
@@ -590,10 +591,31 @@ ${roleInstruction}`;
          setSplitSuggestions(suggestions);
       }
 
+      // ★ 新規追加：AIが出力したステータス変更タグの解析と反映
+      const statusRegex = /\[STATUS_UPDATE:\s*(.+?),\s*HP:\s*(\d+),\s*SAN:\s*(\d+)\]/g;
+      let match;
+      while ((match = statusRegex.exec(aiText)) !== null) {
+         const targetName = match[1].trim();
+         const newHp = parseInt(match[2], 10);
+         const newSan = parseInt(match[3], 10);
+         
+         if (joinedCharacter && joinedCharacter.name.includes(targetName)) {
+             setJoinedCharacter(prev => prev ? { ...prev, hp: newHp, san: newSan } : null);
+         }
+         setAiPlayersList(prev => prev.map(p => p.name.includes(targetName) ? { ...p, hp: newHp, san: newSan } : p));
+      }
+
       await supabase.from('ai_memory').insert({ room_id: activeRoom.id, role: 'assistant', content: aiText });
       
       const msgSender = targetTab === "consult" ? "ai_player" : "gm";
-      await pushMessage(activeRoom.id, { sender: msgSender, text: aiText.replace(/\[SPLIT_PROPOSAL:.*?\]/, '').trim(), type: targetTab === "gm" ? "ooc" : "ic", sceneId: myScene?.id, charName: targetTab === "consult" ? "AI相棒" : "AI GM", channel: targetTab });
+      
+      // ★ 画面表示用のテキストからはシステムタグを消す
+      const cleanAiText = aiText
+        .replace(/\[SPLIT_PROPOSAL:.*?\]/g, '')
+        .replace(/\[STATUS_UPDATE:.*?\]/g, '')
+        .trim();
+
+      await pushMessage(activeRoom.id, { sender: msgSender, text: cleanAiText, type: targetTab === "gm" ? "ooc" : "ic", sceneId: myScene?.id, charName: targetTab === "consult" ? "AI相棒" : "AI GM", channel: targetTab });
 
     } catch (err: any) {
       alert(err.message);
