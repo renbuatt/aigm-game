@@ -233,7 +233,9 @@ export default function Home() {
     setCurrentUser(profileData);
     await fetchNotifications(userId);
 
-    if (!profileData.isBanned && !currentMaintenance) {
+    // ★ ここが修正のポイントです！
+    // メンテナンス中であっても、管理者の場合は通れるように (!currentMaintenance || profileData.isAdmin) としました。
+    if (!profileData.isBanned && (!currentMaintenance || profileData.isAdmin)) {
       const activeMyRoom = roomsData.find(r => (r.status === 'playing' || r.status === 'splitting' || r.status === 'recruiting') && r.joined_users && r.joined_users[userId]);
       if (activeMyRoom && activeMyRoom.scenario) {
         const charId = activeMyRoom.joined_users[userId];
@@ -483,7 +485,6 @@ export default function Home() {
     await callAIGM(extraUserContext, "story");
   };
 
-  // ★ 消してしまった callAIGM 関数を復活
   const callAIGM = async (extraUserContext?: string, targetTab: ChatTab = "story") => {
     if (!activeRoom || !joinedCharacter || !myScene) return;
     setIsLoading(true);
@@ -542,7 +543,7 @@ ${isSplitMode && myScene.id !== 'scene_main' ? `※現在別行動中です。�
       } else if (targetTab === "gm") {
         roleInstruction = `
 【重要：GMへのメタ質問対応】
-現在は「GMへの質問・ルール確認」の時間です。物語は進めず、ルールの裁定などのシステム的な回答のみを行ってください。
+引数は「GMへの質問・ルール確認」の時間です。物語は進めず、ルールの裁定などのシステム的な回答のみを行ってください。
 【ヒントの要求について】
 もしPLが謎解きや行動の「ヒント」を要求した場合、無条件で教えずに「ヒント（アイデア・ひらめき）を得るにはSAN値を1d3（または固定値）減少させる必要があります。よろしければ【行動宣言】タブでSANダイスを振って、その旨を宣言してください」と代償を提示してください。
 `;
@@ -556,7 +557,6 @@ ${isSplitMode && myScene.id !== 'scene_main' ? `※現在別行動中です。�
 【AI相棒】\n${aiPlayersText}
 ${roleInstruction}`;
 
-      // lib/ai.ts の関数を呼び出してAIの応答を取得
       const aiText = await generateAIResponse(sysPrompt, history);
 
       const splitMatch = aiText.match(/\[SPLIT_PROPOSAL:\s*(.+?)\]/);
@@ -888,6 +888,134 @@ ${roleInstruction}`;
         />
       )}
 
+      {/* ユーザー・シナリオ通報モーダル */}
+      {reportTarget && (
+        <div className="absolute inset-0 bg-black/80 z-50 flex items-center justify-center p-4">
+          <div className="bg-slate-800 border border-red-700/50 rounded-xl p-6 w-full max-w-lg shadow-2xl">
+            <h3 className="text-xl font-bold text-red-400 mb-2">🚩 {reportTarget.type === 'user' ? "ユーザー" : "シナリオ"}を通報する</h3>
+            <p className="text-xs text-slate-400 mb-4">対象: {reportTarget.name}</p>
+            <div className="space-y-3 mb-4">
+              <textarea value={reportReason} onChange={e=>setReportReason(e.target.value)} placeholder="不適切な発言や、規約違反の内容を詳しく記入してください。" className="w-full h-32 bg-slate-900 border border-slate-700 rounded p-3 text-sm text-white" />
+            </div>
+            <div className="flex gap-4">
+              <button onClick={() => { setReportTarget(null); setReportReason(""); }} className="flex-1 bg-slate-700 hover:bg-slate-600 py-3 rounded text-sm font-bold">キャンセル</button>
+              <button onClick={submitUserReport} disabled={!reportReason.trim()} className="flex-1 bg-red-600 hover:bg-red-500 disabled:bg-slate-600 py-3 rounded text-sm font-bold shadow-lg shadow-red-900/50">運営に送信する</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* シナリオ修正完了申請モーダル */}
+      {scenarioAppealTarget && (
+        <div className="absolute inset-0 bg-black/80 z-50 flex items-center justify-center p-4">
+          <div className="bg-slate-800 border border-amber-700/50 rounded-xl p-6 w-full max-w-lg shadow-2xl">
+            <h3 className="text-xl font-bold text-amber-400 mb-2">📝 再審査（修正完了）の申請</h3>
+            <p className="text-xs text-slate-400 mb-4">対象シナリオ: {scenarioAppealTarget.title}</p>
+            <div className="space-y-3 mb-4">
+              <textarea value={scenarioAppealText} onChange={e=>setScenarioAppealText(e.target.value)} placeholder="修正した箇所や、非公開措置へのコメントを入力してください。" className="w-full h-32 bg-slate-900 border border-slate-700 rounded p-3 text-sm text-white" />
+            </div>
+            <div className="flex gap-4">
+              <button onClick={() => { setScenarioAppealTarget(null); setScenarioAppealText(""); }} className="flex-1 bg-slate-700 hover:bg-slate-600 py-3 rounded text-sm font-bold">キャンセル</button>
+              <button onClick={submitScenarioAppeal} disabled={!scenarioAppealText.trim()} className="flex-1 bg-amber-600 hover:bg-amber-500 disabled:bg-slate-600 py-3 rounded text-sm font-bold shadow-lg shadow-amber-900/50">運営に申請を送信する</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* シナリオBAN実行モーダル (Admin) */}
+      {banTargetScenario && (
+        <div className="absolute inset-0 bg-black/80 z-50 flex items-center justify-center p-4">
+          <div className="bg-slate-800 border border-slate-700 rounded-xl p-6 w-full max-w-lg shadow-2xl">
+            <h3 className="text-xl font-bold text-white mb-2">⚙️ シナリオの管理措置</h3>
+            <p className="text-xs text-slate-400 mb-4">対象: {banTargetScenario.title}</p>
+            <div className="space-y-3 mb-4">
+              <textarea value={scenarioBanReason} onChange={e=>setScenarioBanReason(e.target.value)} placeholder="措置の理由を入力してください（作者にメールで通知されます）" className="w-full h-32 bg-slate-900 border border-slate-700 rounded p-3 text-sm text-white" />
+            </div>
+            <div className="flex flex-col gap-3">
+              <div className="flex gap-2">
+                {!banTargetScenario.isBanned ? (
+                  <button onClick={() => executeScenarioBan('soft')} disabled={!scenarioBanReason.trim()} className="flex-1 bg-amber-600 hover:bg-amber-500 disabled:bg-slate-600 py-3 rounded text-sm font-bold shadow-lg">一時非公開にする</button>
+                ) : (
+                  <button onClick={() => executeScenarioBan('unban')} className="flex-1 bg-emerald-600 hover:bg-emerald-500 py-3 rounded text-sm font-bold shadow-lg">非公開を解除する</button>
+                )}
+                <button onClick={() => executeScenarioBan('hard')} disabled={!scenarioBanReason.trim()} className="flex-1 bg-red-600 hover:bg-red-500 disabled:bg-slate-600 py-3 rounded text-sm font-bold shadow-lg">完全に削除する</button>
+              </div>
+              <button onClick={() => setBanTargetScenario(null)} className="w-full bg-slate-700 hover:bg-slate-600 py-3 rounded text-sm font-bold mt-2">キャンセル</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ユーザーBAN実行モーダル (Admin) */}
+      {banTargetUser && (
+        <div className="absolute inset-0 bg-black/80 z-50 flex items-center justify-center p-4">
+          <div className="bg-slate-800 border border-red-700/50 rounded-xl p-6 w-full max-w-lg shadow-2xl">
+            <h3 className="text-xl font-bold text-red-500 mb-2">⛔ ユーザーをBANする</h3>
+            <p className="text-xs text-slate-400 mb-4">対象: {banTargetUser.handleName} ({banTargetUser.email})</p>
+            <div className="space-y-3 mb-4">
+              <textarea value={banReason} onChange={e=>setBanReason(e.target.value)} placeholder="通報ログ・BANの理由を入力してください" className="w-full h-32 bg-slate-900 border border-slate-700 rounded p-3 text-sm text-white" />
+            </div>
+            <div className="flex gap-4">
+              <button onClick={() => setBanTargetUser(null)} className="flex-1 bg-slate-700 hover:bg-slate-600 py-3 rounded text-sm font-bold">キャンセル</button>
+              <button onClick={executeBan} disabled={!banReason.trim()} className="flex-1 bg-red-600 hover:bg-red-500 disabled:bg-slate-600 py-3 rounded text-sm font-bold shadow-lg shadow-red-900/50">BANを実行する</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {showMailbox && (
+        <div className="absolute inset-0 bg-black/80 z-50 flex items-center justify-center p-4">
+          <div className="bg-slate-800 border border-slate-700 rounded-xl p-6 w-full max-w-lg shadow-2xl flex flex-col max-h-[80vh]">
+            <div className="flex justify-between items-center mb-4"><h3 className="text-xl font-bold">✉️ 受信箱</h3><button onClick={() => setShowMailbox(false)} className="text-xl">×</button></div>
+            <div className="h-[400px] overflow-y-scroll space-y-3 pr-2">
+              {myNotifications.length === 0 ? <p className="text-sm text-slate-500 text-center py-8">お知らせはありません。</p> : myNotifications.map(n => (
+                <div key={n.id} className={`p-4 rounded-lg border ${n.isRead ? 'bg-slate-900 border-slate-700' : 'bg-slate-800 border-blue-500/50'}`}>
+                  <h4 className="font-bold text-sm">{n.title}</h4>
+                  <p className="text-xs text-slate-300 whitespace-pre-wrap mt-2">{n.message}</p>
+                  {!n.isRead && <button onClick={() => markNotificationAsRead(n.id)} className="text-[10px] bg-slate-700 px-3 py-1 rounded mt-3">既読にする</button>}
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {roomConfigModal && (
+        <div className="absolute inset-0 bg-black/80 z-50 flex items-center justify-center p-4">
+          <div className="bg-slate-800 border border-emerald-700/50 rounded-xl p-6 w-full max-w-lg shadow-2xl">
+            <h3 className="text-xl font-bold text-emerald-400 mb-4">🚪 部屋の作成: {roomConfigModal.scenario.title}</h3>
+            
+            <div className="space-y-4 mb-6">
+              <div>
+                <label className="text-xs text-slate-400 block mb-1">使用するキャラクター <span className="text-red-400">*</span></label>
+                <select value={roomConfigModal.charId} onChange={(e) => setRoomConfigModal({...roomConfigModal, charId: e.target.value})} className="w-full bg-slate-900 border border-slate-700 rounded p-2 text-sm text-white">
+                  <option value="" disabled>選択してください</option>
+                  {roomConfigModal.scenario.presetCharacters.map(c => <option key={c.id} value={c.id}>{c.name} ({c.job})</option>)}
+                </select>
+              </div>
+
+              <div>
+                <label className="text-xs text-slate-400 block mb-1">公開設定</label>
+                <div className="flex gap-4">
+                  <label className="flex items-center gap-2 text-sm"><input type="radio" checked={roomConfigModal.privacy === 'open'} onChange={() => setRoomConfigModal({...roomConfigModal, privacy: 'open'})} /> 🔓 オープン（誰でも観戦可能）</label>
+                  <label className="flex items-center gap-2 text-sm"><input type="radio" checked={roomConfigModal.privacy === 'secret'} onChange={() => setRoomConfigModal({...roomConfigModal, privacy: 'secret'})} /> 🔒 シークレット（IDを知る人のみ）</label>
+                </div>
+              </div>
+
+              <div>
+                <label className="text-xs text-slate-400 block mb-1">ひとことメッセージ</label>
+                <input type="text" value={roomConfigModal.message} onChange={(e) => setRoomConfigModal({...roomConfigModal, message: e.target.value})} placeholder="例：初心者歓迎！ゆっくり遊びましょう" className="w-full bg-slate-900 border border-slate-700 rounded p-2 text-sm text-white" />
+              </div>
+            </div>
+
+            <div className="flex gap-4">
+              <button onClick={() => setRoomConfigModal(null)} className="flex-1 bg-slate-700 hover:bg-slate-600 py-3 rounded text-sm font-bold">キャンセル</button>
+              <button onClick={executeCreateRoom} disabled={!roomConfigModal.charId} className="flex-1 bg-emerald-600 hover:bg-emerald-500 disabled:bg-slate-600 py-3 rounded text-sm font-bold shadow-lg shadow-emerald-900/50">作成して入室</button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {currentView === "lobby" && currentUser && (
         <LobbyView 
           currentUser={currentUser}
@@ -972,132 +1100,6 @@ ${roleInstruction}`;
           isExporting={isExporting}
         />
       )}
-
-      {/* モーダル群 */}
-      {reportTarget && (
-        <div className="absolute inset-0 bg-black/80 z-50 flex items-center justify-center p-4">
-          <div className="bg-slate-800 border border-red-700/50 rounded-xl p-6 w-full max-w-lg shadow-2xl">
-            <h3 className="text-xl font-bold text-red-400 mb-2">🚩 {reportTarget.type === 'user' ? "ユーザー" : "シナリオ"}を通報する</h3>
-            <p className="text-xs text-slate-400 mb-4">対象: {reportTarget.name}</p>
-            <div className="space-y-3 mb-4">
-              <textarea value={reportReason} onChange={e=>setReportReason(e.target.value)} placeholder="不適切な発言や、規約違反の内容を詳しく記入してください。" className="w-full h-32 bg-slate-900 border border-slate-700 rounded p-3 text-sm text-white" />
-            </div>
-            <div className="flex gap-4">
-              <button onClick={() => { setReportTarget(null); setReportReason(""); }} className="flex-1 bg-slate-700 hover:bg-slate-600 py-3 rounded text-sm font-bold">キャンセル</button>
-              <button onClick={submitUserReport} disabled={!reportReason.trim()} className="flex-1 bg-red-600 hover:bg-red-500 disabled:bg-slate-600 py-3 rounded text-sm font-bold shadow-lg shadow-red-900/50">運営に送信する</button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {scenarioAppealTarget && (
-        <div className="absolute inset-0 bg-black/80 z-50 flex items-center justify-center p-4">
-          <div className="bg-slate-800 border border-amber-700/50 rounded-xl p-6 w-full max-w-lg shadow-2xl">
-            <h3 className="text-xl font-bold text-amber-400 mb-2">📝 再審査（修正完了）の申請</h3>
-            <p className="text-xs text-slate-400 mb-4">対象シナリオ: {scenarioAppealTarget.title}</p>
-            <div className="space-y-3 mb-4">
-              <textarea value={scenarioAppealText} onChange={e=>setScenarioAppealText(e.target.value)} placeholder="修正した箇所や、非公開措置へのコメントを入力してください。" className="w-full h-32 bg-slate-900 border border-slate-700 rounded p-3 text-sm text-white" />
-            </div>
-            <div className="flex gap-4">
-              <button onClick={() => { setScenarioAppealTarget(null); setScenarioAppealText(""); }} className="flex-1 bg-slate-700 hover:bg-slate-600 py-3 rounded text-sm font-bold">キャンセル</button>
-              <button onClick={submitScenarioAppeal} disabled={!scenarioAppealText.trim()} className="flex-1 bg-amber-600 hover:bg-amber-500 disabled:bg-slate-600 py-3 rounded text-sm font-bold shadow-lg shadow-amber-900/50">運営に申請を送信する</button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {banTargetScenario && (
-        <div className="absolute inset-0 bg-black/80 z-50 flex items-center justify-center p-4">
-          <div className="bg-slate-800 border border-slate-700 rounded-xl p-6 w-full max-w-lg shadow-2xl">
-            <h3 className="text-xl font-bold text-white mb-2">⚙️ シナリオの管理措置</h3>
-            <p className="text-xs text-slate-400 mb-4">対象: {banTargetScenario.title}</p>
-            <div className="space-y-3 mb-4">
-              <textarea value={scenarioBanReason} onChange={e=>setScenarioBanReason(e.target.value)} placeholder="措置の理由を入力してください（作者にメールで通知されます）" className="w-full h-32 bg-slate-900 border border-slate-700 rounded p-3 text-sm text-white" />
-            </div>
-            <div className="flex flex-col gap-3">
-              <div className="flex gap-2">
-                {!banTargetScenario.isBanned ? (
-                  <button onClick={() => executeScenarioBan('soft')} disabled={!scenarioBanReason.trim()} className="flex-1 bg-amber-600 hover:bg-amber-500 disabled:bg-slate-600 py-3 rounded text-sm font-bold shadow-lg">一時非公開にする</button>
-                ) : (
-                  <button onClick={() => executeScenarioBan('unban')} className="flex-1 bg-emerald-600 hover:bg-emerald-500 py-3 rounded text-sm font-bold shadow-lg">非公開を解除する</button>
-                )}
-                <button onClick={() => executeScenarioBan('hard')} disabled={!scenarioBanReason.trim()} className="flex-1 bg-red-600 hover:bg-red-500 disabled:bg-slate-600 py-3 rounded text-sm font-bold shadow-lg">完全に削除する</button>
-              </div>
-              <button onClick={() => setBanTargetScenario(null)} className="w-full bg-slate-700 hover:bg-slate-600 py-3 rounded text-sm font-bold mt-2">キャンセル</button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {banTargetUser && (
-        <div className="absolute inset-0 bg-black/80 z-50 flex items-center justify-center p-4">
-          <div className="bg-slate-800 border border-red-700/50 rounded-xl p-6 w-full max-w-lg shadow-2xl">
-            <h3 className="text-xl font-bold text-red-500 mb-2">⛔ ユーザーをBANする</h3>
-            <p className="text-xs text-slate-400 mb-4">対象: {banTargetUser.handleName} ({banTargetUser.email})</p>
-            <div className="space-y-3 mb-4">
-              <textarea value={banReason} onChange={e=>setBanReason(e.target.value)} placeholder="通報ログ・BANの理由を入力してください" className="w-full h-32 bg-slate-900 border border-slate-700 rounded p-3 text-sm text-white" />
-            </div>
-            <div className="flex gap-4">
-              <button onClick={() => setBanTargetUser(null)} className="flex-1 bg-slate-700 hover:bg-slate-600 py-3 rounded text-sm font-bold">キャンセル</button>
-              <button onClick={executeBan} disabled={!banReason.trim()} className="flex-1 bg-red-600 hover:bg-red-500 disabled:bg-slate-600 py-3 rounded text-sm font-bold shadow-lg shadow-red-900/50">BANを実行する</button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {showMailbox && (
-        <div className="absolute inset-0 bg-black/80 z-50 flex items-center justify-center p-4">
-          <div className="bg-slate-800 border border-slate-700 rounded-xl p-6 w-full max-w-lg shadow-2xl flex flex-col max-h-[80vh]">
-            <div className="flex justify-between items-center mb-4"><h3 className="text-xl font-bold">✉️ 受信箱</h3><button onClick={() => setShowMailbox(false)} className="text-xl">×</button></div>
-            <div className="h-[400px] overflow-y-scroll space-y-3 pr-2">
-              {myNotifications.length === 0 ? <p className="text-sm text-slate-500 text-center py-8">お知らせはありません。</p> : myNotifications.map(n => (
-                <div key={n.id} className={`p-4 rounded-lg border ${n.isRead ? 'bg-slate-900 border-slate-700' : 'bg-slate-800 border-blue-500/50'}`}>
-                  <h4 className="font-bold text-sm">{n.title}</h4>
-                  <p className="text-xs text-slate-300 whitespace-pre-wrap mt-2">{n.message}</p>
-                  {!n.isRead && <button onClick={() => markNotificationAsRead(n.id)} className="text-[10px] bg-slate-700 px-3 py-1 rounded mt-3">既読にする</button>}
-                </div>
-              ))}
-            </div>
-          </div>
-        </div>
-      )}
-
-      {roomConfigModal && (
-        <div className="absolute inset-0 bg-black/80 z-50 flex items-center justify-center p-4">
-          <div className="bg-slate-800 border border-emerald-700/50 rounded-xl p-6 w-full max-w-lg shadow-2xl">
-            <h3 className="text-xl font-bold text-emerald-400 mb-4">🚪 部屋の作成: {roomConfigModal.scenario.title}</h3>
-            
-            <div className="space-y-4 mb-6">
-              <div>
-                <label className="text-xs text-slate-400 block mb-1">使用するキャラクター <span className="text-red-400">*</span></label>
-                <select value={roomConfigModal.charId} onChange={(e) => setRoomConfigModal({...roomConfigModal, charId: e.target.value})} className="w-full bg-slate-900 border border-slate-700 rounded p-2 text-sm text-white">
-                  <option value="" disabled>選択してください</option>
-                  {roomConfigModal.scenario.presetCharacters.map(c => <option key={c.id} value={c.id}>{c.name} ({c.job})</option>)}
-                </select>
-              </div>
-
-              <div>
-                <label className="text-xs text-slate-400 block mb-1">公開設定</label>
-                <div className="flex gap-4">
-                  <label className="flex items-center gap-2 text-sm"><input type="radio" checked={roomConfigModal.privacy === 'open'} onChange={() => setRoomConfigModal({...roomConfigModal, privacy: 'open'})} /> 🔓 オープン（誰でも観戦可能）</label>
-                  <label className="flex items-center gap-2 text-sm"><input type="radio" checked={roomConfigModal.privacy === 'secret'} onChange={() => setRoomConfigModal({...roomConfigModal, privacy: 'secret'})} /> 🔒 シークレット（IDを知る人のみ）</label>
-                </div>
-              </div>
-
-              <div>
-                <label className="text-xs text-slate-400 block mb-1">ひとことメッセージ</label>
-                <input type="text" value={roomConfigModal.message} onChange={(e) => setRoomConfigModal({...roomConfigModal, message: e.target.value})} placeholder="例：初心者歓迎！ゆっくり遊びましょう" className="w-full bg-slate-900 border border-slate-700 rounded p-2 text-sm text-white" />
-              </div>
-            </div>
-
-            <div className="flex gap-4">
-              <button onClick={() => setRoomConfigModal(null)} className="flex-1 bg-slate-700 hover:bg-slate-600 py-3 rounded text-sm font-bold">キャンセル</button>
-              <button onClick={executeCreateRoom} disabled={!roomConfigModal.charId} className="flex-1 bg-emerald-600 hover:bg-emerald-500 disabled:bg-slate-600 py-3 rounded text-sm font-bold shadow-lg shadow-emerald-900/50">作成して入室</button>
-            </div>
-          </div>
-        </div>
-      )}
-
     </main>
   );
 }
