@@ -233,8 +233,6 @@ export default function Home() {
     setCurrentUser(profileData);
     await fetchNotifications(userId);
 
-    // ★ ここが修正のポイントです！
-    // メンテナンス中であっても、管理者の場合は通れるように (!currentMaintenance || profileData.isAdmin) としました。
     if (!profileData.isBanned && (!currentMaintenance || profileData.isAdmin)) {
       const activeMyRoom = roomsData.find(r => (r.status === 'playing' || r.status === 'splitting' || r.status === 'recruiting') && r.joined_users && r.joined_users[userId]);
       if (activeMyRoom && activeMyRoom.scenario) {
@@ -266,8 +264,11 @@ export default function Home() {
       setIsMaintenance(currentMaintenance);
       const { formattedRooms } = await fetchData();
       const { data: { session } } = await supabase.auth.getSession();
-      if (session?.user) await fetchProfile(session.user.id, session.user.email || "", currentMaintenance, formattedRooms);
-      else if (currentMaintenance) setCurrentView("maintenance");
+      
+      // ★ 修正箇所：ログアウト状態なら、メンテナンス中であってもログイン画面を出すようにしました
+      if (session?.user) {
+        await fetchProfile(session.user.id, session.user.email || "", currentMaintenance, formattedRooms);
+      }
     };
     initApp();
   }, []);
@@ -543,7 +544,7 @@ ${isSplitMode && myScene.id !== 'scene_main' ? `※現在別行動中です。�
       } else if (targetTab === "gm") {
         roleInstruction = `
 【重要：GMへのメタ質問対応】
-引数は「GMへの質問・ルール確認」の時間です。物語は進めず、ルールの裁定などのシステム的な回答のみを行ってください。
+現在は「GMへの質問・ルール確認」の時間です。物語は進めず、ルールの裁定などのシステム的な回答のみを行ってください。
 【ヒントの要求について】
 もしPLが謎解きや行動の「ヒント」を要求した場合、無条件で教えずに「ヒント（アイデア・ひらめき）を得るにはSAN値を1d3（または固定値）減少させる必要があります。よろしければ【行動宣言】タブでSANダイスを振って、その旨を宣言してください」と代償を提示してください。
 `;
