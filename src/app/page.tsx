@@ -527,7 +527,8 @@ export default function Home() {
   };
 
   const callAIGM = async (extraUserContext?: string, targetTab: ChatTab = "story") => {
-    if (!activeRoom || !joinedCharacter || !myScene) return;
+    // ★ 【絶対防壁】ゲーム中（playing）以外は絶対にAIを実行しない
+    if (!activeRoom || activeRoom.status !== 'playing' || !joinedCharacter || !myScene) return;
     setIsLoading(true);
     
     try {
@@ -680,6 +681,8 @@ ${roleInstruction}`;
       const newRoom: Room = { id: data.id, scenario_id: data.scenario_id, scenario: scenario, host_name: data.host_name, host_id: data.host_id, status: data.status, scenes: data.scenes, privacy: data.privacy, host_message: data.host_message, joined_users: data.joined_users };
       const hostChar = scenario.presetCharacters.find(c => c.id === charId);
       if (hostChar) {
+        // ★ 新しい部屋なので古い記憶をリセット
+        await supabase.from('ai_memory').delete().eq('room_id', newRoom.id);
         setActiveRoom(newRoom); setJoinedCharacter(hostChar);
         setMessages([]); 
         await pushMessage(newRoom.id, { sender: "gm", text: `【入室完了】プレイヤー全員の準備が整うまでお待ちください。`, type: "system", sceneId: newRoom.scenes?.[0]?.id, channel: "system" });
@@ -734,7 +737,8 @@ ${roleInstruction}`;
     setAiPlayersList(aiChars);
 
     await supabase.from('rooms').update({ status: 'playing' }).eq('id', activeRoom.id);
-    setActiveRoom({...activeRoom, status: 'playing'});
+    const updatedRoom: Room = { ...activeRoom, status: 'playing' };
+    setActiveRoom(updatedRoom);
     await pushMessage(activeRoom.id, { sender: "gm", text: `【システム】ゲームを開始しました。AI GMを呼び出しています...`, type: "system", sceneId: myScene.id, channel: "system" });
     
     await callAIGM(`【システムコマンド】セッションが開始されました。プロットに従い、導入部分の情景描写を行い、プレイヤーに行動方針の相談を促してください。`, "story");
@@ -799,7 +803,7 @@ ${roleInstruction}`;
     const isFinished = activeRoom.status === 'finished';
     const isRecruiting = activeRoom.status === 'recruiting';
 
-    // ★ 修正：待機中はAIを一切呼び出さない
+    // ★ 待機中はチャットログを残すだけでAIは呼び出さない
     if (isFinished || isRecruiting || (chatTab === "consult" && !consultWithAI)) {
       await pushMessage(activeRoom.id, { sender: "player", text: currentInput, type: (isFinished || isRecruiting) ? "ooc" : "ic", sceneId: myScene.id, charName: joinedCharacter.name, channel: chatTab });
       setInput("");
@@ -840,8 +844,8 @@ ${roleInstruction}`;
 
     await pushMessage(activeRoom.id, { sender: "player", text: msgText, type: msgType, sceneId: myScene.id, charName: joinedCharacter.name, channel: chatTab });
     
-    // ★ 修正：ゲームが開始されている場合のみAIを呼び出す
-    if (!isRecruiting && activeRoom.status !== 'finished') {
+    // ★ ゲーム中（playing）のときだけAIに判定結果を渡す
+    if (!isRecruiting && activeRoom.status === 'playing') {
         let promptSuffix = "この結果を踏まえてGMとして情景描写を行ってください。";
         if (chatTab === "gm") {
             promptSuffix = "この結果を踏まえて、システム・ルールの裁定やヒントの提示を行ってください。";
@@ -932,7 +936,7 @@ ${roleInstruction}`;
   return (
     <main className="h-screen w-full bg-slate-900 text-slate-100 flex flex-col font-sans overflow-hidden">
       
-      {/* 画面群（1つずつのみ表示） */}
+      {/* 画面群 */}
       {currentView === "admin" && currentUser?.isAdmin && (
         <AdminView 
           isMaintenance={isMaintenance}
@@ -1060,7 +1064,7 @@ ${roleInstruction}`;
       )}
 
 
-      {/* モーダル群（fixed z-[60]で最前面に完全固定） */}
+      {/* モーダル群 */}
       {reportTarget && (
         <div className="fixed inset-0 bg-black/80 z-[60] flex items-center justify-center p-4">
           <div className="bg-slate-800 border border-red-700/50 rounded-xl p-6 w-full max-w-lg shadow-2xl">

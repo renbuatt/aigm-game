@@ -53,6 +53,8 @@ export default function GameView({
   consultWithAI, setConsultWithAI, isChatDisabled, mergeTeam, executeMergeAll, draftAction, setDraftAction,
   draftMembers, setDraftMembers, draftLeader, setDraftLeader, addTeamDraft, finishSplitting
 }: Props) {
+  const isRecruiting = activeRoom.status === 'recruiting';
+
   return (
     <div className="flex-1 flex flex-col max-w-5xl mx-auto w-full p-4 min-h-0 relative">
       
@@ -159,6 +161,7 @@ export default function GameView({
         <div className="flex flex-wrap items-center gap-2 justify-end max-w-md">
           {joinedCharacter && (
             <>
+              {/* ★ 待機中はダイスを振ってもAIを煽らないようOOCテストロールとして実行されます */}
               <button onClick={() => rollDice(joinedCharacter.san, "SAN", true)} className="bg-cyan-700 hover:bg-cyan-600 text-white text-[10px] px-2 py-1.5 rounded font-bold shadow-lg">🎲 SAN({joinedCharacter.san}%)</button>
               <button onClick={() => rollDice(joinedCharacter.str, "STR", false)} className="bg-red-700 hover:bg-red-600 text-white text-[10px] px-2 py-1.5 rounded font-bold shadow-lg">🎲 STR({joinedCharacter.str})</button>
               <button onClick={() => rollDice(joinedCharacter.dex, "DEX", false)} className="bg-green-700 hover:bg-green-600 text-white text-[10px] px-2 py-1.5 rounded font-bold shadow-lg">🎲 DEX({joinedCharacter.dex})</button>
@@ -168,7 +171,7 @@ export default function GameView({
           )}
 
           {/* ゲーム開始ボタン */}
-          {(currentUser?.id === activeRoom.host_id || currentUser?.handleName === activeRoom.host_name) && activeRoom.status === "recruiting" && joinedCharacter && (
+          {(currentUser?.id === activeRoom.host_id || currentUser?.handleName === activeRoom.host_name) && isRecruiting && joinedCharacter && (
             <button onClick={startGame} className="bg-emerald-600 hover:bg-emerald-500 text-white text-[10px] font-bold px-4 py-2 rounded animate-pulse ml-2 shadow-lg shadow-emerald-900/50">▶ ゲーム開始</button>
           )}
 
@@ -251,6 +254,12 @@ export default function GameView({
 
       <div className="bg-slate-800 border border-slate-700 rounded-xl p-3 flex flex-col gap-2 shadow-lg">
         
+        {isRecruiting && (
+          <div className="bg-blue-900/40 border border-blue-500/50 rounded-lg p-2 text-center text-blue-300 text-xs font-bold mb-1">
+            📢 現在はプレイヤー準備・待機中です。「▶ ゲーム開始」ボタンを押すまでAI GMは起動しません。
+          </div>
+        )}
+
         {isScenarioEnded && (
           activeRoom.status === 'finished' ? (
             <div className="bg-amber-900/50 border border-amber-500 rounded p-2 flex justify-between items-center mb-2">
