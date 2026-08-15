@@ -21,12 +21,14 @@ type Props = {
   createdScenarios: Scenario[];
   deleteScenario: (id: string) => Promise<void>;
   setRoomConfigModal: React.Dispatch<React.SetStateAction<{ scenario: Scenario, charId: string, privacy: 'open'|'secret', message: string } | null>>;
+  fetchAdminData: () => Promise<void>; // ★ 追加
 };
 
 export default function LobbyView({
   currentUser, handleLogout, setShowMailbox, unreadCount, secretRoomIdSearch, setSecretRoomIdSearch,
   rooms, searchedSecretRoom, setSearchedSecretRoom, executeJoinRoom, availableRooms,
-  spectateRoom, setEditingScenario, setCurrentView, createdScenarios, deleteScenario, setRoomConfigModal
+  spectateRoom, setEditingScenario, setCurrentView, createdScenarios, deleteScenario, setRoomConfigModal,
+  fetchAdminData // ★ 追加
 }: Props) {
   return (
     <div className="flex-1 flex flex-col p-6 max-w-7xl mx-auto w-full min-h-0 overflow-y-auto">
@@ -114,7 +116,18 @@ export default function LobbyView({
 
         <div className="space-y-6">
           <div className="bg-slate-800 border border-slate-700 rounded-xl p-4 shadow-lg">
-            <div className="flex justify-between items-center mb-3"><h2 className="text-sm font-bold text-blue-400">👤 プレイヤー情報</h2></div>
+            {/* ★ プレイヤー情報の横に管理画面ボタンを復活 */}
+            <div className="flex justify-between items-center mb-3">
+              <h2 className="text-sm font-bold text-blue-400">👤 プレイヤー情報</h2>
+              {currentUser.isAdmin && (
+                <button 
+                  onClick={async () => { await fetchAdminData(); setCurrentView("admin"); }} 
+                  className="text-[10px] bg-red-900/50 hover:bg-red-800 text-red-300 px-3 py-1 rounded font-bold border border-red-700/50 transition-colors"
+                >
+                  ⚙️ 管理画面を開く
+                </button>
+              )}
+            </div>
             <div className="flex flex-col gap-2">
               <div className="flex gap-4 items-center">
                 <img src={currentUser.avatarUrl} className="w-12 h-12 rounded-full object-cover" />
