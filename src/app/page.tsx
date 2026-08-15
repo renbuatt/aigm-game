@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef } from "react";
 import { supabase } from "../lib/supabase";
-import { generateAIResponse, generateAITextWithPrompt } from "../lib/ai"; // ★ AI通信関数をインポート
+import { generateAIResponse, generateAITextWithPrompt } from "../lib/ai";
 import { 
   ViewState, UserProfile, Notification, BanAppeal, Report, 
   Character, Scenario, Scene, Room, Message, ChatTab 
@@ -466,9 +466,8 @@ export default function Home() {
 
   const resolveReport = async (reportId: string) => { await supabase.from('reports').update({ status: 'resolved' }).eq('id', reportId); fetchAdminData(); };
   const submitAppeal = async () => { if(!currentUser || !appealText) return; await supabase.from('ban_appeals').insert({ user_id: currentUser.id, reason: "不明", appeal_text: appealText, status: 'appealing' }); alert("調査依頼を送信しました。"); setAppealText(""); };
-  const submitUserReport = async () => { /* ...(そのまま残す) */ };
+  const sendWarningNotification = async () => { if (!warningModalUser || !warningTitle || !warningText) return; await supabase.from('notifications').insert({ user_id: warningModalUser.id, title: warningTitle, message: warningText }); alert("警告通知を送信しました。"); setWarningModalUser(null); setWarningTitle(""); setWarningText(""); };
   const markNotificationAsRead = async (notifId: string) => { await supabase.from('notifications').update({ is_read: true }).eq('id', notifId); setMyNotifications(myNotifications.map(n => n.id === notifId ? { ...n, isRead: true } : n)); };
-
 
   const startSplitting = () => {
     if (!activeRoom) return;
@@ -522,8 +521,12 @@ export default function Home() {
     setActiveRoom({ ...activeRoom, scenes: resetScenes });
 
     await pushMessage(activeRoom.id, { sender: "gm", text: `【システム】全チームが合流しました！`, type: "system", sceneId: 'scene_main', channel: "system" });
-    await callAIGM(`【システムコマンド】全チームの別行動が終了し、一箇所に合流しました。これまでの各チームの報告を踏まえ、合流時の情景描写と今後の展開を提示してください。`, "story");
+    
+    // ★ AIとの通信処理を新しく作ったファイル（ai.ts）経由に修正
+    const extraUserContext = `【システムコマンド】全チームの別行動が終了し、一箇所に合流しました。これまでの各チームの報告を踏まえ、合流時の情景描写と今後の展開を提示してください。`;
+    await callAIGM(extraUserContext, "story");
   };
+
 
   const callAIGM = async (extraUserContext?: string, targetTab: ChatTab = "story") => {
     if (!activeRoom || !joinedCharacter || !myScene) return;
@@ -597,7 +600,7 @@ ${isSplitMode && myScene.id !== 'scene_main' ? `※現在別行動中です。�
 【AI相棒】\n${aiPlayersText}
 ${roleInstruction}`;
 
-      // ★ 新しく作った関数を呼び出すだけ！
+      // ★ 新しく作った ai.ts の関数を呼び出す
       const aiText = await generateAIResponse(sysPrompt, history);
 
       const splitMatch = aiText.match(/\[SPLIT_PROPOSAL:\s*(.+?)\]/);
@@ -846,7 +849,7 @@ ${roleInstruction}`;
       const logText = targetMessages.map(m => `${m.charName || (m.sender === 'gm' ? 'GM' : 'システム')}: ${m.text.replace(/\[SPLIT_PROPOSAL:.*?\]/, '').replace('[SCENARIO_END]', '').trim()}`).join('\n');
       
       try {
-        // ★ 新しく作った関数を呼び出すだけ！
+        // ★ 新しく作った ai.ts の関数を呼び出す
         const generatedText = await generateAITextWithPrompt(prompt + "\n\n【チャットログ】\n" + logText);
         contentHtml = `<div style="white-space: pre-wrap; line-height: 1.8; color: #333; font-size: 14px;">${generatedText}</div>`;
       } catch(e: any) {
@@ -1098,7 +1101,7 @@ ${roleInstruction}`;
           currentUser={currentUser!}
           joinedCharacter={joinedCharacter}
           leaveGame={leaveGame}
-          setReportTarget={setReportTarget as React.Dispatch<React.SetStateAction<{type: 'user' | 'scenario', id: string, name: string} | null>>}
+          setReportTarget={setReportTarget}
           rollDice={rollDice}
           startGame={startGame}
           startSplitting={startSplitting}
