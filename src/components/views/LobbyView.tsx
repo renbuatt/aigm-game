@@ -21,14 +21,14 @@ type Props = {
   createdScenarios: Scenario[];
   deleteScenario: (id: string) => Promise<void>;
   setRoomConfigModal: React.Dispatch<React.SetStateAction<{ scenario: Scenario, charId: string, privacy: 'open'|'secret', message: string } | null>>;
-  fetchAdminData: () => Promise<void>; // ★ 追加
+  fetchAdminData: () => Promise<void>;
 };
 
 export default function LobbyView({
   currentUser, handleLogout, setShowMailbox, unreadCount, secretRoomIdSearch, setSecretRoomIdSearch,
   rooms, searchedSecretRoom, setSearchedSecretRoom, executeJoinRoom, availableRooms,
   spectateRoom, setEditingScenario, setCurrentView, createdScenarios, deleteScenario, setRoomConfigModal,
-  fetchAdminData // ★ 追加
+  fetchAdminData
 }: Props) {
   return (
     <div className="flex-1 flex flex-col p-6 max-w-7xl mx-auto w-full min-h-0 overflow-y-auto">
@@ -59,7 +59,12 @@ export default function LobbyView({
                 <img src={searchedSecretRoom.scenario?.imageUrl || NO_IMAGE_SCENARIO} className="w-24 h-24 object-cover rounded" />
                 <div className="flex-1">
                   <h3 className="text-lg font-bold text-white mb-1">{searchedSecretRoom.scenario?.title}</h3>
-                  <div className="text-xs text-slate-400 mb-2">ホスト: {searchedSecretRoom.host_name}</div>
+                  <div className="text-xs text-slate-400 mb-2 flex items-center gap-2">
+                    <span>ホスト: {searchedSecretRoom.host_name}</span>
+                    <span className="text-amber-400 font-bold ml-2">
+                      ⭐ {searchedSecretRoom.scenario?.ratingCount ? (searchedSecretRoom.scenario.ratingSum / searchedSecretRoom.scenario.ratingCount).toFixed(1) : "未評価"}
+                    </span>
+                  </div>
                   {searchedSecretRoom.host_message && <p className="text-xs text-slate-300 italic mb-2">「{searchedSecretRoom.host_message}」</p>}
                   <div className="flex gap-2">
                     <select className="bg-slate-900 border border-slate-700 rounded p-1 text-xs text-white flex-1" onChange={(e) => executeJoinRoom(searchedSecretRoom, e.target.value)} value="">
@@ -90,7 +95,13 @@ export default function LobbyView({
                         {isHost && room.privacy === 'secret' && <span className="text-[10px] text-slate-400 select-all" title="友達に共有">ID: {room.id}</span>}
                       </h3>
                     </div>
-                    <div className="text-xs text-slate-400 mb-2">ホスト: {room.host_name}</div>
+                    {/* ★ ここに星（評価）を追加しました */}
+                    <div className="text-xs text-slate-400 mb-2 flex items-center gap-2">
+                      <span>ホスト: {room.host_name}</span>
+                      <span className="text-amber-400 font-bold ml-2">
+                        ⭐ {room.scenario?.ratingCount ? (room.scenario.ratingSum / room.scenario.ratingCount).toFixed(1) : "未評価"}
+                      </span>
+                    </div>
                     {room.host_message && <p className="text-xs text-slate-300 italic mb-2">「{room.host_message}」</p>}
                     
                     <div className="flex gap-2">
@@ -116,7 +127,6 @@ export default function LobbyView({
 
         <div className="space-y-6">
           <div className="bg-slate-800 border border-slate-700 rounded-xl p-4 shadow-lg">
-            {/* ★ プレイヤー情報の横に管理画面ボタンを復活 */}
             <div className="flex justify-between items-center mb-3">
               <h2 className="text-sm font-bold text-blue-400">👤 プレイヤー情報</h2>
               {currentUser.isAdmin && (
