@@ -12,6 +12,8 @@ import LoginView from "../components/views/LoginView";
 import BannedView from "../components/views/BannedView";
 import MaintenanceView from "../components/views/MaintenanceView";
 import EvaluationView from "../components/views/EvaluationView";
+import AdminView from "../components/views/AdminView";
+import ScenarioEditView from "../components/views/ScenarioEditView";
 
 const NO_IMAGE_SCENARIO = "https://images.unsplash.com/photo-1614729939124-03290b5609ce?auto=format&fit=crop&w=400&q=80";
 const DEFAULT_AVATAR = "https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&w=150&q=80";
@@ -521,6 +523,7 @@ export default function Home() {
     await callAIGM(`【システムコマンド】全チームの別行動が終了し、一箇所に合流しました。これまでの各チームの報告を踏まえ、合流時の情景描写と今後の展開を提示してください。`, "story");
   };
 
+
   const callAIGM = async (extraUserContext?: string, targetTab: ChatTab = "story") => {
     if (!activeRoom || !joinedCharacter || !myScene) return;
     setIsLoading(true);
@@ -558,7 +561,7 @@ export default function Home() {
 4. 【ダイスの自己処理禁止】GM自身がダイスを振ったり、PLのSAN値やステータスを勝手に推測・仮定してはいけません。必ずプロンプトに記載された【人間PL】の正確な数値を使用し、PLが画面のダイスボタンを振って結果が送信されるのを待機してください。
 5. 【安易な成功・AIの忖度厳禁（最重要）】PLの行動が論理的に不自然であったり、シナリオの解決条件（例：特定のアイテムを『燃やす』『特定の手順で破壊する』など）を正確に満たしていない場合は、絶対に成功させてはいけません。「ただ投げつけただけ」「間違ったアイテムを使った」などの甘いプレイには、容赦なく「効果がなかった」「状況が悪化した（敵の反撃やダメージなど）」として厳しく処理してください。AIとしてのPLへの忖度や接待プレイは、TRPGの緊迫感を損なうため固く禁じます。
 6. 【ゲーム性の重視】想定プレイ時間（約${activeRoom.scenario?.playTime || 60}分）はあくまで目安です。時間を守るために無理やりご都合主義なハッピーエンドに急ぐくらいなら、時間が延びても構わないので、論理的整合性と緊迫感のある試練を優先してください。
-7. 【エンディングの処理】物語が結末（クリア、または全滅などのゲームオーバー）を迎えた場合、最後の情景描写の末尾に必ず [SCENARIO_END] というシステムタグを記述してください。
+7. 【エンディングの処理】物語が結末を迎えた場合、最後の情景描写の末尾に必ず [SCENARIO_END] というシステムタグを記述してください。
 
 ${isSplitMode && myScene.id !== 'scene_main' ? `
 【チーム分割中の対応（超重要）】
@@ -920,129 +923,25 @@ ${roleInstruction}`;
     <main className="h-screen w-full bg-slate-900 text-slate-100 flex flex-col font-sans overflow-hidden">
       
       {currentView === "admin" && currentUser?.isAdmin && (
-        <div className="flex-1 flex flex-col p-6 w-full overflow-y-auto min-h-0 max-w-5xl mx-auto">
-          <div className="bg-slate-800 border border-slate-700 rounded-2xl p-8 w-full shadow-2xl space-y-6 relative">
-            <div className="absolute top-0 left-0 w-full h-2 bg-red-600 rounded-t-2xl"></div>
-            <div className="flex justify-between items-center mb-6">
-              <h1 className="text-2xl font-extrabold text-red-400">⚙️ システム管理画面</h1>
-              <button onClick={() => setCurrentView("lobby")} className="text-xs text-slate-400 hover:text-white underline">← ロビーに戻る</button>
-            </div>
-            
-            <div className="bg-slate-900 border border-slate-700 rounded-xl p-5 flex justify-between items-center">
-              <div><h3 className="font-bold text-white mb-1">メンテナンスモード</h3></div>
-              <button onClick={toggleMaintenance} className={`px-4 py-2 rounded-lg font-bold text-sm ${isMaintenance ? 'bg-red-600' : 'bg-slate-700'}`}>{isMaintenance ? "🔴 メンテ中" : "🟢 稼働中"}</button>
-            </div>
-
-            <div className="bg-slate-900 border border-slate-700 rounded-xl p-5 space-y-4">
-              <h3 className="font-bold text-red-400 mb-3">🚨 ユーザーからの通報一覧</h3>
-              <div className="h-[250px] overflow-y-scroll space-y-3 pr-2 border border-slate-700/50 p-2 rounded-lg bg-slate-900/50">
-                {reports.filter(r => r.status === 'pending' && r.targetType !== 'scenario_appeal').map(report => {
-                  const reporter = allUsers.find(u => u.id === report.reporterId);
-                  const targetName = report.targetType === 'user' 
-                    ? allUsers.find(u => u.id === report.targetId)?.handleName || "不明なユーザー" 
-                    : scenarios.find(s => s.id === report.targetId)?.title || "不明なシナリオ";
-
-                  return (
-                    <div key={report.id} className="bg-slate-800 p-4 rounded-lg border border-red-900/50 flex flex-col gap-2">
-                      <div className="flex justify-between items-start">
-                        <span className="text-[10px] bg-red-900 text-red-100 px-2 py-0.5 rounded font-bold">{report.targetType === 'user' ? "ユーザー通報" : "シナリオ通報"}</span>
-                        <span className="text-[10px] text-slate-400">通報者: {reporter?.handleName || "不明"}</span>
-                      </div>
-                      <p className="text-sm font-bold text-white mt-1">対象: {targetName}</p>
-                      <div className="text-xs text-slate-300 bg-slate-900 p-2 rounded border border-slate-700">
-                        <span className="text-amber-400 font-bold block mb-1">【通報理由】</span>{report.reason}
-                      </div>
-                      <div className="flex gap-2 justify-end mt-2">
-                        {report.targetType === 'user' ? (
-                          <button onClick={() => { const u = allUsers.find(user => user.id === report.targetId); if(u){ setBanTargetUser(u); setBanReason(report.reason); } }} className="text-[10px] bg-red-700 hover:bg-red-600 text-white px-3 py-1.5 rounded font-bold shadow-lg">対象者をBANする</button>
-                        ) : (
-                          <button onClick={() => { const s = scenarios.find(sc => sc.id === report.targetId); if(s){ setBanTargetScenario(s); setScenarioBanReason(report.reason); } }} className="text-[10px] bg-red-700 hover:bg-red-600 text-white px-3 py-1.5 rounded font-bold shadow-lg">シナリオを管理(BAN)</button>
-                        )}
-                        <button onClick={() => resolveReport(report.id)} className="text-[10px] bg-slate-700 hover:bg-slate-600 text-white px-3 py-1.5 rounded font-bold">処置済みにする</button>
-                      </div>
-                    </div>
-                  )
-                })}
-                {reports.filter(r => r.status === 'pending' && r.targetType !== 'scenario_appeal').length === 0 && <p className="text-xs text-slate-500">現在、未処理の通報はありません。</p>}
-              </div>
-            </div>
-
-            <div className="bg-slate-900 border border-slate-700 rounded-xl p-5 space-y-4">
-              <h3 className="font-bold text-amber-400 mb-3">🚨 シナリオ修正完了・再審査申請</h3>
-              <div className="h-[250px] overflow-y-scroll space-y-3 pr-2 border border-slate-700/50 p-2 rounded-lg bg-slate-900/50">
-                {reports.filter(r => r.targetType === 'scenario_appeal' && r.status === 'pending').map(report => {
-                  const reporter = allUsers.find(u => u.id === report.reporterId);
-                  const targetScenario = scenarios.find(s => s.id === report.targetId);
-                  return (
-                    <div key={report.id} className="bg-slate-800 p-4 rounded-lg border border-amber-900/50 flex flex-col gap-2">
-                      <div className="flex justify-between items-start">
-                        <span className="text-[10px] bg-amber-900 text-amber-100 px-2 py-0.5 rounded font-bold">再審査申請</span>
-                        <span className="text-[10px] text-slate-400">申請者: {reporter?.handleName || "不明"}</span>
-                      </div>
-                      <p className="text-sm font-bold text-white mt-1">対象シナリオ: {targetScenario?.title || "不明なシナリオ"}</p>
-                      <div className="text-xs text-slate-300 bg-slate-900 p-2 rounded border border-slate-700">
-                        <span className="text-emerald-400 font-bold block mb-1">【修正内容・コメント】</span>{report.reason}
-                      </div>
-                      <div className="flex gap-2 justify-end mt-2">
-                        <button onClick={() => unbanScenarioFromAppeal(report.id, report.targetId)} className="text-[10px] bg-emerald-700 hover:bg-emerald-600 text-white px-3 py-1.5 rounded font-bold shadow-lg">非公開を解除(承認)</button>
-                        <button onClick={() => resolveReport(report.id)} className="text-[10px] bg-slate-700 hover:bg-slate-600 text-white px-3 py-1.5 rounded font-bold">却下(処置済みにする)</button>
-                      </div>
-                    </div>
-                  )
-                })}
-                {reports.filter(r => r.targetType === 'scenario_appeal' && r.status === 'pending').length === 0 && <p className="text-xs text-slate-500">現在、未処理の申請はありません。</p>}
-              </div>
-            </div>
-            
-            <div className="bg-slate-900 border border-slate-700 rounded-xl p-5 space-y-4">
-              <h3 className="font-bold text-white mb-3">ユーザー管理</h3>
-              <input type="text" placeholder="検索..." value={userSearchQuery} onChange={(e) => setUserSearchQuery(e.target.value)} className="w-full bg-slate-800 border border-slate-600 rounded-lg p-3 text-sm text-white focus:outline-none focus:border-emerald-500 mb-2" />
-              <div className="h-[300px] overflow-y-scroll space-y-3 pr-2 border border-slate-700/50 p-2 rounded-lg bg-slate-900/50">
-                {allUsers.filter(u => u.handleName.toLowerCase().includes(userSearchQuery.toLowerCase()) || (u.email && u.email.toLowerCase().includes(userSearchQuery.toLowerCase()))).map(user => (
-                  <div key={user.id} className="flex justify-between items-center bg-slate-800 p-4 rounded-lg border border-slate-700">
-                    <div className="flex items-center gap-3">
-                      <img src={user.avatarUrl} className="w-10 h-10 rounded-full object-cover" />
-                      <div>
-                        <p className="text-sm font-bold text-white">{user.handleName} {user.isAdmin && <span className="text-[10px] bg-red-900 px-1 rounded">管理</span>}</p>
-                        <p className="text-[10px] text-slate-400">{user.email}</p>
-                      </div>
-                    </div>
-                    <div className="flex gap-2">
-                      <button onClick={() => toggleAdminStatus(user.id, user.isAdmin)} className="text-[10px] px-3 py-2 rounded bg-slate-700">権限変更</button>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
-
-            <div className="bg-slate-900 border border-slate-700 rounded-xl p-5 space-y-4">
-              <h3 className="font-bold text-white mb-3">シナリオ管理＆治安維持</h3>
-              <input type="text" placeholder="シナリオタイトルで検索..." value={scenarioSearchQuery} onChange={(e) => setScenarioSearchQuery(e.target.value)} className="w-full bg-slate-800 border border-slate-600 rounded-lg p-3 text-sm text-white focus:outline-none focus:border-emerald-500 mb-2 shadow-inner" />
-              <div className="h-[300px] overflow-y-scroll space-y-3 pr-2 border border-slate-700/50 p-2 rounded-lg bg-slate-900/50">
-                {scenarios.filter(s => s.title.toLowerCase().includes(scenarioSearchQuery.toLowerCase())).map(scenario => {
-                  const author = allUsers.find(u => u.id === scenario.authorId);
-                  return (
-                    <div key={scenario.id} className={`flex justify-between items-center p-4 rounded-lg border ${scenario.isBanned ? 'bg-amber-900/20 border-amber-600/50' : 'bg-slate-800 border-slate-700'}`}>
-                      <div className="flex items-center gap-3">
-                        <img src={scenario.imageUrl || NO_IMAGE_SCENARIO} className="w-10 h-10 object-cover rounded opacity-80" />
-                        <div>
-                          <p className="text-sm font-bold text-white">
-                            {scenario.title} 
-                            {scenario.isBanned && <span className="text-[10px] bg-amber-600 text-white px-1.5 py-0.5 ml-2 rounded font-bold">非公開中</span>}
-                          </p>
-                          <p className="text-[10px] text-slate-400">作者: {author ? author.handleName : "不明"} | 評価: {scenario.ratingCount > 0 ? (scenario.ratingSum / scenario.ratingCount).toFixed(1) : "未評価"}</p>
-                        </div>
-                      </div>
-                      <div className="flex gap-2">
-                        <button onClick={() => { setBanTargetScenario(scenario); setScenarioBanReason(""); }} className="text-[10px] bg-slate-700 hover:bg-slate-600 text-white px-3 py-2 rounded font-bold shadow-lg">⚙️ 管理(削除/非公開)</button>
-                      </div>
-                    </div>
-                  )
-                })}
-              </div>
-            </div>
-          </div>
-        </div>
+        <AdminView 
+          isMaintenance={isMaintenance}
+          toggleMaintenance={toggleMaintenance}
+          reports={reports}
+          allUsers={allUsers}
+          scenarios={scenarios}
+          resolveReport={resolveReport}
+          setBanTargetUser={setBanTargetUser}
+          setBanReason={setBanReason}
+          setBanTargetScenario={setBanTargetScenario}
+          setScenarioBanReason={setScenarioBanReason}
+          unbanScenarioFromAppeal={unbanScenarioFromAppeal}
+          userSearchQuery={userSearchQuery}
+          setUserSearchQuery={setUserSearchQuery}
+          toggleAdminStatus={toggleAdminStatus}
+          scenarioSearchQuery={scenarioSearchQuery}
+          setScenarioSearchQuery={setScenarioSearchQuery}
+          setCurrentView={setCurrentView}
+        />
       )}
 
       {currentView === "banned" && <BannedView handleLogout={handleLogout} />}
@@ -1328,65 +1227,14 @@ ${roleInstruction}`;
 
       {/* ==================== 2. シナリオ編集 ==================== */}
       {currentView === "scenarioEdit" && editingScenario && (
-        <div className="flex-1 flex flex-col items-center p-6 max-w-4xl mx-auto w-full min-h-0 overflow-y-auto">
-          <h2 className="text-2xl font-bold text-amber-400 mb-6 w-full">{editingScenario.id ? "シナリオ・セット編集" : "シナリオ・セット新規作成"}</h2>
-          {editingCharIndex !== null ? (
-            <div className="w-full bg-slate-800 border border-slate-700 rounded-xl p-5 space-y-4 shadow-2xl">
-              <h3 className="text-lg font-bold text-emerald-400 mb-2 border-b border-slate-700 pb-2">キャラクター設定</h3>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div><label className="text-xs text-slate-400 block mb-1">名前</label><input type="text" value={editingScenario.presetCharacters[editingCharIndex].name} onChange={(e) => { const newC = [...editingScenario.presetCharacters]; newC[editingCharIndex].name = e.target.value; setEditingScenario({ ...editingScenario, presetCharacters: newC }); }} className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white" /></div>
-                <div><label className="text-xs text-slate-400 block mb-1">職業</label><input type="text" value={editingScenario.presetCharacters[editingCharIndex].job} onChange={(e) => { const newC = [...editingScenario.presetCharacters]; newC[editingCharIndex].job = e.target.value; setEditingScenario({ ...editingScenario, presetCharacters: newC }); }} className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white" /></div>
-              </div>
-              <div className="bg-slate-900 border border-slate-700 rounded-lg p-4">
-                <h4 className="text-xs font-bold text-amber-400 mb-3">ステータス設定</h4>
-                <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
-                  <div><label className="text-[10px] text-slate-400 block mb-1">SAN (1〜100%)</label><input type="number" min="1" max="100" value={editingScenario.presetCharacters[editingCharIndex].san} onChange={(e) => { const newC = [...editingScenario.presetCharacters]; newC[editingCharIndex].san = Number(e.target.value); setEditingScenario({ ...editingScenario, presetCharacters: newC }); }} className="w-full bg-slate-800 border border-slate-600 rounded p-1.5 text-sm text-white text-center" /></div>
-                  <div><label className="text-[10px] text-slate-400 block mb-1">HP</label><input type="number" value={editingScenario.presetCharacters[editingCharIndex].hp} onChange={(e) => { const newC = [...editingScenario.presetCharacters]; newC[editingCharIndex].hp = Number(e.target.value); setEditingScenario({ ...editingScenario, presetCharacters: newC }); }} className="w-full bg-slate-800 border border-slate-600 rounded p-1.5 text-sm text-white text-center" /></div>
-                  <div><label className="text-[10px] text-slate-400 block mb-1">STR</label><input type="number" min="3" max="18" value={editingScenario.presetCharacters[editingCharIndex].str} onChange={(e) => { const newC = [...editingScenario.presetCharacters]; newC[editingCharIndex].str = Number(e.target.value); setEditingScenario({ ...editingScenario, presetCharacters: newC }); }} className="w-full bg-slate-800 border border-slate-600 rounded p-1.5 text-sm text-white text-center" /></div>
-                  <div><label className="text-[10px] text-slate-400 block mb-1">DEX</label><input type="number" min="3" max="18" value={editingScenario.presetCharacters[editingCharIndex].dex} onChange={(e) => { const newC = [...editingScenario.presetCharacters]; newC[editingCharIndex].dex = Number(e.target.value); setEditingScenario({ ...editingScenario, presetCharacters: newC }); }} className="w-full bg-slate-800 border border-slate-600 rounded p-1.5 text-sm text-white text-center" /></div>
-                  <div><label className="text-[10px] text-slate-400 block mb-1">INT</label><input type="number" min="3" max="18" value={editingScenario.presetCharacters[editingCharIndex].int} onChange={(e) => { const newC = [...editingScenario.presetCharacters]; newC[editingCharIndex].int = Number(e.target.value); setEditingScenario({ ...editingScenario, presetCharacters: newC }); }} className="w-full bg-slate-800 border border-slate-600 rounded p-1.5 text-sm text-white text-center" /></div>
-                  <div><label className="text-[10px] text-slate-400 block mb-1">CON</label><input type="number" min="3" max="18" value={editingScenario.presetCharacters[editingCharIndex].con} onChange={(e) => { const newC = [...editingScenario.presetCharacters]; newC[editingCharIndex].con = Number(e.target.value); setEditingScenario({ ...editingScenario, presetCharacters: newC }); }} className="w-full bg-slate-800 border border-slate-600 rounded p-1.5 text-sm text-white text-center" /></div>
-                </div>
-              </div>
-              <div><label className="text-xs text-slate-400 block mb-1">性格・特徴 (ハンドアウト内容)</label><textarea value={editingScenario.presetCharacters[editingCharIndex].personality} onChange={(e) => { const newC = [...editingScenario.presetCharacters]; newC[editingCharIndex].personality = e.target.value; setEditingScenario({ ...editingScenario, presetCharacters: newC }); }} className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white h-24" /></div>
-              <button onClick={() => setEditingCharIndex(null)} className="w-full bg-emerald-600 hover:bg-emerald-500 text-white font-semibold py-3 rounded-lg mt-2">キャラクター設定を確定して戻る</button>
-            </div>
-          ) : (
-            <div className="w-full grid grid-cols-1 md:grid-cols-2 gap-6">
-              <div className="bg-slate-800 border border-slate-700 rounded-xl p-5 space-y-4">
-                <h3 className="text-lg font-bold text-amber-400 border-b border-slate-700 pb-2">基本設定</h3>
-                <div><label className="text-xs text-amber-200 block mb-1">シナリオタイトル</label><input type="text" value={editingScenario.title} onChange={(e) => setEditingScenario({ ...editingScenario, title: e.target.value })} className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white" /></div>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-3 bg-slate-900/50 p-3 rounded-lg border border-slate-700/50">
-                  <div><label className="text-[10px] text-amber-200 block mb-1">販売価格 (G)</label><input type="number" min="0" value={editingScenario.price || 0} onChange={(e) => setEditingScenario({ ...editingScenario, price: Number(e.target.value) })} className="w-full bg-slate-900 border border-slate-700 rounded p-1.5 text-xs text-white" /></div>
-                  <div><label className="text-[10px] text-emerald-400 block mb-1">想定プレイ時間 (分)</label><input type="number" min="10" step="10" value={editingScenario.playTime || 60} onChange={(e) => setEditingScenario({ ...editingScenario, playTime: Number(e.target.value) })} className="w-full bg-slate-900 border border-slate-700 rounded p-1.5 text-xs text-white font-bold" /></div>
-                </div>
-                <div><label className="text-xs text-amber-200 block mb-1">世界観・設定</label><textarea value={editingScenario.setting || ""} onChange={(e) => setEditingScenario({ ...editingScenario, setting: e.target.value })} className="w-full h-16 bg-slate-900 border border-slate-700 rounded-lg p-2.5 text-xs text-white" /></div>
-                <div><label className="text-xs text-amber-200 block mb-1">NPC一覧</label><textarea value={editingScenario.npcList || ""} onChange={(e) => setEditingScenario({ ...editingScenario, npcList: e.target.value })} className="w-full h-16 bg-slate-900 border border-slate-700 rounded-lg p-2.5 text-xs text-white" /></div>
-                <div><label className="text-xs text-amber-200 block mb-1">プロット (AI GM用進行計画)</label><textarea value={editingScenario.plot} onChange={(e) => setEditingScenario({ ...editingScenario, plot: e.target.value })} className="w-full h-32 bg-slate-900 border border-slate-700 rounded-lg p-2.5 text-xs text-white" /></div>
-              </div>
-              <div className="space-y-4">
-                <div className="bg-slate-800 border border-slate-700 rounded-xl p-5">
-                  <div className="flex justify-between items-center mb-4 border-b border-slate-700 pb-2">
-                    <h3 className="text-lg font-bold text-emerald-400">専用キャラクター (HO)</h3>
-                    <button onClick={() => { const newChar: Character = { id: `c${Date.now()}`, name: "新規キャラ", job: "", personality: "", imageUrl: "", hp: 10, san: 50, str: 10, dex: 10, int: 10, con: 10, wis: 10, cha: 10 }; setEditingScenario({ ...editingScenario, presetCharacters: [...editingScenario.presetCharacters, newChar] }); setEditingCharIndex(editingScenario.presetCharacters.length); }} className="text-xs bg-emerald-600/20 text-emerald-400 px-3 py-1.5 rounded">＋ 追加</button>
-                  </div>
-                  <div className="space-y-3">
-                    {editingScenario.presetCharacters.map((char, idx) => (
-                      <div key={char.id} className="flex items-center justify-between bg-slate-900 border border-slate-700 p-3 rounded-lg">
-                        <div>
-                          <p className="text-sm font-bold text-white">{char.name} ({char.job || "職業未設定"})</p>
-                          <p className="text-[10px] text-slate-400">HP:{char.hp} | SAN:{char.san}% | STR:{char.str} DEX:{char.dex} INT:{char.int}</p>
-                        </div>
-                        <button onClick={() => setEditingCharIndex(idx)} className="text-xs bg-slate-700 px-3 py-2 rounded text-white hover:bg-slate-600">編集</button>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-                <div className="flex gap-3"><button onClick={() => setCurrentView("lobby")} className="flex-1 bg-slate-700 text-white font-semibold py-3 rounded-lg">キャンセル</button><button onClick={saveScenario} className="flex-1 bg-amber-600 text-white font-semibold py-3 rounded-lg">保存する</button></div>
-              </div>
-            </div>
-          )}
-        </div>
+        <ScenarioEditView 
+          editingScenario={editingScenario}
+          setEditingScenario={setEditingScenario}
+          editingCharIndex={editingCharIndex}
+          setEditingCharIndex={setEditingCharIndex}
+          saveScenario={saveScenario}
+          setCurrentView={setCurrentView}
+        />
       )}
 
       {/* ==================== 3. ゲームセッション画面 ==================== */}
