@@ -14,12 +14,10 @@ export default function ScenarioEditView({
   editingScenario, setEditingScenario, editingCharIndex, setEditingCharIndex, saveScenario, setCurrentView
 }: Props) {
 
-  // ★ 画像アップロード処理（Base64形式に変換して保存）
   const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>, isChar: boolean) => {
     const file = e.target.files?.[0];
     if (!file) return;
 
-    // 画像サイズが大きいとDBを圧迫するため、2MB制限の警告を出す（任意）
     if (file.size > 2 * 1024 * 1024) {
       alert("ファイルサイズが大きすぎます。2MB以下の画像を選択してください。");
       return;
@@ -39,7 +37,6 @@ export default function ScenarioEditView({
     };
     reader.readAsDataURL(file);
     
-    // 同じ画像を再度選べるようにinputをリセット
     e.target.value = "";
   };
 
@@ -65,7 +62,6 @@ export default function ScenarioEditView({
             </div>
           </div>
 
-          {/* ★ キャラクター画像アップロード */}
           <div className="bg-slate-900 border border-slate-700 rounded-lg p-4">
             <label className="text-xs text-slate-400 block mb-2">キャラクター画像</label>
             <div className="flex flex-col gap-3">
@@ -125,7 +121,6 @@ export default function ScenarioEditView({
               <input type="text" value={editingScenario.title} onChange={(e) => setEditingScenario({ ...editingScenario, title: e.target.value })} className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white" />
             </div>
 
-            {/* ★ パッケージ画像アップロード */}
             <div className="bg-slate-900 border border-slate-700 rounded-lg p-4">
               <label className="text-xs text-amber-200 block mb-2">パッケージ画像</label>
               <div className="flex flex-col gap-3">
@@ -200,7 +195,21 @@ export default function ScenarioEditView({
                         <p className="text-[10px] text-slate-400">HP:{char.hp} | SAN:{char.san}% | STR:{char.str} DEX:{char.dex} INT:{char.int}</p>
                       </div>
                     </div>
-                    <button onClick={() => setEditingCharIndex(idx)} className="text-xs bg-slate-700 px-3 py-2 rounded text-white hover:bg-slate-600">編集</button>
+                    {/* ★ 削除ボタンを追加 */}
+                    <div className="flex gap-2">
+                      <button onClick={() => setEditingCharIndex(idx)} className="text-xs bg-slate-700 px-3 py-2 rounded text-white hover:bg-slate-600 transition-colors">編集</button>
+                      <button 
+                        onClick={() => {
+                          if (confirm(`キャラクター「${char.name}」を削除しますか？`)) {
+                            const newCharacters = editingScenario.presetCharacters.filter((_, i) => i !== idx);
+                            setEditingScenario({ ...editingScenario, presetCharacters: newCharacters });
+                          }
+                        }} 
+                        className="text-xs bg-red-900/50 px-3 py-2 rounded text-red-300 hover:bg-red-800/80 transition-colors"
+                      >
+                        削除
+                      </button>
+                    </div>
                   </div>
                 ))}
               </div>
