@@ -165,16 +165,56 @@ export default function GameView({
           const displayText = msg.text.replace(/\[SPLIT_PROPOSAL:.*?\]/, '').replace('[SCENARIO_END]', '').trim();
           if (!displayText && !isSystem) return null;
           
-          let bgColor = isMe ? "bg-blue-600/90 ml-auto" : (isAIPlayer ? "bg-indigo-600/80 mr-auto border-l-4 border-indigo-400" : "bg-slate-700/90 mr-auto border-l-4 border-emerald-500");
-          if (isSystem) bgColor = "bg-slate-900/80 mx-auto border border-slate-700 text-center";
+          // ★ アバター画像の取得
+          let messageAvatar = "";
+          if (!isSystem && activeRoom.scenario?.presetCharacters) {
+              const character = activeRoom.scenario.presetCharacters.find(c => c.name === msg.charName);
+              if (character && character.imageUrl) {
+                  messageAvatar = character.imageUrl;
+              }
+          }
+
+          let bgColor = isMe ? "bg-blue-600/90 border border-blue-500/50" : (isAIPlayer ? "bg-indigo-600/80 border-l-4 border-indigo-400" : "bg-slate-700/90 border-l-4 border-emerald-500");
+          if (isSystem) bgColor = "bg-slate-900/80 border border-slate-700 text-center";
 
           return (
-            <div key={index} className={`p-3 rounded-xl max-w-[85%] ${bgColor} text-white shadow-md`}>
-              <span className="text-[10px] opacity-60 block mb-1">
-                {msg.charName || (isMe && joinedCharacter ? joinedCharacter.name : (msg.sender === "gm" ? "AI GM" : "SYSTEM"))} 
-                {!isSystem && msg.type && ` [${msg.type.toUpperCase()}]`}
-              </span>
-              <p className="text-sm whitespace-pre-wrap leading-relaxed">{displayText}</p>
+            <div key={index} className={`flex w-full ${isSystem ? 'justify-center' : (isMe ? 'justify-end' : 'justify-start')}`}>
+              
+              {/* 他プレイヤー・AIのアバター（左側） */}
+              {!isMe && !isSystem && (
+                <div className="mr-2 flex-shrink-0 flex items-end">
+                    {messageAvatar ? (
+                        <img src={messageAvatar} alt={msg.charName} className="w-10 h-10 rounded-full object-cover border border-slate-600 bg-slate-800 shadow-sm" />
+                    ) : (
+                        <div className="w-10 h-10 rounded-full bg-slate-700 flex items-center justify-center text-[10px] text-slate-400 border border-slate-600 font-bold shadow-sm">
+                            {(msg.charName || "GM").charAt(0)}
+                        </div>
+                    )}
+                </div>
+              )}
+
+              <div className={`p-3 rounded-2xl max-w-[80%] ${bgColor} text-white shadow-md`}>
+                {!isSystem && (
+                  <span className="text-[10px] text-slate-300 block mb-1 font-bold">
+                    {msg.charName || (isMe && joinedCharacter ? joinedCharacter.name : (msg.sender === "gm" ? "AI GM" : "SYSTEM"))} 
+                    {msg.type && ` [${msg.type.toUpperCase()}]`}
+                  </span>
+                )}
+                <p className={`text-sm whitespace-pre-wrap leading-relaxed ${isSystem && 'text-xs text-slate-300'}`}>{displayText}</p>
+              </div>
+
+              {/* 自分のアバター（右側） */}
+              {isMe && !isSystem && (
+                <div className="ml-2 flex-shrink-0 flex items-end">
+                    {messageAvatar ? (
+                        <img src={messageAvatar} alt={msg.charName} className="w-10 h-10 rounded-full object-cover border border-slate-600 bg-slate-800 shadow-sm" />
+                    ) : (
+                        <div className="w-10 h-10 rounded-full bg-slate-700 flex items-center justify-center text-[10px] text-slate-400 border border-slate-600 font-bold shadow-sm">
+                            {(msg.charName || "ME").charAt(0)}
+                        </div>
+                    )}
+                </div>
+              )}
             </div>
           )
         })}
