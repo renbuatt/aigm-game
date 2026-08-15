@@ -8,7 +8,6 @@ import {
   Character, Scenario, Scene, Room, Message, ChatTab 
 } from "../types";
 
-// ★ 分割したコンポーネントのインポート
 import LoginView from "../components/views/LoginView";
 import BannedView from "../components/views/BannedView";
 import MaintenanceView from "../components/views/MaintenanceView";
@@ -17,6 +16,9 @@ import AdminView from "../components/views/AdminView";
 import ScenarioEditView from "../components/views/ScenarioEditView";
 import LobbyView from "../components/views/LobbyView";
 import GameView from "../components/views/GameView";
+
+const NO_IMAGE_SCENARIO = "https://images.unsplash.com/photo-1614729939124-03290b5609ce?auto=format&fit=crop&w=400&q=80";
+const DEFAULT_AVATAR = "https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&w=150&q=80";
 
 export default function Home() {
   const [currentView, setCurrentView] = useState<ViewState>("login");
@@ -224,7 +226,7 @@ export default function Home() {
       profileData = { id: data.id, handleName: data.handle_name, avatarUrl: data.avatar_url, bio: data.bio, discordId: data.discord_id, ratingSum: data.rating_sum || 0, ratingCount: data.rating_count || 0, isAdmin: data.is_admin || false, isBanned: data.is_banned || false, email: data.email };
       if (data.email !== emailStr) await supabase.from('profiles').update({ email: emailStr }).eq('id', userId);
     } else {
-      const newProfile = { id: userId, handle_name: emailStr.split("@")[0], avatar_url: "https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&w=150&q=80", bio: "よろしくお願いします。", discord_id: "", rating_sum: 0, rating_count: 0, is_admin: false, is_banned: false, email: emailStr };
+      const newProfile = { id: userId, handle_name: emailStr.split("@")[0], avatar_url: DEFAULT_AVATAR, bio: "よろしくお願いします。", discord_id: "", rating_sum: 0, rating_count: 0, is_admin: false, is_banned: false, email: emailStr };
       await supabase.from('profiles').insert(newProfile);
       profileData = { id: userId, handleName: newProfile.handle_name, avatarUrl: newProfile.avatar_url, bio: newProfile.bio, discordId: newProfile.discord_id, ratingSum: 0, ratingCount: 0, isAdmin: false, isBanned: false, email: emailStr };
     }
@@ -479,99 +481,6 @@ export default function Home() {
     
     const extraUserContext = `【システムコマンド】全チームの別行動が終了し、一箇所に合流しました。これまでの各チームの報告を踏まえ、合流時の情景描写と今後の展開を提示してください。`;
     await callAIGM(extraUserContext, "story");
-  };
-
-  const callAIGM = async (extraUserContext?: string, targetTab: ChatTab = "story") => {
-    if (!activeRoom || !joinedCharacter || !myScene) return;
-    setIsLoading(true);
-    
-    try {
-      if (extraUserContext) {
-        await supabase.from('ai_memory').insert({ room_id: activeRoom.id, role: 'user', content: extraUserContext });
-      }
-
-      const { data: memoryData } = await supabase.from('ai_memory')
-        .select('*')
-        .eq('room_id', activeRoom.id)
-        .order('created_at', { ascending: true });
-
-      const history = (memoryData || []).map(m => ({
-        role: m.role === 'assistant' ? 'model' : 'user',
-        parts: [{ text: m.content }]
-      }));
-
-      if (history.length === 0) {
-        history.push({ role: 'user', parts: [{ text: "セッションを開始してください。" }]});
-      }
-
-      const aiPlayersText = aiPlayersList.length > 0 
-        ? aiPlayersList.map(c => `・${c.name} (${c.job}) | HP:${c.hp} SAN:${c.san}% STR:${c.str} DEX:${c.dex} INT:${c.int} CON:${c.con}\n  設定: ${c.personality}`).join("\n\n")
-        : "なし（ソロプレイ）";
-
-      let roleInstruction = "";
-      if (targetTab === "story") {
-        roleInstruction = `
-【重要：GMの絶対ルール（行動判定とゲーム性の担保）】
-1. PLたちが明確な「行動宣言」を出した時のみ物語を進行させてください。
-2. リスクや不確実性を伴う行動には必ずダイスロールを要求し、結果が出るまで描写を待機してください。
-3. 【行動のヒント禁止】PLに具体的な行動の例や選択肢（例：「〇〇して逃げる」「〇〇を攻撃する」など）を絶対に提示しないでください。PL自身に考えさせてください。
-4. 【ダイスの自己処理禁止】GM自身がダイスを振ったり、PLのSAN値やステータスを勝手に推測・仮定してはいけません。必ずプロンプトに記載された【人間PL】の正確な数値を使用し、PLが画面のダイスボタンを振って結果が送信されるのを待機してください。
-5. 【安易な成功・AIの忖度厳禁（最重要）】PLの行動が論理的に不自然であったり、シナリオの解決条件（例：特定のアイテムを『燃やす』『特定の手順で破壊する』など）を正確に満たしていない場合は、絶対に成功させてはいけません。「ただ投げつけただけ」「間違ったアイテムを使った」などの甘いプレイには、容赦なく「効果がなかった」「状況が悪化した（敵の反撃やダメージなど）」として厳しく処理してください。AIとしてのPLへの忖度や接待プレイは、TRPGの緊迫感を損なうため固く禁じます。
-6. 【ゲーム性の重視】想定プレイ時間（約${activeRoom.scenario?.playTime || 60}分）はあくまで目安です。時間を守るために無理やりご都合主義なハッピーエンドに急ぐくらいなら、時間が延びても構わないので、論理的整合性と緊迫感のある試練を優先してください。
-7. 【エンディングの処理】物語が結末を迎えた場合、最後の情景描写の末尾に必ず [SCENARIO_END] というシステムタグを記述してください。
-
-${isSplitMode && myScene.id !== 'scene_main' ? `
-【チーム分割中の対応（超重要）】
-現在、プレイヤー達は二手以上に分かれて行動しています。この発言は【${myScene.name}】チーム（メンバー: ${myScene.memberIds.map(id => activeRoom.scenario?.presetCharacters.find(c=>c.id===id)?.name).join(', ')}）のものです。
-あなたは他チームの状況を一切考慮せず、このチームが現在いる場所の描写のみを行ってください。別のチームを勝手に合流させないでください。
-` : `
-【チーム分けの提案】
-もし物語の展開上、PLたちが二手以上に分かれて行動すべき状況になった場合、GMとして分割を提案し、出力の最後に必ず "[SPLIT_PROPOSAL: 行動案A, 行動案B, 行動案C]" のようなシステムタグを含めてください（行動案は2〜4つ程度）。
-`}
-`;
-      } else if (targetTab === "consult") {
-        roleInstruction = `
-【重要：AIプレイヤーとしての振る舞い】
-現在は「プレイヤー間の相談時間」です。あなたはGMではなく、AI相棒（${aiPlayersList.map(c=>c.name).join(", ")}）の立場でPLに返答してください。
-物語を勝手に進めず、彼らの性格に合わせた対話のみを行ってください。
-${isSplitMode && myScene.id !== 'scene_main' ? `※現在別行動中です。同じチームにいるAI相棒だけが返答してください。` : ''}
-`;
-      } else if (targetTab === "gm") {
-        roleInstruction = `
-【重要：GMへのメタ質問対応】
-現在は「GMへの質問・ルール確認」の時間です。物語は進めず、ルールの裁定などのシステム的な回答のみを行ってください。
-【ヒントの要求について】
-もしPLが謎解きや行動の「ヒント」を要求した場合、無条件で教えずに「ヒント（アイデア・ひらめき）を得るにはSAN値を1d3（または固定値）減少させる必要があります。よろしければ【行動宣言】タブでSANダイスを振って、その旨を宣言してください」と代償を提示してください。
-`;
-      }
-
-      const sysPrompt = `あなたはTRPGの優秀なAIシステムです。
-タイトル: ${activeRoom.scenario?.title}
-世界観: ${activeRoom.scenario?.setting}
-プロット: ${activeRoom.scenario?.plot}
-【人間PL】名前: ${joinedCharacter.name} / ステータス: HP:${joinedCharacter.hp} SAN:${joinedCharacter.san}% STR:${joinedCharacter.str} DEX:${joinedCharacter.dex} INT:${joinedCharacter.int} CON:${joinedCharacter.con}
-【AI相棒】\n${aiPlayersText}
-${roleInstruction}`;
-
-      const aiText = await generateAIResponse(sysPrompt, history);
-
-      const splitMatch = aiText.match(/\[SPLIT_PROPOSAL:\s*(.+?)\]/);
-      if (splitMatch) {
-         const suggestions = splitMatch[1].split(',').map((s: string) => s.trim());
-         setSplitSuggestions(suggestions);
-      }
-
-      await supabase.from('ai_memory').insert({ room_id: activeRoom.id, role: 'assistant', content: aiText });
-      
-      const msgSender = targetTab === "consult" ? "ai_player" : "gm";
-      await pushMessage(activeRoom.id, { sender: msgSender, text: aiText.replace(/\[SPLIT_PROPOSAL:.*?\]/, '').trim(), type: targetTab === "gm" ? "ooc" : "ic", sceneId: myScene?.id, charName: targetTab === "consult" ? "AI相棒" : "AI GM", channel: targetTab });
-
-    } catch (err: any) {
-      alert(err.message);
-      await pushMessage(activeRoom.id, { sender: "gm", text: `（システムエラー: ${err.message}）`, type: "system", sceneId: myScene?.id, channel: "system" }, false);
-    } finally {
-      setIsLoading(false);
-    }
   };
 
   const executeCreateRoom = async () => {
@@ -903,6 +812,7 @@ ${roleInstruction}`;
           createdScenarios={createdScenarios}
           deleteScenario={deleteScenario}
           setRoomConfigModal={setRoomConfigModal}
+          fetchAdminData={fetchAdminData} // ★ 追加！
         />
       )}
 
