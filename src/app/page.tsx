@@ -556,6 +556,7 @@ export default function Home() {
       let roleInstruction = "";
       let scenarioPlotText = activeRoom.scenario?.plot || "";
 
+      // ★ タブごとにルールを分ける
       if (targetTab === "story") {
         roleInstruction = `
 【重要：GMの絶対ルール（行動判定とゲーム性の担保）】
@@ -585,12 +586,14 @@ ${isSplitMode && myScene.id !== 'scene_main' ? `
 ${isSplitMode && myScene.id !== 'scene_main' ? `※現在別行動中です。同じチームにいるAI相棒だけが返答してください。` : ''}
 `;
       } else if (targetTab === "gm") {
+        // ★ GMタブの時のネタバレ禁止を強化
         roleInstruction = `
-【重要：GMへのメタ質問対応】
-現在は「GMへの質問・ルール確認」の時間です。物語は進めず、ルールの裁定などのシステム的な回答のみを行ってください。
-【ヒントの要求について】
-もしPLが謎解きや行動の「ヒント」を要求した場合、無条件で教えずに「ヒント（アイデア・ひらめき）を得るにはSAN値を1d3（または固定値）減少させる必要があります。よろしければ【行動宣言】タブでSANダイスを振って、その旨を宣言してください」と代償を提示してください。
-※警告：AI自身が代わりにダイスを振って数値を減らすことは絶対に禁止します！必ずPL自身に振らせてから結果を判定してください。
+【重要：GMへのメタ質問対応（絶対厳守ルール）】
+1. 現在は「GMへの質問・ルール確認」の時間です。物語は進めず、ルールの裁定やシステム的な回答のみを行ってください。
+2. 【ネタバレの絶対禁止（最重要）】あなたはシナリオのプロットを知っていますが、プレイヤーに「正しいクリア手順」「どこに何があるか」「隠された設定」を自ら絶対に明かさないでください。「〇〇すればクリアできます」のような誘導はTRPGを台無しにします。
+3. 質問（例：「ドアは壊せますか？」）には、「システム上可能か不可能か」「ダイス判定が必要か」のみを簡潔に答え、頼まれていないアドバイスやプロットの解説は一切行わないでください。
+4. 【ヒントの要求について】もしPLが「ヒント」を明確に要求した場合、無条件で教えずに「ヒントを得るにはSAN値を1d3減少させる必要があります。よろしければ【行動宣言】タブでSANダイスを振って宣言してください」と代償を提示してください。
+※警告：AI自身が代わりにダイスを振って数値を減らすことは絶対に禁止します！必ずPL自身に振らせてください。
 `;
       }
 
@@ -817,7 +820,6 @@ ${roleInstruction}`;
     await callAIGM(context, chatTab);
   };
 
-  // ★ ダイスの送信先（channelとtype）を開いているタブに合わせるように修正
   const rollDice = async (targetValue: number, label: string, is1d100: boolean) => {
     if(!myScene || !activeRoom || isLoading || !joinedCharacter) return;
     let res = 0; let isSuccess = false; let msgText = "";
