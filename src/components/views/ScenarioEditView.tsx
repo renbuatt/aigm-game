@@ -14,15 +14,44 @@ export default function ScenarioEditView({
   editingScenario, setEditingScenario, editingCharIndex, setEditingCharIndex, saveScenario, setCurrentView
 }: Props) {
   return (
-    <div className="flex-1 flex flex-col items-center p-6 max-w-4xl mx-auto w-full min-h-0 overflow-y-auto">
+    <div className="flex-1 flex flex-col items-center p-6 max-w-6xl mx-auto w-full min-h-0 overflow-y-auto">
       <h2 className="text-2xl font-bold text-amber-400 mb-6 w-full">{editingScenario.id ? "シナリオ・セット編集" : "シナリオ・セット新規作成"}</h2>
+      
       {editingCharIndex !== null ? (
+        // ==========================================
+        // キャラクター編集画面
+        // ==========================================
         <div className="w-full bg-slate-800 border border-slate-700 rounded-xl p-5 space-y-4 shadow-2xl">
           <h3 className="text-lg font-bold text-emerald-400 mb-2 border-b border-slate-700 pb-2">キャラクター設定</h3>
+          
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div><label className="text-xs text-slate-400 block mb-1">名前</label><input type="text" value={editingScenario.presetCharacters[editingCharIndex].name} onChange={(e) => { const newC = [...editingScenario.presetCharacters]; newC[editingCharIndex].name = e.target.value; setEditingScenario({ ...editingScenario, presetCharacters: newC }); }} className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white" /></div>
-            <div><label className="text-xs text-slate-400 block mb-1">職業</label><input type="text" value={editingScenario.presetCharacters[editingCharIndex].job} onChange={(e) => { const newC = [...editingScenario.presetCharacters]; newC[editingCharIndex].job = e.target.value; setEditingScenario({ ...editingScenario, presetCharacters: newC }); }} className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white" /></div>
+            <div>
+              <label className="text-xs text-slate-400 block mb-1">名前</label>
+              <input type="text" value={editingScenario.presetCharacters[editingCharIndex].name} onChange={(e) => { const newC = [...editingScenario.presetCharacters]; newC[editingCharIndex].name = e.target.value; setEditingScenario({ ...editingScenario, presetCharacters: newC }); }} className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white" />
+            </div>
+            <div>
+              <label className="text-xs text-slate-400 block mb-1">職業</label>
+              <input type="text" value={editingScenario.presetCharacters[editingCharIndex].job} onChange={(e) => { const newC = [...editingScenario.presetCharacters]; newC[editingCharIndex].job = e.target.value; setEditingScenario({ ...editingScenario, presetCharacters: newC }); }} className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white" />
+            </div>
           </div>
+
+          {/* ★ キャラクター画像URLの入力欄（復活＆プレビュー追加） */}
+          <div>
+            <label className="text-xs text-slate-400 block mb-1">キャラクター画像URL (任意)</label>
+            <div className="flex gap-4 items-start">
+              <input 
+                type="text" 
+                value={editingScenario.presetCharacters[editingCharIndex].imageUrl || ""} 
+                onChange={(e) => { const newC = [...editingScenario.presetCharacters]; newC[editingCharIndex].imageUrl = e.target.value; setEditingScenario({ ...editingScenario, presetCharacters: newC }); }} 
+                className="flex-1 bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white" 
+                placeholder="https://..." 
+              />
+              {editingScenario.presetCharacters[editingCharIndex].imageUrl && (
+                <img src={editingScenario.presetCharacters[editingCharIndex].imageUrl} alt="キャラ画像プレビュー" className="w-16 h-16 object-cover rounded-lg border border-slate-600 bg-slate-900" />
+              )}
+            </div>
+          </div>
+
           <div className="bg-slate-900 border border-slate-700 rounded-lg p-4">
             <h4 className="text-xs font-bold text-amber-400 mb-3">ステータス設定</h4>
             <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
@@ -34,22 +63,69 @@ export default function ScenarioEditView({
               <div><label className="text-[10px] text-slate-400 block mb-1">CON</label><input type="number" min="3" max="18" value={editingScenario.presetCharacters[editingCharIndex].con} onChange={(e) => { const newC = [...editingScenario.presetCharacters]; newC[editingCharIndex].con = Number(e.target.value); setEditingScenario({ ...editingScenario, presetCharacters: newC }); }} className="w-full bg-slate-800 border border-slate-600 rounded p-1.5 text-sm text-white text-center" /></div>
             </div>
           </div>
-          <div><label className="text-xs text-slate-400 block mb-1">性格・特徴 (ハンドアウト内容)</label><textarea value={editingScenario.presetCharacters[editingCharIndex].personality} onChange={(e) => { const newC = [...editingScenario.presetCharacters]; newC[editingCharIndex].personality = e.target.value; setEditingScenario({ ...editingScenario, presetCharacters: newC }); }} className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white h-24" /></div>
+          
+          <div>
+            <label className="text-xs text-slate-400 block mb-1">性格・特徴 (ハンドアウト内容)</label>
+            <textarea value={editingScenario.presetCharacters[editingCharIndex].personality} onChange={(e) => { const newC = [...editingScenario.presetCharacters]; newC[editingCharIndex].personality = e.target.value; setEditingScenario({ ...editingScenario, presetCharacters: newC }); }} className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white h-24" />
+          </div>
+          
           <button onClick={() => setEditingCharIndex(null)} className="w-full bg-emerald-600 hover:bg-emerald-500 text-white font-semibold py-3 rounded-lg mt-2">キャラクター設定を確定して戻る</button>
         </div>
       ) : (
+        // ==========================================
+        // シナリオ編集（親）画面
+        // ==========================================
         <div className="w-full grid grid-cols-1 md:grid-cols-2 gap-6">
           <div className="bg-slate-800 border border-slate-700 rounded-xl p-5 space-y-4">
             <h3 className="text-lg font-bold text-amber-400 border-b border-slate-700 pb-2">基本設定</h3>
-            <div><label className="text-xs text-amber-200 block mb-1">シナリオタイトル</label><input type="text" value={editingScenario.title} onChange={(e) => setEditingScenario({ ...editingScenario, title: e.target.value })} className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white" /></div>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-3 bg-slate-900/50 p-3 rounded-lg border border-slate-700/50">
-              <div><label className="text-[10px] text-amber-200 block mb-1">販売価格 (G)</label><input type="number" min="0" value={editingScenario.price || 0} onChange={(e) => setEditingScenario({ ...editingScenario, price: Number(e.target.value) })} className="w-full bg-slate-900 border border-slate-700 rounded p-1.5 text-xs text-white" /></div>
-              <div><label className="text-[10px] text-emerald-400 block mb-1">想定プレイ時間 (分)</label><input type="number" min="10" step="10" value={editingScenario.playTime || 60} onChange={(e) => setEditingScenario({ ...editingScenario, playTime: Number(e.target.value) })} className="w-full bg-slate-900 border border-slate-700 rounded p-1.5 text-xs text-white font-bold" /></div>
+            
+            <div>
+              <label className="text-xs text-amber-200 block mb-1">シナリオタイトル</label>
+              <input type="text" value={editingScenario.title} onChange={(e) => setEditingScenario({ ...editingScenario, title: e.target.value })} className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white" />
             </div>
-            <div><label className="text-xs text-amber-200 block mb-1">世界観・設定</label><textarea value={editingScenario.setting || ""} onChange={(e) => setEditingScenario({ ...editingScenario, setting: e.target.value })} className="w-full h-16 bg-slate-900 border border-slate-700 rounded-lg p-2.5 text-xs text-white" /></div>
-            <div><label className="text-xs text-amber-200 block mb-1">NPC一覧</label><textarea value={editingScenario.npcList || ""} onChange={(e) => setEditingScenario({ ...editingScenario, npcList: e.target.value })} className="w-full h-16 bg-slate-900 border border-slate-700 rounded-lg p-2.5 text-xs text-white" /></div>
-            <div><label className="text-xs text-amber-200 block mb-1">プロット (AI GM用進行計画)</label><textarea value={editingScenario.plot} onChange={(e) => setEditingScenario({ ...editingScenario, plot: e.target.value })} className="w-full h-32 bg-slate-900 border border-slate-700 rounded-lg p-2.5 text-xs text-white" /></div>
+
+            {/* ★ パッケージ画像URLの入力欄（復活＆プレビュー追加） */}
+            <div>
+              <label className="text-xs text-amber-200 block mb-1">パッケージ画像URL (任意)</label>
+              <input 
+                type="text" 
+                value={editingScenario.imageUrl || ""} 
+                onChange={(e) => setEditingScenario({ ...editingScenario, imageUrl: e.target.value })} 
+                className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white mb-2" 
+                placeholder="https://..." 
+              />
+              {editingScenario.imageUrl && (
+                <img src={editingScenario.imageUrl} alt="パッケージプレビュー" className="w-full h-32 object-cover rounded-lg border border-slate-600 bg-slate-900" />
+              )}
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3 bg-slate-900/50 p-3 rounded-lg border border-slate-700/50">
+              <div>
+                <label className="text-[10px] text-amber-200 block mb-1">販売価格 (G)</label>
+                <input type="number" min="0" value={editingScenario.price || 0} onChange={(e) => setEditingScenario({ ...editingScenario, price: Number(e.target.value) })} className="w-full bg-slate-900 border border-slate-700 rounded p-1.5 text-xs text-white" />
+              </div>
+              <div>
+                <label className="text-[10px] text-emerald-400 block mb-1">想定プレイ時間 (分)</label>
+                <input type="number" min="10" step="10" value={editingScenario.playTime || 60} onChange={(e) => setEditingScenario({ ...editingScenario, playTime: Number(e.target.value) })} className="w-full bg-slate-900 border border-slate-700 rounded p-1.5 text-xs text-white font-bold" />
+              </div>
+            </div>
+
+            <div>
+              <label className="text-xs text-amber-200 block mb-1">世界観・設定</label>
+              <textarea value={editingScenario.setting || ""} onChange={(e) => setEditingScenario({ ...editingScenario, setting: e.target.value })} className="w-full h-16 bg-slate-900 border border-slate-700 rounded-lg p-2.5 text-xs text-white" />
+            </div>
+            
+            <div>
+              <label className="text-xs text-amber-200 block mb-1">NPC一覧</label>
+              <textarea value={editingScenario.npcList || ""} onChange={(e) => setEditingScenario({ ...editingScenario, npcList: e.target.value })} className="w-full h-16 bg-slate-900 border border-slate-700 rounded-lg p-2.5 text-xs text-white" />
+            </div>
+            
+            <div>
+              <label className="text-xs text-amber-200 block mb-1">プロット (AI GM用進行計画)</label>
+              <textarea value={editingScenario.plot} onChange={(e) => setEditingScenario({ ...editingScenario, plot: e.target.value })} className="w-full h-32 bg-slate-900 border border-slate-700 rounded-lg p-2.5 text-xs text-white" />
+            </div>
           </div>
+
           <div className="space-y-4">
             <div className="bg-slate-800 border border-slate-700 rounded-xl p-5">
               <div className="flex justify-between items-center mb-4 border-b border-slate-700 pb-2">
@@ -59,16 +135,28 @@ export default function ScenarioEditView({
               <div className="space-y-3">
                 {editingScenario.presetCharacters.map((char, idx) => (
                   <div key={char.id} className="flex items-center justify-between bg-slate-900 border border-slate-700 p-3 rounded-lg">
-                    <div>
-                      <p className="text-sm font-bold text-white">{char.name} ({char.job || "職業未設定"})</p>
-                      <p className="text-[10px] text-slate-400">HP:{char.hp} | SAN:{char.san}% | STR:{char.str} DEX:{char.dex} INT:{char.int}</p>
+                    <div className="flex items-center gap-3">
+                      {/* ★ キャラクター画像がある場合はリストにも表示 */}
+                      {char.imageUrl ? (
+                        <img src={char.imageUrl} alt={char.name} className="w-10 h-10 object-cover rounded-full border border-slate-600" />
+                      ) : (
+                        <div className="w-10 h-10 rounded-full bg-slate-700 flex items-center justify-center text-xs border border-slate-600">No Img</div>
+                      )}
+                      <div>
+                        <p className="text-sm font-bold text-white">{char.name} ({char.job || "職業未設定"})</p>
+                        <p className="text-[10px] text-slate-400">HP:{char.hp} | SAN:{char.san}% | STR:{char.str} DEX:{char.dex} INT:{char.int}</p>
+                      </div>
                     </div>
                     <button onClick={() => setEditingCharIndex(idx)} className="text-xs bg-slate-700 px-3 py-2 rounded text-white hover:bg-slate-600">編集</button>
                   </div>
                 ))}
               </div>
             </div>
-            <div className="flex gap-3"><button onClick={() => setCurrentView("lobby")} className="flex-1 bg-slate-700 text-white font-semibold py-3 rounded-lg">キャンセル</button><button onClick={saveScenario} className="flex-1 bg-amber-600 text-white font-semibold py-3 rounded-lg">保存する</button></div>
+            
+            <div className="flex gap-3">
+              <button onClick={() => setCurrentView("lobby")} className="flex-1 bg-slate-700 text-white font-semibold py-3 rounded-lg">キャンセル</button>
+              <button onClick={saveScenario} className="flex-1 bg-amber-600 text-white font-semibold py-3 rounded-lg">保存する</button>
+            </div>
           </div>
         </div>
       )}
