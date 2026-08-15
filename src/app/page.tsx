@@ -537,8 +537,12 @@ export default function Home() {
         : "なし（ソロプレイ）";
 
       let roleInstruction = "";
+      
+      // ★ ここが一番の修正ポイント！
+      // 「相談（consult）」タブの時は、AIにシナリオのプロット（真相）をカンニングさせないように隠します。
+      let scenarioPlotText = activeRoom.scenario?.plot || "";
+
       if (targetTab === "story") {
-        // ★ ルール8としてステータス変動の同期指示を追加しました
         roleInstruction = `
 【重要：GMの絶対ルール（行動判定とゲーム性の担保）】
 1. PLたちが明確な「行動宣言」を出した時のみ物語を進行させてください。
@@ -560,10 +564,16 @@ ${isSplitMode && myScene.id !== 'scene_main' ? `
 `}
 `;
       } else if (targetTab === "consult") {
+        // ★ プロットを隠ぺい
+        scenarioPlotText = "【機密情報のため非公開（あなたはプレイヤーキャラクターなのでシナリオの真相や隠されたギミック、今後の展開を知りません。これまでのチャット履歴から推測して話してください）】";
+        
+        // ★ GMに乗っ取られないように制限を強化
         roleInstruction = `
-【重要：AIプレイヤーとしての振る舞い】
-現在は「プレイヤー間の相談時間」です。あなたはGMではなく、AI相棒（${aiPlayersList.map(c=>c.name).join(", ")}）の立場でPLに返答してください。
-物語を勝手に進めず、彼らの性格に合わせた対話のみを行ってください。
+【重要：AIプレイヤーとしての振る舞い（絶対厳守ルール）】
+1. 現在は「プレイヤー間の相談時間」です。あなたはGMやナレーターではなく、AI相棒（${aiPlayersList.map(c=>c.name).join(", ")}）の立場で人間PLに返答してください。
+2. 【メタ知識の禁止】あなたはシナリオの真相、ギミックの解法、敵の弱点などを一切知りません。「〇〇にあるはずだ！」「これをすればいいんだ！」といった進行のネタバレや、GM視点での誘導を絶対に行わないでください。
+3. 【描写・進行の禁止】情景描写を行ったり、「〜はどうしますか？行動を宣言してください」といったGMのようなゲーム進行・問いかけは絶対に行わないでください。純粋なキャラクターとしての会話（セリフとわずかな動作）のみを出力してください。
+4. 【恐怖と人間味】現在の状況に対して、あなたのキャラクター設定（性格）に基づいた自然なリアクション（怯える、焦る、励ます、悩むなど）を人間らしく返してください。
 ${isSplitMode && myScene.id !== 'scene_main' ? `※現在別行動中です。同じチームにいるAI相棒だけが返答してください。` : ''}
 `;
       } else if (targetTab === "gm") {
@@ -578,7 +588,7 @@ ${isSplitMode && myScene.id !== 'scene_main' ? `※現在別行動中です。�
       const sysPrompt = `あなたはTRPGの優秀なAIシステムです。
 タイトル: ${activeRoom.scenario?.title}
 世界観: ${activeRoom.scenario?.setting}
-プロット: ${activeRoom.scenario?.plot}
+プロット: ${scenarioPlotText}
 【人間PL】名前: ${joinedCharacter.name} / ステータス: HP:${joinedCharacter.hp} SAN:${joinedCharacter.san}% STR:${joinedCharacter.str} DEX:${joinedCharacter.dex} INT:${joinedCharacter.int} CON:${joinedCharacter.con}
 【AI相棒】\n${aiPlayersText}
 ${roleInstruction}`;
@@ -591,7 +601,6 @@ ${roleInstruction}`;
          setSplitSuggestions(suggestions);
       }
 
-      // ★ 新規追加：AIが出力したステータス変更タグの解析と反映
       const statusRegex = /\[STATUS_UPDATE:\s*(.+?),\s*HP:\s*(\d+),\s*SAN:\s*(\d+)\]/g;
       let match;
       while ((match = statusRegex.exec(aiText)) !== null) {
@@ -609,7 +618,6 @@ ${roleInstruction}`;
       
       const msgSender = targetTab === "consult" ? "ai_player" : "gm";
       
-      // ★ 画面表示用のテキストからはシステムタグを消す
       const cleanAiText = aiText
         .replace(/\[SPLIT_PROPOSAL:.*?\]/g, '')
         .replace(/\[STATUS_UPDATE:.*?\]/g, '')
