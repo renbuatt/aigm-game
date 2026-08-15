@@ -70,7 +70,8 @@ export default function Home() {
 
   const [banTargetUser, setBanTargetUser] = useState<UserProfile | null>(null);
   const [banReason, setBanReason] = useState("");
-  const [banAppeals, setBanAppappeals] = useState<BanAppeal[]>([]);
+  // ★ ここが setBanAppappeals になってしまっていたのを修正しました！
+  const [banAppeals, setBanAppeals] = useState<BanAppeal[]>([]);
   const [appealText, setAppealText] = useState("");
 
   const [userSearchQuery, setUserSearchQuery] = useState("");
