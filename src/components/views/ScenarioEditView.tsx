@@ -13,6 +13,36 @@ type Props = {
 export default function ScenarioEditView({
   editingScenario, setEditingScenario, editingCharIndex, setEditingCharIndex, saveScenario, setCurrentView
 }: Props) {
+
+  // ★ 画像アップロード処理（Base64形式に変換して保存）
+  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>, isChar: boolean) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    // 画像サイズが大きいとDBを圧迫するため、2MB制限の警告を出す（任意）
+    if (file.size > 2 * 1024 * 1024) {
+      alert("ファイルサイズが大きすぎます。2MB以下の画像を選択してください。");
+      return;
+    }
+
+    const reader = new FileReader();
+    reader.onload = () => {
+      const base64String = reader.result as string;
+      
+      if (isChar && editingCharIndex !== null) {
+        const newC = [...editingScenario.presetCharacters];
+        newC[editingCharIndex].imageUrl = base64String;
+        setEditingScenario({ ...editingScenario, presetCharacters: newC });
+      } else {
+        setEditingScenario({ ...editingScenario, imageUrl: base64String });
+      }
+    };
+    reader.readAsDataURL(file);
+    
+    // 同じ画像を再度選べるようにinputをリセット
+    e.target.value = "";
+  };
+
   return (
     <div className="flex-1 flex flex-col items-center p-6 max-w-6xl mx-auto w-full min-h-0 overflow-y-auto">
       <h2 className="text-2xl font-bold text-amber-400 mb-6 w-full">{editingScenario.id ? "シナリオ・セット編集" : "シナリオ・セット新規作成"}</h2>
@@ -35,19 +65,30 @@ export default function ScenarioEditView({
             </div>
           </div>
 
-          {/* ★ キャラクター画像URLの入力欄（復活＆プレビュー追加） */}
-          <div>
-            <label className="text-xs text-slate-400 block mb-1">キャラクター画像URL (任意)</label>
-            <div className="flex gap-4 items-start">
+          {/* ★ キャラクター画像アップロード */}
+          <div className="bg-slate-900 border border-slate-700 rounded-lg p-4">
+            <label className="text-xs text-slate-400 block mb-2">キャラクター画像</label>
+            <div className="flex flex-col gap-3">
               <input 
-                type="text" 
-                value={editingScenario.presetCharacters[editingCharIndex].imageUrl || ""} 
-                onChange={(e) => { const newC = [...editingScenario.presetCharacters]; newC[editingCharIndex].imageUrl = e.target.value; setEditingScenario({ ...editingScenario, presetCharacters: newC }); }} 
-                className="flex-1 bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white" 
-                placeholder="https://..." 
+                type="file" 
+                accept="image/*" 
+                onChange={(e) => handleFileUpload(e, true)} 
+                className="text-xs text-slate-400 file:mr-3 file:py-1.5 file:px-4 file:border-0 file:rounded-lg file:text-xs file:font-bold file:bg-slate-700 file:text-white hover:file:bg-slate-600 cursor-pointer"
               />
+              <div className="flex items-center gap-2">
+                <span className="text-[10px] text-slate-500 whitespace-nowrap">またはURL:</span>
+                <input 
+                  type="text" 
+                  value={editingScenario.presetCharacters[editingCharIndex].imageUrl || ""} 
+                  onChange={(e) => { const newC = [...editingScenario.presetCharacters]; newC[editingCharIndex].imageUrl = e.target.value; setEditingScenario({ ...editingScenario, presetCharacters: newC }); }} 
+                  className="flex-1 bg-slate-800 border border-slate-600 rounded px-2 py-1 text-[10px] text-white" 
+                  placeholder="https://..." 
+                />
+              </div>
               {editingScenario.presetCharacters[editingCharIndex].imageUrl && (
-                <img src={editingScenario.presetCharacters[editingCharIndex].imageUrl} alt="キャラ画像プレビュー" className="w-16 h-16 object-cover rounded-lg border border-slate-600 bg-slate-900" />
+                <div className="mt-2">
+                  <img src={editingScenario.presetCharacters[editingCharIndex].imageUrl} alt="プレビュー" className="w-20 h-20 object-cover rounded-xl border border-slate-500" />
+                </div>
               )}
             </div>
           </div>
@@ -84,19 +125,32 @@ export default function ScenarioEditView({
               <input type="text" value={editingScenario.title} onChange={(e) => setEditingScenario({ ...editingScenario, title: e.target.value })} className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white" />
             </div>
 
-            {/* ★ パッケージ画像URLの入力欄（復活＆プレビュー追加） */}
-            <div>
-              <label className="text-xs text-amber-200 block mb-1">パッケージ画像URL (任意)</label>
-              <input 
-                type="text" 
-                value={editingScenario.imageUrl || ""} 
-                onChange={(e) => setEditingScenario({ ...editingScenario, imageUrl: e.target.value })} 
-                className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white mb-2" 
-                placeholder="https://..." 
-              />
-              {editingScenario.imageUrl && (
-                <img src={editingScenario.imageUrl} alt="パッケージプレビュー" className="w-full h-32 object-cover rounded-lg border border-slate-600 bg-slate-900" />
-              )}
+            {/* ★ パッケージ画像アップロード */}
+            <div className="bg-slate-900 border border-slate-700 rounded-lg p-4">
+              <label className="text-xs text-amber-200 block mb-2">パッケージ画像</label>
+              <div className="flex flex-col gap-3">
+                <input 
+                  type="file" 
+                  accept="image/*" 
+                  onChange={(e) => handleFileUpload(e, false)} 
+                  className="text-xs text-slate-400 file:mr-3 file:py-1.5 file:px-4 file:border-0 file:rounded-lg file:text-xs file:font-bold file:bg-slate-700 file:text-white hover:file:bg-slate-600 cursor-pointer"
+                />
+                <div className="flex items-center gap-2">
+                  <span className="text-[10px] text-slate-500 whitespace-nowrap">またはURL:</span>
+                  <input 
+                    type="text" 
+                    value={editingScenario.imageUrl || ""} 
+                    onChange={(e) => setEditingScenario({ ...editingScenario, imageUrl: e.target.value })} 
+                    className="flex-1 bg-slate-800 border border-slate-600 rounded px-2 py-1 text-[10px] text-white" 
+                    placeholder="https://..." 
+                  />
+                </div>
+                {editingScenario.imageUrl && (
+                  <div className="mt-2">
+                    <img src={editingScenario.imageUrl} alt="パッケージプレビュー" className="w-full h-32 object-cover rounded-xl border border-slate-500" />
+                  </div>
+                )}
+              </div>
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-3 bg-slate-900/50 p-3 rounded-lg border border-slate-700/50">
@@ -136,11 +190,10 @@ export default function ScenarioEditView({
                 {editingScenario.presetCharacters.map((char, idx) => (
                   <div key={char.id} className="flex items-center justify-between bg-slate-900 border border-slate-700 p-3 rounded-lg">
                     <div className="flex items-center gap-3">
-                      {/* ★ キャラクター画像がある場合はリストにも表示 */}
                       {char.imageUrl ? (
                         <img src={char.imageUrl} alt={char.name} className="w-10 h-10 object-cover rounded-full border border-slate-600" />
                       ) : (
-                        <div className="w-10 h-10 rounded-full bg-slate-700 flex items-center justify-center text-xs border border-slate-600">No Img</div>
+                        <div className="w-10 h-10 rounded-full bg-slate-700 flex items-center justify-center text-[10px] text-slate-400 border border-slate-600 font-bold">No Img</div>
                       )}
                       <div>
                         <p className="text-sm font-bold text-white">{char.name} ({char.job || "職業未設定"})</p>
