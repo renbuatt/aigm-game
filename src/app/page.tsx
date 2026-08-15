@@ -2,12 +2,12 @@
 
 import { useState, useEffect, useRef } from "react";
 import { supabase } from "../lib/supabase";
+import { generateAIResponse, generateAITextWithPrompt } from "../lib/ai"; // ★ AI通信関数をインポート
 import { 
   ViewState, UserProfile, Notification, BanAppeal, Report, 
   Character, Scenario, Scene, Room, Message, ChatTab 
 } from "../types";
 
-// ★ 分割したコンポーネントのインポート
 import LoginView from "../components/views/LoginView";
 import BannedView from "../components/views/BannedView";
 import MaintenanceView from "../components/views/MaintenanceView";
@@ -17,7 +17,6 @@ import ScenarioEditView from "../components/views/ScenarioEditView";
 import LobbyView from "../components/views/LobbyView";
 import GameView from "../components/views/GameView";
 
-// ★ 消してしまっていた初期画像の定義を復活
 const NO_IMAGE_SCENARIO = "https://images.unsplash.com/photo-1614729939124-03290b5609ce?auto=format&fit=crop&w=400&q=80";
 const DEFAULT_AVATAR = "https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&w=150&q=80";
 
@@ -467,8 +466,9 @@ export default function Home() {
 
   const resolveReport = async (reportId: string) => { await supabase.from('reports').update({ status: 'resolved' }).eq('id', reportId); fetchAdminData(); };
   const submitAppeal = async () => { if(!currentUser || !appealText) return; await supabase.from('ban_appeals').insert({ user_id: currentUser.id, reason: "不明", appeal_text: appealText, status: 'appealing' }); alert("調査依頼を送信しました。"); setAppealText(""); };
-  const sendWarningNotification = async () => { if (!warningModalUser || !warningTitle || !warningText) return; await supabase.from('notifications').insert({ user_id: warningModalUser.id, title: warningTitle, message: warningText }); alert("警告通知を送信しました。"); setWarningModalUser(null); setWarningTitle(""); setWarningText(""); };
+  const submitUserReport = async () => { /* ...(そのまま残す) */ };
   const markNotificationAsRead = async (notifId: string) => { await supabase.from('notifications').update({ is_read: true }).eq('id', notifId); setMyNotifications(myNotifications.map(n => n.id === notifId ? { ...n, isRead: true } : n)); };
+
 
   const startSplitting = () => {
     if (!activeRoom) return;
@@ -597,28 +597,8 @@ ${isSplitMode && myScene.id !== 'scene_main' ? `※現在別行動中です。�
 【AI相棒】\n${aiPlayersText}
 ${roleInstruction}`;
 
-      const apiKey = process.env.NEXT_PUBLIC_GEMINI_API_KEY;
-      if (!apiKey) throw new Error("Gemini APIキーが設定されていません。");
-
-      const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-3.5-flash-lite:generateContent?key=${apiKey}`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          systemInstruction: { parts: [{ text: sysPrompt }] },
-          contents: history,
-          generationConfig: { temperature: 0.75 }
-        })
-      });
-      
-      if (!res.ok) {
-        const errText = await res.text();
-        let errorDetail = res.statusText;
-        try { const errJson = JSON.parse(errText); if (errJson.error && errJson.error.message) errorDetail = errJson.error.message; } catch(e) {}
-        throw new Error(`AIサーバーの応答エラーが発生しました。\n詳細: ${errorDetail || errText}`);
-      }
-      
-      const resData = await res.json();
-      const aiText = resData.candidates?.[0]?.content?.parts?.[0]?.text || "（AIの返答がありません）";
+      // ★ 新しく作った関数を呼び出すだけ！
+      const aiText = await generateAIResponse(sysPrompt, history);
 
       const splitMatch = aiText.match(/\[SPLIT_PROPOSAL:\s*(.+?)\]/);
       if (splitMatch) {
@@ -632,7 +612,7 @@ ${roleInstruction}`;
       await pushMessage(activeRoom.id, { sender: msgSender, text: aiText.replace(/\[SPLIT_PROPOSAL:.*?\]/, '').trim(), type: targetTab === "gm" ? "ooc" : "ic", sceneId: myScene?.id, charName: targetTab === "consult" ? "AI相棒" : "AI GM", channel: targetTab });
 
     } catch (err: any) {
-      alert("AIエラー: " + err.message);
+      alert(err.message);
       await pushMessage(activeRoom.id, { sender: "gm", text: `（システムエラー: ${err.message}）`, type: "system", sceneId: myScene?.id, channel: "system" }, false);
     } finally {
       setIsLoading(false);
@@ -866,21 +846,8 @@ ${roleInstruction}`;
       const logText = targetMessages.map(m => `${m.charName || (m.sender === 'gm' ? 'GM' : 'システム')}: ${m.text.replace(/\[SPLIT_PROPOSAL:.*?\]/, '').replace('[SCENARIO_END]', '').trim()}`).join('\n');
       
       try {
-        const apiKey = process.env.NEXT_PUBLIC_GEMINI_API_KEY;
-        if (!apiKey) throw new Error("APIキーが設定されていません。");
-
-        const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-3.5-flash-lite:generateContent?key=${apiKey}`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            contents: [{ role: 'user', parts: [{ text: prompt + "\n\n【チャットログ】\n" + logText }] }],
-            generationConfig: { temperature: 0.7 }
-          })
-        });
-        
-        if (!res.ok) throw new Error("AIサーバーの応答エラー");
-        const resData = await res.json();
-        const generatedText = resData.candidates?.[0]?.content?.parts?.[0]?.text || "生成に失敗しました。";
+        // ★ 新しく作った関数を呼び出すだけ！
+        const generatedText = await generateAITextWithPrompt(prompt + "\n\n【チャットログ】\n" + logText);
         contentHtml = `<div style="white-space: pre-wrap; line-height: 1.8; color: #333; font-size: 14px;">${generatedText}</div>`;
       } catch(e: any) {
         alert("エクスポート生成エラー: " + e.message);
