@@ -7,7 +7,6 @@ type Props = {
   currentUser: UserProfile;
   joinedCharacter: Character | null;
   leaveGame: () => Promise<void>;
-  // ★ 通報の型を拡張
   setReportTarget: React.Dispatch<React.SetStateAction<{
     type: 'user' | 'scenario' | 'room';
     id: string;
@@ -36,6 +35,7 @@ type Props = {
   setConsultWithAI: React.Dispatch<React.SetStateAction<boolean>>;
   isChatDisabled: boolean;
   mergeTeam: () => Promise<void>;
+  executeMergeAll: () => Promise<void>;
   draftAction: string;
   setDraftAction: React.Dispatch<React.SetStateAction<string>>;
   draftMembers: string[];
@@ -50,7 +50,7 @@ export default function GameView({
   activeRoom, myScene, currentUser, joinedCharacter, leaveGame, setReportTarget, rollDice,
   startGame, startSplitting, isSplitMode, chatTab, messages, isLoading, isScenarioEnded,
   setCurrentView, endGame, input, setInput, handleSend, handleTabClick, unreadIndicators,
-  consultWithAI, setConsultWithAI, isChatDisabled, mergeTeam, draftAction, setDraftAction,
+  consultWithAI, setConsultWithAI, isChatDisabled, mergeTeam, executeMergeAll, draftAction, setDraftAction,
   draftMembers, setDraftMembers, draftLeader, setDraftLeader, addTeamDraft, finishSplitting
 }: Props) {
   return (
@@ -68,14 +68,14 @@ export default function GameView({
             </div>
             <div>
               <label className="text-xs text-slate-400 block mb-1">メンバー</label>
-              {draftMembers.map((m, i) => (
+              {draftMembers.map((m: string, i: number) => (
                 <div key={i} className="flex gap-2 mb-2">
                   <select value={m} onChange={e => { const nm=[...draftMembers]; nm[i]=e.target.value; setDraftMembers(nm); }} className="flex-1 bg-slate-900 border border-slate-700 rounded p-2 text-sm text-white">
                     <option value="" disabled>メンバーを選択...</option>
-                    {Object.values(activeRoom.joined_users || {}).map(charId => {
-                      const isAssigned = activeRoom.scenes.some(s => s.id !== 'scene_main' && s.memberIds.includes(charId));
+                    {Object.values(activeRoom.joined_users || {}).map((charId: string) => {
+                      const isAssigned = activeRoom.scenes.some((s: Scene) => s.id !== 'scene_main' && s.memberIds.includes(charId));
                       if (isAssigned) return null;
-                      const c = activeRoom.scenario?.presetCharacters.find(pc => pc.id === charId);
+                      const c = activeRoom.scenario?.presetCharacters.find((pc: Character) => pc.id === charId);
                       return c ? <option key={c.id} value={c.id}>{c.name}</option> : null;
                     })}
                   </select>
@@ -83,12 +83,12 @@ export default function GameView({
                 </div>
               ))}
             </div>
-            {draftMembers.filter(m=>m!=="").length > 0 && !draftMembers.includes(joinedCharacter?.id || "") && (
+            {draftMembers.filter((m: string)=>m!=="").length > 0 && !draftMembers.includes(joinedCharacter?.id || "") && (
               <div>
                 <label className="text-xs text-slate-400 block mb-1">このチームのリーダー</label>
                 <div className="flex gap-4">
-                  {draftMembers.filter(m=>m!=="").map(m => {
-                    const c = activeRoom.scenario?.presetCharacters.find(pc => pc.id === m);
+                  {draftMembers.filter((m: string)=>m!=="").map((m: string) => {
+                    const c = activeRoom.scenario?.presetCharacters.find((pc: Character) => pc.id === m);
                     if(!c) return null;
                     return <label key={m} className="flex items-center gap-2 text-sm cursor-pointer"><input type="radio" name="leader" value={m} checked={draftLeader===m} onChange={()=>setDraftLeader(m)} /> {c.name}</label>;
                   })}
@@ -109,11 +109,11 @@ export default function GameView({
           <div className="bg-slate-800 border border-slate-700 rounded-xl p-6 w-full max-w-md shadow-2xl text-center">
             <h3 className="text-lg font-bold text-blue-400 mb-2 animate-pulse">ホストがチーム分けを行っています...</h3>
             <div className="space-y-2 mt-4 text-left">
-              {activeRoom.scenes.filter(s => s.id !== 'scene_main').map(s => (
+              {activeRoom.scenes.filter((s: Scene) => s.id !== 'scene_main').map((s: Scene) => (
                 <div key={s.id} className="bg-slate-900 border border-slate-700 p-3 rounded">
                   <span className="text-xs text-amber-400 font-bold bg-amber-900/30 px-2 py-0.5 rounded mr-2">{s.name}</span>
                   <span className="text-sm text-slate-300">
-                    {s.memberIds.map(id => activeRoom.scenario?.presetCharacters.find(c=>c.id===id)?.name).join(', ')}
+                    {s.memberIds.map((id: string) => activeRoom.scenario?.presetCharacters.find((c: Character)=>c.id===id)?.name).join(', ')}
                   </span>
                 </div>
               ))}
@@ -126,12 +126,11 @@ export default function GameView({
         <div className="flex items-center gap-4">
           <button onClick={leaveGame} className="text-xs bg-slate-700 hover:bg-slate-600 text-white px-3 py-1.5 rounded font-bold shadow">🚪 離脱 / 終了</button>
           
-          {/* ★ 通報ボタンの機能を強化 */}
           <button onClick={() => {
             const users = Object.entries(activeRoom.joined_users || {})
               .filter(([userId]) => userId !== currentUser.id)
               .map(([userId, charId]) => {
-                const charName = activeRoom.scenario?.presetCharacters.find(c => c.id === charId)?.name || "不明";
+                const charName = activeRoom.scenario?.presetCharacters.find((c: Character) => c.id === charId)?.name || "不明";
                 return { id: userId, name: charName };
               });
             
@@ -173,19 +172,23 @@ export default function GameView({
             <button onClick={startGame} className="bg-emerald-600 hover:bg-emerald-500 text-white text-[10px] font-bold px-4 py-2 rounded animate-pulse ml-2 shadow-lg shadow-emerald-900/50">▶ ゲーム開始</button>
           )}
 
-          {/* チーム分け開始ボタン */}
-          {(currentUser?.id === activeRoom.host_id || currentUser?.handleName === activeRoom.host_name) && activeRoom.status === "playing" && !isScenarioEnded && !isSplitMode && (
-             <button onClick={startSplitting} className="bg-blue-700 hover:bg-blue-600 text-white text-[10px] font-bold px-3 py-1.5 rounded shadow-lg ml-2">👥 チーム分け</button>
+          {/* チーム分け・強制合流ボタン */}
+          {(currentUser?.id === activeRoom.host_id || currentUser?.handleName === activeRoom.host_name) && activeRoom.status === "playing" && !isScenarioEnded && (
+             isSplitMode ? (
+               <button onClick={executeMergeAll} className="bg-indigo-700 hover:bg-indigo-600 text-white text-[10px] font-bold px-3 py-1.5 rounded shadow-lg ml-2">🚪 全員を強制合流</button>
+             ) : (
+               <button onClick={startSplitting} className="bg-blue-700 hover:bg-blue-600 text-white text-[10px] font-bold px-3 py-1.5 rounded shadow-lg ml-2">👥 チーム分け</button>
+             )
           )}
         </div>
       </header>
 
       <div className="flex-1 overflow-y-scroll space-y-3 p-4 bg-slate-800/80 rounded-xl border border-slate-700 mb-3 min-h-0">
-        {messages.filter(msg => {
+        {messages.filter((msg: Message) => {
           if (msg.type === "system") return true;
           if (!isSplitMode) return msg.channel === chatTab;
           return (!msg.sceneId || msg.sceneId === 'scene_main' || msg.sceneId === myScene.id) && msg.channel === chatTab;
-        }).map((msg, index) => {
+        }).map((msg: Message, index: number) => {
           const isMe = msg.sender === "player";
           const isAIPlayer = msg.sender === "ai_player";
           const isSystem = msg.type === "system";
@@ -193,10 +196,9 @@ export default function GameView({
           const displayText = msg.text.replace(/\[SPLIT_PROPOSAL:.*?\]/, '').replace('[SCENARIO_END]', '').trim();
           if (!displayText && !isSystem) return null;
           
-          // ★ アバター画像の取得（維持）
           let messageAvatar = "";
           if (!isSystem && activeRoom.scenario?.presetCharacters) {
-              const character = activeRoom.scenario.presetCharacters.find(c => c.name === msg.charName);
+              const character = activeRoom.scenario.presetCharacters.find((c: Character) => c.name === msg.charName);
               if (character && character.imageUrl) {
                   messageAvatar = character.imageUrl;
               }
@@ -208,7 +210,6 @@ export default function GameView({
           return (
             <div key={index} className={`flex w-full ${isSystem ? 'justify-center' : (isMe ? 'justify-end' : 'justify-start')}`}>
               
-              {/* 他プレイヤー・AIのアバター（左側） */}
               {!isMe && !isSystem && (
                 <div className="mr-2 flex-shrink-0 flex items-end">
                     {messageAvatar ? (
@@ -231,7 +232,6 @@ export default function GameView({
                 <p className={`text-sm whitespace-pre-wrap leading-relaxed ${isSystem && 'text-xs text-slate-300'}`}>{displayText}</p>
               </div>
 
-              {/* 自分のアバター（右側） */}
               {isMe && !isSystem && (
                 <div className="ml-2 flex-shrink-0 flex items-end">
                     {messageAvatar ? (
@@ -314,7 +314,7 @@ export default function GameView({
               <div className="flex gap-2 pt-1">
                 {isSplitMode && myScene.id !== 'scene_main' && !myScene.isMerged && (currentUser?.id === myScene.leaderId || activeRoom.host_id === currentUser?.id) && (
                   <button onClick={mergeTeam} className="bg-indigo-600 hover:bg-indigo-500 text-white px-3 rounded-lg text-xs font-bold shadow-lg flex-shrink-0">
-                    🚪 合流する
+                    🚪 このチームだけ合流する
                   </button>
                 )}
                 

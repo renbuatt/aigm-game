@@ -1,13 +1,87 @@
-import React from "react";
-import { ViewState, UserProfile, Room, Character, Scene, Message, ChatTab } from "../../types";
+"use client";
 
-type Props = {
-  activeRoom: Room;
-  myScene: Scene;
-  currentUser: UserProfile;
-  joinedCharacter: Character | null;
-  leaveGame: () => Promise<void>;
-  setReportTarget: React.Dispatch<React.SetStateAction<{
+import { useState, useEffect, useRef } from "react";
+import { supabase } from "../lib/supabase";
+import { generateAIResponse, generateAITextWithPrompt } from "../lib/ai";
+import { 
+  ViewState, UserProfile, Notification, BanAppeal, Report, 
+  Character, Scenario, Scene, Room, Message, ChatTab 
+} from "../types";
+
+import LoginView from "../components/views/LoginView";
+import BannedView from "../components/views/BannedView";
+import MaintenanceView from "../components/views/MaintenanceView";
+import EvaluationView from "../components/views/EvaluationView";
+import AdminView from "../components/views/AdminView";
+import ScenarioEditView from "../components/views/ScenarioEditView";
+import LobbyView from "../components/views/LobbyView";
+import GameView from "../components/views/GameView";
+
+const NO_IMAGE_SCENARIO = "https://images.unsplash.com/photo-1614729939124-03290b5609ce?auto=format&fit=crop&w=400&q=80";
+const DEFAULT_AVATAR = "https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&w=150&q=80";
+
+export default function Home() {
+  const [currentView, setCurrentView] = useState<ViewState>("login");
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [isLoginMode, setIsLoginMode] = useState(true);
+  const [authLoading, setAuthLoading] = useState(false);
+
+  const [currentUser, setCurrentUser] = useState<UserProfile | null>(null);
+  const [isEditingProfile, setIsEditingProfile] = useState(false);
+  const [editProfileData, setEditProfileData] = useState<UserProfile | null>(null);
+
+  const [scenarios, setScenarios] = useState<Scenario[]>([]);
+  const [editingScenario, setEditingScenario] = useState<Scenario | null>(null);
+  const [editingCharIndex, setEditingCharIndex] = useState<number | null>(null);
+  
+  const [charSelects, setCharSelects] = useState<Record<string, string>>({});
+  const [giftInputs, setGiftInputs] = useState<Record<string, string>>({});
+
+  const [rooms, setRooms] = useState<Room[]>([]);
+  const [activeRoom, setActiveRoom] = useState<Room | null>(null);
+  const [joinedCharacter, setJoinedCharacter] = useState<Character | null>(null);
+  const [aiPlayersList, setAiPlayersList] = useState<Character[]>([]); 
+  
+  const [messages, setMessages] = useState<Message[]>([]);
+  const [input, setInput] = useState("");
+  const [chatTab, setChatTab] = useState<ChatTab>("story");
+  const [isLoading, setIsLoading] = useState(false);
+  const [isExporting, setIsExporting] = useState(false);
+  
+  const [consultWithAI, setConsultWithAI] = useState<boolean>(true);
+
+  const [splitSuggestions, setSplitSuggestions] = useState<string[]>([]);
+  const [draftAction, setDraftAction] = useState("");
+  const [draftMembers, setDraftMembers] = useState<string[]>([""]);
+  const [draftLeader, setDraftLeader] = useState<string>("");
+
+  const [ratingScenario, setRatingScenario] = useState<number>(5);
+  const [ratingGM, setRatingGM] = useState<number>(5);
+  const [isMaintenance, setIsMaintenance] = useState(false);
+  
+  const [allUsers, setAllUsers] = useState<UserProfile[]>([]);
+  const [myNotifications, setMyNotifications] = useState<Notification[]>([]);
+  const [showMailbox, setShowMailbox] = useState(false);
+  
+  const [warningModalUser, setWarningModalUser] = useState<UserProfile | null>(null);
+  const [warningTitle, setWarningTitle] = useState("");
+  const [warningText, setWarningText] = useState("");
+
+  const [banTargetUser, setBanTargetUser] = useState<UserProfile | null>(null);
+  const [banReason, setBanReason] = useState("");
+  const [banAppeals, setBanAppeals] = useState<BanAppeal[]>([]);
+  const [appealText, setAppealText] = useState("");
+
+  const [userSearchQuery, setUserSearchQuery] = useState("");
+  const [scenarioSearchQuery, setScenarioSearchQuery] = useState("");
+
+  const [banTargetScenario, setBanTargetScenario] = useState<Scenario | null>(null);
+  const [scenarioBanReason, setScenarioBanReason] = useState("");
+
+  const [reports, setReports] = useState<Report[]>([]);
+  
+  const [reportTarget, setReportTarget] = useState<{
     type: 'user' | 'scenario' | 'room';
     id: string;
     name: string;
@@ -15,324 +89,1127 @@ type Props = {
     scenarioId?: string;
     scenarioName?: string;
     availableUsers?: { id: string, name: string }[];
-  } | null>>;
-  rollDice: (targetValue: number, label: string, is1d100: boolean) => Promise<void>;
-  startGame: () => Promise<void>;
-  startSplitting: () => void;
-  isSplitMode: boolean;
-  chatTab: ChatTab;
-  messages: Message[];
-  isLoading: boolean;
-  isScenarioEnded: boolean;
-  setCurrentView: React.Dispatch<React.SetStateAction<ViewState>>;
-  endGame: () => Promise<void>;
-  input: string;
-  setInput: React.Dispatch<React.SetStateAction<string>>;
-  handleSend: () => Promise<void>;
-  handleTabClick: (tab: ChatTab) => void;
-  unreadIndicators: { story: boolean; consult: boolean; gm: boolean; };
-  consultWithAI: boolean;
-  setConsultWithAI: React.Dispatch<React.SetStateAction<boolean>>;
-  isChatDisabled: boolean;
-  mergeTeam: () => Promise<void>;
-  executeMergeAll: () => Promise<void>; // ★ これが抜けていたためエラーになっていました！
-  draftAction: string;
-  setDraftAction: React.Dispatch<React.SetStateAction<string>>;
-  draftMembers: string[];
-  setDraftMembers: React.Dispatch<React.SetStateAction<string[]>>;
-  draftLeader: string;
-  setDraftLeader: React.Dispatch<React.SetStateAction<string>>;
-  addTeamDraft: () => Promise<void>;
-  finishSplitting: () => Promise<void>;
-};
+  } | null>(null);
+  
+  const [reportReason, setReportReason] = useState("");
 
-export default function GameView({
-  activeRoom, myScene, currentUser, joinedCharacter, leaveGame, setReportTarget, rollDice,
-  startGame, startSplitting, isSplitMode, chatTab, messages, isLoading, isScenarioEnded,
-  setCurrentView, endGame, input, setInput, handleSend, handleTabClick, unreadIndicators,
-  consultWithAI, setConsultWithAI, isChatDisabled, mergeTeam, executeMergeAll, draftAction, setDraftAction,
-  draftMembers, setDraftMembers, draftLeader, setDraftLeader, addTeamDraft, finishSplitting
-}: Props) {
-  return (
-    <div className="flex-1 flex flex-col max-w-5xl mx-auto w-full p-4 min-h-0 relative">
-      
-      {/* チーム分け設定モーダル（ホスト専用） */}
-      {activeRoom.status === 'splitting' && currentUser?.id === activeRoom.host_id && (
-        <div className="absolute inset-0 bg-black/80 z-50 flex items-center justify-center p-4">
-          <div className="bg-slate-800 border border-blue-500/50 rounded-xl p-6 w-full max-w-lg shadow-2xl space-y-4">
-            <h3 className="text-xl font-bold text-blue-400">👥 チーム編成</h3>
-            <p className="text-xs text-slate-300 mb-2">※現在作成中のチームを設定してください。</p>
-            <div>
-              <label className="text-xs text-slate-400 block mb-1">チームの行動・目的地</label>
-              <input type="text" value={draftAction} onChange={e=>setDraftAction(e.target.value)} placeholder="例：管理室に行く" className="w-full bg-slate-900 border border-slate-700 rounded p-2 text-sm text-white" />
-            </div>
-            <div>
-              <label className="text-xs text-slate-400 block mb-1">メンバー</label>
-              {draftMembers.map((m, i) => (
-                <div key={i} className="flex gap-2 mb-2">
-                  <select value={m} onChange={e => { const nm=[...draftMembers]; nm[i]=e.target.value; setDraftMembers(nm); }} className="flex-1 bg-slate-900 border border-slate-700 rounded p-2 text-sm text-white">
-                    <option value="" disabled>メンバーを選択...</option>
-                    {Object.values(activeRoom.joined_users || {}).map(charId => {
-                      const isAssigned = activeRoom.scenes.some(s => s.id !== 'scene_main' && s.memberIds.includes(charId));
-                      if (isAssigned) return null;
-                      const c = activeRoom.scenario?.presetCharacters.find(pc => pc.id === charId);
-                      return c ? <option key={c.id} value={c.id}>{c.name}</option> : null;
-                    })}
-                  </select>
-                  {i === draftMembers.length - 1 && <button onClick={()=>setDraftMembers([...draftMembers, ""])} className="bg-slate-700 px-3 rounded text-xs font-bold text-white">＋</button>}
-                </div>
-              ))}
-            </div>
-            {draftMembers.filter(m=>m!=="").length > 0 && !draftMembers.includes(joinedCharacter?.id || "") && (
-              <div>
-                <label className="text-xs text-slate-400 block mb-1">このチームのリーダー</label>
-                <div className="flex gap-4">
-                  {draftMembers.filter(m=>m!=="").map(m => {
-                    const c = activeRoom.scenario?.presetCharacters.find(pc => pc.id === m);
-                    if(!c) return null;
-                    return <label key={m} className="flex items-center gap-2 text-sm cursor-pointer"><input type="radio" name="leader" value={m} checked={draftLeader===m} onChange={()=>setDraftLeader(m)} /> {c.name}</label>;
-                  })}
-                </div>
-              </div>
-            )}
-            <div className="flex gap-2 mt-4">
-              <button onClick={addTeamDraft} className="flex-1 bg-blue-600 hover:bg-blue-500 py-3 rounded text-sm font-bold shadow-lg">このチームを確定して次へ</button>
-              <button onClick={finishSplitting} className="flex-1 bg-emerald-600 hover:bg-emerald-500 py-3 rounded text-sm font-bold shadow-lg">編成を完了して再開する</button>
-            </div>
-          </div>
-        </div>
-      )}
+  const [scenarioAppealTarget, setScenarioAppealTarget] = useState<Scenario | null>(null);
+  const [scenarioAppealText, setScenarioAppealText] = useState("");
 
-      {/* チーム分け待機画面（ゲスト用） */}
-      {activeRoom.status === 'splitting' && currentUser?.id !== activeRoom.host_id && (
-        <div className="absolute inset-0 bg-black/80 z-40 flex items-center justify-center p-4">
-          <div className="bg-slate-800 border border-slate-700 rounded-xl p-6 w-full max-w-md shadow-2xl text-center">
-            <h3 className="text-lg font-bold text-blue-400 mb-2 animate-pulse">ホストがチーム分けを行っています...</h3>
-            <div className="space-y-2 mt-4 text-left">
-              {activeRoom.scenes.filter(s => s.id !== 'scene_main').map(s => (
-                <div key={s.id} className="bg-slate-900 border border-slate-700 p-3 rounded">
-                  <span className="text-xs text-amber-400 font-bold bg-amber-900/30 px-2 py-0.5 rounded mr-2">{s.name}</span>
-                  <span className="text-sm text-slate-300">
-                    {s.memberIds.map(id => activeRoom.scenario?.presetCharacters.find(c=>c.id===id)?.name).join(', ')}
-                  </span>
-                </div>
-              ))}
-            </div>
-          </div>
-        </div>
-      )}
+  const [roomConfigModal, setRoomConfigModal] = useState<{ scenario: Scenario, charId: string, privacy: 'open'|'secret', message: string } | null>(null);
+  const [secretRoomIdSearch, setSecretRoomIdSearch] = useState("");
+  const [searchedSecretRoom, setSearchedSecretRoom] = useState<Room | null>(null);
+  
+  const [shopScenarioId, setShopScenarioId] = useState<string>(""); 
 
-      <header className="bg-slate-800 border border-slate-700 rounded-xl p-3 mb-3 flex justify-between items-center shadow-md">
-        <div className="flex items-center gap-4">
-          <button onClick={leaveGame} className="text-xs bg-slate-700 hover:bg-slate-600 text-white px-3 py-1.5 rounded font-bold shadow">🚪 離脱 / 終了</button>
-          
-          <button onClick={() => {
-            const users = Object.entries(activeRoom.joined_users || {})
-              .filter(([userId]) => userId !== currentUser.id)
-              .map(([userId, charId]) => {
-                const charName = activeRoom.scenario?.presetCharacters.find(c => c.id === charId)?.name || "不明";
-                return { id: userId, name: charName };
-              });
-            
-            setReportTarget({
-              type: 'room', 
-              id: activeRoom.id, 
-              name: "この部屋の進行・チャット全般", 
-              roomId: activeRoom.id,
-              scenarioId: activeRoom.scenario_id,
-              scenarioName: activeRoom.scenario?.title || "",
-              availableUsers: users
-            });
-          }} className="text-xs bg-slate-900 hover:bg-red-900/50 text-red-400 border border-slate-700 px-3 py-1.5 rounded font-bold">🚨 通報</button>
-          
-          <div className="flex flex-col ml-4">
-            <span className="text-[10px] text-blue-400 font-bold border border-blue-500/50 bg-blue-900/30 px-2 py-0.5 rounded w-fit mb-1">
-              ROOM: {activeRoom.scenario?.title} (約{activeRoom.scenario?.playTime || 60}分)
-            </span>
-            <span className="text-sm font-bold text-white flex items-center gap-2">
-              {joinedCharacter ? joinedCharacter.name : "👁️ 観戦者"}
-              {isSplitMode && myScene.id !== 'scene_main' && <span className="text-[10px] bg-indigo-600 px-2 py-0.5 rounded-full ml-2">{myScene.name} 班</span>}
-            </span>
-          </div>
-        </div>
-        
-        <div className="flex flex-wrap items-center gap-2 justify-end max-w-md">
-          {joinedCharacter && (
-            <>
-              <button onClick={() => rollDice(joinedCharacter.san, "SAN", true)} className="bg-cyan-700 hover:bg-cyan-600 text-white text-[10px] px-2 py-1.5 rounded font-bold shadow-lg">🎲 SAN({joinedCharacter.san}%)</button>
-              <button onClick={() => rollDice(joinedCharacter.str, "STR", false)} className="bg-red-700 hover:bg-red-600 text-white text-[10px] px-2 py-1.5 rounded font-bold shadow-lg">🎲 STR({joinedCharacter.str})</button>
-              <button onClick={() => rollDice(joinedCharacter.dex, "DEX", false)} className="bg-green-700 hover:bg-green-600 text-white text-[10px] px-2 py-1.5 rounded font-bold shadow-lg">🎲 DEX({joinedCharacter.dex})</button>
-              <button onClick={() => rollDice(joinedCharacter.int, "INT", false)} className="bg-purple-700 hover:bg-purple-600 text-white text-[10px] px-2 py-1.5 rounded font-bold shadow-lg">🎲 INT({joinedCharacter.int})</button>
-              <button onClick={() => rollDice(joinedCharacter.con, "CON", false)} className="bg-amber-700 hover:bg-amber-600 text-white text-[10px] px-2 py-1.5 rounded font-bold shadow-lg">🎲 CON({joinedCharacter.con})</button>
-            </>
-          )}
+  const [unreadIndicators, setUnreadIndicators] = useState({ story: false, consult: false, gm: false });
+  const chatTabRef = useRef<ChatTab>(chatTab);
+  const prevMessagesLength = useRef(0);
 
-          {/* ゲーム開始ボタン */}
-          {(currentUser?.id === activeRoom.host_id || currentUser?.handleName === activeRoom.host_name) && activeRoom.status === "recruiting" && joinedCharacter && (
-            <button onClick={startGame} className="bg-emerald-600 hover:bg-emerald-500 text-white text-[10px] font-bold px-4 py-2 rounded animate-pulse ml-2 shadow-lg shadow-emerald-900/50">▶ ゲーム開始</button>
-          )}
+  const availableScenarios = scenarios.filter(s => !s.isBanned);
+  const createdScenarios = availableScenarios.filter(s => s.authorId === currentUser?.id);
+  const purchasedScenarios = availableScenarios.filter(s => s.authorId !== currentUser?.id && s.purchasedTickets && currentUser && s.purchasedTickets[currentUser.id] > 0);
+  const availableRooms = rooms.filter(r => !r.scenario?.isBanned);
 
-          {/* チーム分け・強制合流ボタン */}
-          {(currentUser?.id === activeRoom.host_id || currentUser?.handleName === activeRoom.host_name) && activeRoom.status === "playing" && !isScenarioEnded && (
-             isSplitMode ? (
-               <button onClick={executeMergeAll} className="bg-indigo-700 hover:bg-indigo-600 text-white text-[10px] font-bold px-3 py-1.5 rounded shadow-lg ml-2">🚪 全員を強制合流</button>
-             ) : (
-               <button onClick={startSplitting} className="bg-blue-700 hover:bg-blue-600 text-white text-[10px] font-bold px-3 py-1.5 rounded shadow-lg ml-2">👥 チーム分け</button>
-             )
-          )}
-        </div>
-      </header>
+  const defaultScene: Scene = { id: "scene_main", name: "メインルーム", memberIds: [] };
+  const myScene = activeRoom?.scenes?.find(s => joinedCharacter && s.memberIds.includes(joinedCharacter.id)) || activeRoom?.scenes?.[0] || defaultScene;
+  const isSplitMode = activeRoom ? (activeRoom.scenes?.length > 1) : false;
 
-      <div className="flex-1 overflow-y-scroll space-y-3 p-4 bg-slate-800/80 rounded-xl border border-slate-700 mb-3 min-h-0">
-        {messages.filter(msg => {
-          if (msg.type === "system") return true;
-          if (!isSplitMode) return msg.channel === chatTab;
-          return (!msg.sceneId || msg.sceneId === 'scene_main' || msg.sceneId === myScene.id) && msg.channel === chatTab;
-        }).map((msg, index) => {
-          const isMe = msg.sender === "player";
-          const isAIPlayer = msg.sender === "ai_player";
-          const isSystem = msg.type === "system";
-          
-          const displayText = msg.text.replace(/\[SPLIT_PROPOSAL:.*?\]/, '').replace('[SCENARIO_END]', '').trim();
-          if (!displayText && !isSystem) return null;
-          
-          let messageAvatar = "";
-          if (!isSystem && activeRoom.scenario?.presetCharacters) {
-              const character = activeRoom.scenario.presetCharacters.find(c => c.name === msg.charName);
-              if (character && character.imageUrl) {
-                  messageAvatar = character.imageUrl;
-              }
+  const isScenarioEnded = messages.some(m => m.text.includes('[SCENARIO_END]')) || activeRoom?.status === 'finished';
+
+  const loadChatLogs = async (roomId: string) => {
+    const { data } = await supabase.from('chat_logs').select('message').eq('room_id', roomId).order('id', { ascending: true });
+    if (data && data.length > 0) {
+      setMessages(data.map((d: any) => d.message));
+    } else {
+      setMessages([]);
+    }
+  };
+
+  const pushMessage = async (roomId: string, msg: Message, save: boolean = true) => {
+    setMessages(prev => {
+      const isDuplicate = prev.some(m => JSON.stringify(m) === JSON.stringify(msg));
+      if (isDuplicate) return prev;
+      return [...prev, msg];
+    });
+    if (save && roomId) {
+      await supabase.from('chat_logs').insert({ room_id: roomId, message: msg });
+    }
+  };
+
+  useEffect(() => {
+    if (currentView === "game" && activeRoom) {
+      const chatChannel = supabase.channel(`chat_sync_${activeRoom.id}`)
+        .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'chat_logs', filter: `room_id=eq.${activeRoom.id}` }, (payload) => {
+          const incomingMsg = payload.new.message;
+          setMessages(prev => {
+            const isDuplicate = prev.some(m => JSON.stringify(m) === JSON.stringify(incomingMsg));
+            if (isDuplicate) return prev;
+            return [...prev, incomingMsg];
+          });
+        })
+        .subscribe();
+
+      const roomChannel = supabase.channel(`room_sync_${activeRoom.id}`)
+        .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'rooms', filter: `id=eq.${activeRoom.id}` }, (payload) => {
+          setActiveRoom(prev => {
+            if (!prev) return payload.new as Room;
+            return { ...prev, ...payload.new, scenario: prev.scenario };
+          });
+        })
+        .subscribe();
+
+      return () => { supabase.removeChannel(chatChannel); supabase.removeChannel(roomChannel); };
+    }
+  }, [currentView, activeRoom?.id]);
+
+  useEffect(() => { chatTabRef.current = chatTab; }, [chatTab]);
+
+  useEffect(() => {
+    if (messages.length > prevMessagesLength.current) {
+      const newMsgs = messages.slice(prevMessagesLength.current);
+      setUnreadIndicators(prev => {
+        const next = { ...prev };
+        let changed = false;
+        newMsgs.forEach(m => {
+          const isMySceneMsg = !m.sceneId || m.sceneId === 'scene_main' || m.sceneId === myScene?.id;
+          if (isMySceneMsg && m.channel && m.channel !== "system" && m.channel !== chatTabRef.current) {
+            next[m.channel as keyof typeof next] = true;
+            changed = true;
           }
+        });
+        return changed ? next : prev;
+      });
+    }
+    prevMessagesLength.current = messages.length;
+  }, [messages, myScene?.id]);
 
-          let bgColor = isMe ? "bg-blue-600/90 border border-blue-500/50" : (isAIPlayer ? "bg-indigo-600/80 border-l-4 border-indigo-400" : "bg-slate-700/90 border-l-4 border-emerald-500");
-          if (isSystem) bgColor = "bg-slate-900/80 border border-slate-700 text-center";
+  useEffect(() => {
+    if (activeRoom && isSplitMode && currentUser?.id === activeRoom.host_id && activeRoom.status === 'playing') {
+      const nonMainScenes = activeRoom.scenes.filter(s => s.id !== 'scene_main');
+      if (nonMainScenes.length > 0 && nonMainScenes.every(s => s.isMerged)) {
+        executeMergeAll();
+      }
+    }
+  }, [activeRoom?.scenes, activeRoom?.status, activeRoom?.host_id, currentUser?.id, isSplitMode]);
 
-          return (
-            <div key={index} className={`flex w-full ${isSystem ? 'justify-center' : (isMe ? 'justify-end' : 'justify-start')}`}>
-              
-              {/* 他プレイヤー・AIのアバター（左側） */}
-              {!isMe && !isSystem && (
-                <div className="mr-2 flex-shrink-0 flex items-end">
-                    {messageAvatar ? (
-                        <img src={messageAvatar} alt={msg.charName} className="w-10 h-10 rounded-full object-cover border border-slate-600 bg-slate-800 shadow-sm" />
-                    ) : (
-                        <div className="w-10 h-10 rounded-full bg-slate-700 flex items-center justify-center text-[10px] text-slate-400 border border-slate-600 font-bold shadow-sm">
-                            {(msg.charName || "GM").charAt(0)}
-                        </div>
-                    )}
-                </div>
-              )}
+  const handleTabClick = (tab: ChatTab) => {
+    setChatTab(tab);
+    setUnreadIndicators(prev => ({ ...prev, [tab]: false }));
+  };
 
-              <div className={`p-3 rounded-2xl max-w-[80%] ${bgColor} text-white shadow-md`}>
-                {!isSystem && (
-                  <span className="text-[10px] text-slate-300 block mb-1 font-bold">
-                    {msg.charName || (isMe && joinedCharacter ? joinedCharacter.name : (msg.sender === "gm" ? "AI GM" : "SYSTEM"))} 
-                    {msg.type && ` [${msg.type.toUpperCase()}]`}
-                  </span>
-                )}
-                <p className={`text-sm whitespace-pre-wrap leading-relaxed ${isSystem && 'text-xs text-slate-300'}`}>{displayText}</p>
+  const fetchData = async () => {
+    const { data: scData } = await supabase.from('scenarios').select('*').order('id', { ascending: false });
+    let loadedScenarios: Scenario[] = [];
+    if (scData && scData.length > 0) {
+      loadedScenarios = scData.map((d: any) => ({
+        id: d.id, title: d.title, system: d.system || "", tags: d.tags || "", setting: d.setting || "",
+        npcList: d.npc_list || "", plot: d.plot || "", imageUrl: d.image_url || "", presetCharacters: d.preset_characters || [],
+        ratingSum: d.rating_sum || 0, ratingCount: d.rating_count || 0,
+        authorId: d.author_id, price: d.price || 500, playLimit: d.play_limit || 1, giftLimit: d.gift_limit || 1,
+        purchasedTickets: d.purchased_tickets || {}, isBanned: d.is_banned || false, playTime: d.play_time || 60 
+      }));
+      setScenarios(loadedScenarios);
+    }
+    const { data: rmData } = await supabase.from('rooms').select('*').neq('status', 'finished').order('id', { ascending: false });
+    let formattedRooms: Room[] = [];
+    if (rmData && loadedScenarios.length > 0) {
+      formattedRooms = rmData.map((r: any) => ({
+        id: r.id, scenario_id: r.scenario_id, scenario: loadedScenarios.find(s => s.id === r.scenario_id),
+        host_name: r.host_name, host_id: r.host_id, status: r.status, scenes: r.scenes || [],
+        privacy: r.privacy || "open", host_message: r.host_message || "", joined_users: r.joined_users || {}
+      })).filter(r => r.scenario) as Room[];
+      setRooms(formattedRooms);
+    }
+    return { loadedScenarios, formattedRooms };
+  };
+
+  const fetchNotifications = async (userId: string) => {
+    const { data } = await supabase.from('notifications').select('*').eq('user_id', userId).order('created_at', { ascending: false });
+    if(data) setMyNotifications(data.map((d: any) => ({ id: d.id, userId: d.user_id, title: d.title, message: d.message, isRead: d.is_read, createdAt: d.created_at })));
+  };
+
+  const fetchProfile = async (userId: string, emailStr: string, currentMaintenance: boolean, roomsData: Room[]) => {
+    let profileData: UserProfile;
+    const { data } = await supabase.from('profiles').select('*').eq('id', userId).single();
+    if (data) {
+      profileData = { id: data.id, handleName: data.handle_name, avatarUrl: data.avatar_url, bio: data.bio, discordId: data.discord_id, ratingSum: data.rating_sum || 0, ratingCount: data.rating_count || 0, isAdmin: data.is_admin || false, isBanned: data.is_banned || false, email: data.email };
+      if (data.email !== emailStr) await supabase.from('profiles').update({ email: emailStr }).eq('id', userId);
+    } else {
+      const newProfile = { id: userId, handle_name: emailStr.split("@")[0], avatar_url: DEFAULT_AVATAR, bio: "よろしくお願いします。", discord_id: "", rating_sum: 0, rating_count: 0, is_admin: false, is_banned: false, email: emailStr };
+      await supabase.from('profiles').insert(newProfile);
+      profileData = { id: userId, handleName: newProfile.handle_name, avatarUrl: newProfile.avatar_url, bio: newProfile.bio, discordId: newProfile.discord_id, ratingSum: 0, ratingCount: 0, isAdmin: false, isBanned: false, email: emailStr };
+    }
+    setCurrentUser(profileData);
+    await fetchNotifications(userId);
+
+    if (!profileData.isBanned && (!currentMaintenance || profileData.isAdmin)) {
+      const activeMyRoom = roomsData.find(r => (r.status === 'playing' || r.status === 'splitting' || r.status === 'recruiting') && r.joined_users && r.joined_users[userId]);
+      if (activeMyRoom && activeMyRoom.scenario) {
+        const charId = activeMyRoom.joined_users[userId];
+        const char = activeMyRoom.scenario.presetCharacters.find(c => c.id === charId);
+        if (char) {
+          setActiveRoom(activeMyRoom);
+          setJoinedCharacter(char);
+          const takenIds = Object.values(activeMyRoom.joined_users || {});
+          const aiChars = activeMyRoom.scenario.presetCharacters.filter(c => !takenIds.includes(c.id));
+          setAiPlayersList(aiChars);
+          await loadChatLogs(activeMyRoom.id);
+          setCurrentView("game");
+          return;
+        }
+      }
+      setCurrentView("lobby");
+    } else if (profileData.isBanned) {
+      setCurrentView("banned");
+    } else {
+      setCurrentView("maintenance");
+    }
+  };
+
+  useEffect(() => {
+    const initApp = async () => {
+      const { data: appData } = await supabase.from('app_settings').select('*').eq('id', 1).single();
+      const currentMaintenance = appData ? appData.is_maintenance : false;
+      setIsMaintenance(currentMaintenance);
+      const { formattedRooms } = await fetchData();
+      const { data: { session } } = await supabase.auth.getSession();
+      
+      if (session?.user) {
+        await fetchProfile(session.user.id, session.user.email || "", currentMaintenance, formattedRooms);
+      }
+    };
+    initApp();
+  }, []);
+
+  const handleEmailAuth = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!email || !password) return;
+    setAuthLoading(true);
+    try {
+      if (isLoginMode) {
+        const { data, error } = await supabase.auth.signInWithPassword({ email, password });
+        if (error) throw error;
+        const { formattedRooms } = await fetchData();
+        if (data.user) await fetchProfile(data.user.id, email, isMaintenance, formattedRooms);
+      } else {
+        const { data, error } = await supabase.auth.signUp({ email, password });
+        if (error) throw error;
+        const { formattedRooms } = await fetchData();
+        if (data.user) { alert("アカウントを作成しました！"); await fetchProfile(data.user.id, email, isMaintenance, formattedRooms); }
+      }
+    } catch (error: any) { alert("エラーが発生しました: " + error.message); } finally { setAuthLoading(false); }
+  };
+
+  const handleGoogleAuth = async () => {
+    setAuthLoading(true);
+    const { error } = await supabase.auth.signInWithOAuth({ provider: 'google' });
+    if (error) alert("Googleログインの初期設定が未完了です: " + error.message);
+    setAuthLoading(false);
+  };
+
+  const handleLogout = async () => { await supabase.auth.signOut(); setCurrentUser(null); setCurrentView("login"); setActiveRoom(null); setJoinedCharacter(null); };
+  
+  const saveProfile = async () => {
+    if (!editProfileData || !currentUser) return;
+    const { error } = await supabase.from('profiles').upsert({ id: currentUser.id, handle_name: editProfileData.handleName, avatarUrl: editProfileData.avatarUrl, bio: editProfileData.bio, discord_id: editProfileData.discordId });
+    if (!error) { setCurrentUser(editProfileData); setIsEditingProfile(false); }
+  };
+
+  const deleteScenario = async (id: string) => {
+    if (!confirm("本当にこのシナリオを削除しますか？\n（※このシナリオで立てられた部屋も強制的に削除されます）")) return;
+    await supabase.from('rooms').delete().eq('scenario_id', id);
+    const { error } = await supabase.from('scenarios').delete().eq('id', id);
+    if (error) { alert("削除に失敗しました: " + error.message); } 
+    else { alert("シナリオを削除しました。"); await fetchData(); }
+  };
+
+  const saveScenario = async () => {
+    if (!editingScenario || !currentUser) return;
+    const dbData = { 
+      title: editingScenario.title, system: editingScenario.system || "", tags: editingScenario.tags || "", setting: editingScenario.setting || "", 
+      npc_list: editingScenario.npcList || "", plot: editingScenario.plot || "", image_url: editingScenario.imageUrl || "", preset_characters: editingScenario.presetCharacters,
+      rating_sum: editingScenario.ratingSum, rating_count: editingScenario.ratingCount,
+      author_id: currentUser.id, purchased_tickets: editingScenario.purchasedTickets || {},
+      price: editingScenario.price || 500, play_limit: editingScenario.playLimit || 1, gift_limit: editingScenario.giftLimit || 1,
+      play_time: editingScenario.playTime || 60
+    };
+    if (editingScenario.id && !editingScenario.id.startsWith('s')) {
+      await supabase.from('scenarios').update(dbData).eq('id', editingScenario.id);
+    } else {
+      await supabase.from('scenarios').insert(dbData);
+    }
+    await fetchData();
+    setCurrentView("lobby");
+  };
+
+  const submitEvaluation = async () => {
+    if(!activeRoom || !activeRoom.scenario || !currentUser) return;
+    const newScSum = activeRoom.scenario.ratingSum + ratingScenario;
+    const newScCount = activeRoom.scenario.ratingCount + 1;
+    await supabase.from('scenarios').update({ rating_sum: newScSum, rating_count: newScCount }).eq('id', activeRoom.scenario.id);
+    if(activeRoom.host_id) {
+      const { data: hostData } = await supabase.from('profiles').select('rating_sum, rating_count').eq('id', activeRoom.host_id).single();
+      if(hostData) { await supabase.from('profiles').update({ rating_sum: (hostData.rating_sum || 0) + ratingGM, rating_count: (hostData.rating_count || 0) + 1 }).eq('id', activeRoom.host_id); }
+    }
+    alert("評価を送信しました！ロビーに戻ります。");
+    setActiveRoom(null); setJoinedCharacter(null); await fetchData(); setCurrentView("lobby");
+  };
+
+  const submitUserReport = async () => {
+    if (!currentUser || !reportTarget || !reportReason.trim()) return;
+    const { error } = await supabase.from('reports').insert({
+      reporter_id: currentUser.id, 
+      target_type: reportTarget.type, 
+      target_id: reportTarget.id, 
+      room_id: reportTarget.roomId || null,
+      reason: reportReason
+    });
+    if (!error) { 
+      alert("運営に通報を送信しました。ご協力ありがとうございます。"); 
+      setReportTarget(null); 
+      setReportReason(""); 
+    } 
+    else { alert("エラーが発生しました: " + error.message); }
+  };
+
+  const submitScenarioAppeal = async () => {
+    if (!currentUser || !scenarioAppealTarget || !scenarioAppealText.trim()) return;
+    const { error } = await supabase.from('reports').insert({
+      reporter_id: currentUser.id, target_type: 'scenario_appeal', target_id: scenarioAppealTarget.id, reason: scenarioAppealText
+    });
+    if (!error) { alert("運営に再審査（修正完了）の申請を送信しました。"); setScenarioAppealTarget(null); setScenarioAppealText(""); await fetchAdminData(); } 
+    else { alert("エラーが発生しました: " + error.message); }
+  };
+
+  const fetchAdminData = async () => {
+    const { data: usersData } = await supabase.from('profiles').select('*').order('created_at', { ascending: false });
+    if (usersData) { setAllUsers(usersData.map((d: any) => ({ id: d.id, handleName: d.handle_name, avatarUrl: d.avatar_url, bio: d.bio, discordId: d.discord_id, ratingSum: d.rating_sum || 0, ratingCount: d.rating_count || 0, isAdmin: d.is_admin || false, isBanned: d.is_banned || false, email: d.email }))); }
+    const { data: appealsData } = await supabase.from('ban_appeals').select('*').order('created_at', { ascending: false });
+    if (appealsData) { setBanAppeals(appealsData.map((d: any) => ({ id: d.id, userId: d.user_id, reason: d.reason, appealText: d.appeal_text, status: d.status, createdAt: d.created_at }))); }
+    const { data: reportsData } = await supabase.from('reports').select('*').order('created_at', { ascending: false });
+    if (reportsData) { 
+      setReports(reportsData.map((d: any) => ({ 
+        id: d.id, reporterId: d.reporter_id, targetType: d.target_type, targetId: d.target_id, 
+        roomId: d.room_id || null,
+        reason: d.reason, status: d.status, createdAt: d.created_at 
+      }))); 
+    }
+  };
+
+  const toggleMaintenance = async () => { const newStatus = !isMaintenance; await supabase.from('app_settings').update({ is_maintenance: newStatus }).eq('id', 1); setIsMaintenance(newStatus); alert(`メンテナンスモードを ${newStatus ? "ON" : "OFF"} にしました。`); };
+  const toggleAdminStatus = async (userId: string, currentStatus: boolean) => { const newStatus = !currentStatus; await supabase.from('profiles').update({ is_admin: newStatus }).eq('id', userId); setAllUsers(allUsers.map(u => u.id === userId ? { ...u, isAdmin: newStatus } : u)); alert(newStatus ? "管理者権限を付与しました。" : "管理者権限を剥奪しました。"); };
+  const executeBan = async () => { if(!banTargetUser || !banReason) return; await supabase.from('profiles').update({ is_banned: true }).eq('id', banTargetUser.id); await supabase.from('ban_appeals').insert({ user_id: banTargetUser.id, reason: banReason, status: 'banned' }); alert("BANを実行しました。"); setBanTargetUser(null); setBanReason(""); fetchAdminData(); };
+  const unbanUser = async (userId: string) => { await supabase.from('profiles').update({ is_banned: false }).eq('id', userId); await supabase.from('ban_appeals').update({ status: 'resolved' }).eq('user_id', userId); alert("BANを解除しました。"); fetchAdminData(); };
+  
+  const executeScenarioBan = async (action: 'hard' | 'soft' | 'unban') => {
+    if (!banTargetScenario) return;
+    if (action === 'hard') {
+      if(!scenarioBanReason.trim()) { alert("削除の理由を入力してください。"); return; }
+      await supabase.from('rooms').delete().eq('scenario_id', banTargetScenario.id);
+      const { error } = await supabase.from('scenarios').delete().eq('id', banTargetScenario.id);
+      if (!error) {
+        if (banTargetScenario.authorId) {
+           await supabase.from('notifications').insert({ user_id: banTargetScenario.authorId, title: '【重要】シナリオ強制削除のお知らせ', message: `運営による巡回・通報の精査の結果、あなたが作成したシナリオ「${banTargetScenario.title}」は重大な利用規約違反と判断されたため、システムから完全に削除されました。\n\n【削除理由】\n${scenarioBanReason}` });
+        }
+        alert("シナリオを完全に削除し、警告メールを送信しました。");
+      } else { alert("削除に失敗しました: " + error.message); }
+    } else if (action === 'soft') {
+      if(!scenarioBanReason.trim()) { alert("非公開の理由を入力してください。"); return; }
+      const { error } = await supabase.from('scenarios').update({ is_banned: true }).eq('id', banTargetScenario.id);
+      if (!error) {
+        if (banTargetScenario.authorId) {
+           await supabase.from('notifications').insert({ user_id: banTargetScenario.authorId, title: '【重要】シナリオ一時非公開のお知らせ', message: `あなたが作成したシナリオ「${banTargetScenario.title}」について、利用規約に抵触する恐れがあるため、一時的に非公開措置といたしました。（一般ユーザーからは見えなくなっています）\n\n【非公開の理由】\n${scenarioBanReason}\n\n内容を修正することで、再び公開設定に戻せる場合があります。` });
+        }
+        alert("シナリオを一時非公開にし、警告メールを送信しました。");
+      } else { alert("非公開処理に失敗しました: " + error.message); }
+    } else if (action === 'unban') {
+      const { error } = await supabase.from('scenarios').update({ is_banned: false }).eq('id', banTargetScenario.id);
+      if (!error) {
+         if (banTargetScenario.authorId) {
+           await supabase.from('notifications').insert({ user_id: banTargetScenario.authorId, title: '【お知らせ】シナリオの非公開措置が解除されました', message: `シナリオ「${banTargetScenario.title}」の非公開措置が解除され、再びプレイ可能になりました。` });
+         }
+         alert("シナリオの非公開設定を解除しました。");
+      } else { alert("解除に失敗しました: " + error.message); }
+    }
+    setBanTargetScenario(null); setScenarioBanReason(""); await fetchData();
+  };
+
+  const unbanScenarioFromAppeal = async (reportId: string, scenarioId: string) => {
+    const { error } = await supabase.from('scenarios').update({ is_banned: false }).eq('id', scenarioId);
+    if (!error) {
+      await supabase.from('reports').update({ status: 'resolved' }).eq('id', reportId);
+      const s = scenarios.find(x => x.id === scenarioId);
+      if(s && s.authorId) {
+        await supabase.from('notifications').insert({ user_id: s.authorId, title: '【お知らせ】シナリオの再審査が承認されました', message: `申請いただいたシナリオ「${s.title}」の修正内容が承認されました。非公開措置が解除され、再びプレイ可能になっています。` });
+      }
+      alert("シナリオの非公開を解除し、作者に通知しました。");
+      await fetchAdminData(); await fetchData();
+    } else { alert("エラーが発生しました: " + error.message); }
+  };
+
+  const resolveReport = async (reportId: string) => { await supabase.from('reports').update({ status: 'resolved' }).eq('id', reportId); fetchAdminData(); };
+  const submitAppeal = async () => { if(!currentUser || !appealText) return; await supabase.from('ban_appeals').insert({ user_id: currentUser.id, reason: "不明", appeal_text: appealText, status: 'appealing' }); alert("調査依頼を送信しました。"); setAppealText(""); };
+  const markNotificationAsRead = async (notifId: string) => { await supabase.from('notifications').update({ is_read: true }).eq('id', notifId); setMyNotifications(myNotifications.map(n => n.id === notifId ? { ...n, isRead: true } : n)); };
+
+  const startSplitting = () => {
+    if (!activeRoom) return;
+    supabase.from('rooms').update({ status: 'splitting' }).eq('id', activeRoom.id).then(() => {
+      setActiveRoom({ ...activeRoom, status: 'splitting', scenes: [{ id: 'scene_main', name: 'メインルーム', memberIds: [] }] });
+    });
+    setDraftAction(splitSuggestions[0] || "");
+    setDraftMembers([""]);
+    setDraftLeader("");
+  };
+
+  const addTeamDraft = async () => {
+    if (!activeRoom || !draftAction) return;
+    const validMembers = draftMembers.filter(m => m !== "");
+    if (validMembers.length === 0) { alert("メンバーを選択してください。"); return; }
+    if (!draftLeader && validMembers.length > 0) { alert("リーダー（または代表者）を選択してください。"); return; }
+
+    const newScene: Scene = {
+      id: `team_${Date.now()}`, name: draftAction, memberIds: validMembers, leaderId: draftLeader, isMerged: false
+    };
+
+    const updatedScenes = [...activeRoom.scenes, newScene];
+    await supabase.from('rooms').update({ scenes: updatedScenes }).eq('id', activeRoom.id);
+    setActiveRoom({ ...activeRoom, scenes: updatedScenes });
+
+    setDraftAction(""); setDraftMembers([""]); setDraftLeader("");
+  };
+
+  const finishSplitting = async () => {
+    if (!activeRoom) return;
+    
+    const validMembers = draftMembers.filter(m => m !== "");
+    if (draftAction && validMembers.length > 0) {
+       if(confirm("作成途中のチームがあります。このチームも追加してから編成を完了しますか？\n（キャンセルを押すと、作成途中のチームは破棄されます）")) {
+           if (!draftLeader && validMembers.length > 0) { alert("リーダー（または代表者）を選択してください。"); return; }
+           
+           const newScene: Scene = {
+             id: `team_${Date.now()}`, name: draftAction, memberIds: validMembers, leaderId: draftLeader, isMerged: false
+           };
+           const updatedScenes = [...activeRoom.scenes, newScene];
+           await supabase.from('rooms').update({ scenes: updatedScenes, status: 'playing' }).eq('id', activeRoom.id);
+           setActiveRoom({ ...activeRoom, scenes: updatedScenes, status: 'playing' });
+           await pushMessage(activeRoom.id, { sender: "gm", text: `【システム】チーム分けが完了しました！各チームごとに独立して行動・相談を行ってください。`, type: "system", sceneId: "scene_main", channel: "system" });
+           return;
+       }
+    }
+
+    await supabase.from('rooms').update({ status: 'playing' }).eq('id', activeRoom.id);
+    setActiveRoom({ ...activeRoom, status: 'playing' });
+    await pushMessage(activeRoom.id, { sender: "gm", text: `【システム】チーム分けが完了しました！各チームごとに独立して行動・相談を行ってください。`, type: "system", sceneId: "scene_main", channel: "system" });
+  };
+
+  const mergeTeam = async () => {
+    if (!activeRoom || !myScene || myScene.id === 'scene_main') return;
+    
+    const updatedScenes = activeRoom.scenes.map(s => s.id === myScene.id ? { ...s, isMerged: true } : s);
+    await supabase.from('rooms').update({ scenes: updatedScenes }).eq('id', activeRoom.id);
+    setActiveRoom({ ...activeRoom, scenes: updatedScenes });
+    await pushMessage(activeRoom.id, { sender: "gm", text: `【システム】${myScene.name}チームはメインに合流するため待機します。全チームが合流するまでお待ちください。`, type: "system", sceneId: myScene.id, channel: "system" });
+  };
+
+  const executeMergeAll = async () => {
+    if (!activeRoom) return;
+    const allMemberIds = Object.keys(activeRoom.joined_users || {});
+    const resetScenes: Scene[] = [{ id: 'scene_main', name: 'メインルーム', memberIds: allMemberIds }];
+    
+    await supabase.from('rooms').update({ scenes: resetScenes }).eq('id', activeRoom.id);
+    setActiveRoom({ ...activeRoom, scenes: resetScenes });
+
+    await pushMessage(activeRoom.id, { sender: "gm", text: `【システム】全チームが合流しました！`, type: "system", sceneId: 'scene_main', channel: "system" });
+    
+    const extraUserContext = `【システムコマンド】全チームの別行動が終了し、一箇所に合流しました。これまでの各チームの報告を踏まえ、合流時の情景描写と今後の展開を提示してください。`;
+    await callAIGM(extraUserContext, "story");
+  };
+
+  const callAIGM = async (extraUserContext?: string, targetTab: ChatTab = "story") => {
+    if (!activeRoom || !joinedCharacter || !myScene) return;
+    setIsLoading(true);
+    
+    try {
+      if (extraUserContext) {
+        await supabase.from('ai_memory').insert({ room_id: activeRoom.id, role: 'user', content: extraUserContext });
+      }
+
+      const { data: memoryData } = await supabase.from('ai_memory')
+        .select('*')
+        .eq('room_id', activeRoom.id)
+        .order('created_at', { ascending: true });
+
+      const history = (memoryData || []).map(m => ({
+        role: m.role === 'assistant' ? 'model' : 'user',
+        parts: [{ text: m.content }]
+      }));
+
+      if (history.length === 0) {
+        history.push({ role: 'user', parts: [{ text: "セッションを開始してください。" }]});
+      }
+
+      const aiPlayersText = aiPlayersList.length > 0 
+        ? aiPlayersList.map(c => `・${c.name} (${c.job}) | HP:${c.hp} SAN:${c.san}% STR:${c.str} DEX:${c.dex} INT:${c.int} CON:${c.con}\n  設定: ${c.personality}`).join("\n\n")
+        : "なし（ソロプレイ）";
+
+      let roleInstruction = "";
+      let scenarioPlotText = activeRoom.scenario?.plot || "";
+
+      if (targetTab === "story") {
+        roleInstruction = `
+【重要：GMの絶対ルール（行動判定とゲーム性の担保）】
+1. PLたちが明確な「行動宣言」を出した時のみ物語を進行させてください。
+2. リスクや不確実性を伴う行動には必ずダイスロールを要求し、結果が出るまで描写を待機してください。
+3. 【行動のヒント禁止】PLに具体的な行動の例や選択肢を絶対に提示しないでください。PL自身に考えさせてください。
+4. 【ダイスの自己処理禁止】GM自身がダイスを振ったり、PLのSAN値やステータスを勝手に推測・仮定してはいけません。必ずプロンプトに記載された【人間PL】の正確な数値を使用し、PLが画面のダイスボタンを振って結果が送信されるのを待機してください。
+5. 【安易な成功・AIの忖度厳禁】PLの行動が論理的に不自然であったり、シナリオの解決条件を正確に満たしていない場合は、絶対に成功させてはいけません。「ただ投げつけただけ」「間違ったアイテムを使った」などの甘いプレイには、容赦なく「効果がなかった」「状況が悪化した」として厳しく処理してください。
+6. 【ゲーム性の重視】想定プレイ時間（約${activeRoom.scenario?.playTime || 60}分）を目安に、論理的整合性と緊迫感のある試練を優先してください。
+7. 【エンディングの処理】物語が結末を迎えた場合、最後の情景描写の末尾に必ず [SCENARIO_END] というシステムタグを記述してください。
+
+${isSplitMode && myScene.id !== 'scene_main' ? `
+【チーム分割中の対応】現在、プレイヤー達は二手以上に分かれて行動しています。この発言は【${myScene.name}】チーム（メンバー: ${myScene.memberIds.map(id => activeRoom.scenario?.presetCharacters.find(c=>c.id===id)?.name).join(', ')}）のものです。
+あなたは他チームの状況を一切考慮せず、このチームが現在いる場所の描写のみを行ってください。別のチームを勝手に合流させないでください。
+` : `
+【チーム分けの提案】もし物語の展開上、PLたちが二手以上に分かれて行動すべき状況になった場合、GMとして分割を提案し、出力の最後に必ず "[SPLIT_PROPOSAL: 行動案A, 行動案B, 行動案C]" のようなシステムタグを含めてください。
+`}
+`;
+      } else if (targetTab === "consult") {
+        scenarioPlotText = "【機密情報のため非公開（あなたはプレイヤーキャラクターなのでシナリオの真相や隠されたギミック、今後の展開を知りません。これまでのチャット履歴から推測して話してください）】";
+        roleInstruction = `
+【重要：AIプレイヤーとしての振る舞い（絶対厳守ルール）】
+1. 現在は「プレイヤー間の相談時間」です。あなたはGMやナレーターではなく、AI相棒（${aiPlayersList.map(c=>c.name).join(", ")}）の立場で人間PLに返答してください。
+2. 【メタ知識の禁止】あなたはシナリオの真相、ギミックの解法、敵の弱点などを一切知りません。「〇〇にあるはずだ！」「これをすればいいんだ！」といった進行のネタバレや、GM視点での誘導を絶対に行わないでください。
+3. 【描写・進行の禁止】情景描写を行ったり、「〜はどうしますか？行動を宣言してください」といったGMのようなゲーム進行・問いかけは絶対に行わないでください。純粋なキャラクターとしての会話（セリフとわずかな動作）のみを出力してください。
+4. 【恐怖と人間味】現在の状況に対して、あなたのキャラクター設定（性格）に基づいた自然なリアクション（怯える、焦る、励ます、悩むなど）を人間らしく返してください。
+${isSplitMode && myScene.id !== 'scene_main' ? `※現在別行動中です。同じチームにいるAI相棒だけが返答してください。` : ''}
+`;
+      } else if (targetTab === "gm") {
+        roleInstruction = `
+【重要：GMへのメタ質問対応】
+現在は「GMへの質問・ルール確認」の時間です。物語は進めず、ルールの裁定などのシステム的な回答のみを行ってください。
+【ヒントの要求について】
+もしPLが謎解きや行動の「ヒント」を要求した場合、無条件で教えずに「ヒント（アイデア・ひらめき）を得るにはSAN値を1d3（または固定値）減少させる必要があります。よろしければ【行動宣言】タブでSANダイスを振って、その旨を宣言してください」と代償を提示してください。
+※警告：AI自身が代わりにダイスを振って数値を減らすことは絶対に禁止します！必ずPL自身に振らせてから結果を判定してください。
+`;
+      }
+
+      const sysPrompt = `あなたはTRPGの優秀なAIシステムです。
+タイトル: ${activeRoom.scenario?.title}
+世界観: ${activeRoom.scenario?.setting}
+プロット: ${scenarioPlotText}
+【人間PL】名前: ${joinedCharacter.name} / ステータス: HP:${joinedCharacter.hp} SAN:${joinedCharacter.san}% STR:${joinedCharacter.str} DEX:${joinedCharacter.dex} INT:${joinedCharacter.int} CON:${joinedCharacter.con}
+【AI相棒】\n${aiPlayersText}
+
+【共通の絶対システムルール】
+ダメージ処理や正気度(SAN)チェック等により、PLやNPCのHP・SAN値が減少・変動した場合は、いかなる状況・タブであっても、必ずあなたの出力テキストの【一番最後】に以下のシステムタグを1行で出力してください。
+[STATUS_UPDATE: キャラクター名, HP:新しい値, SAN:新しい値]
+（例：[STATUS_UPDATE: ${joinedCharacter.name}, HP:10, SAN:50]）
+※このタグが出力されないと画面のボタンの数値が連動しません。必ず出力してください。
+
+${roleInstruction}`;
+
+      const aiText = await generateAIResponse(sysPrompt, history);
+
+      const splitMatch = aiText.match(/\[SPLIT_PROPOSAL:\s*(.+?)\]/);
+      if (splitMatch) {
+         const suggestions = splitMatch[1].split(',').map((s: string) => s.trim());
+         setSplitSuggestions(suggestions);
+      }
+
+      const statusRegex = /\[STATUS_UPDATE:\s*(.+?),\s*HP:\s*(\d+),\s*SAN:\s*(\d+)\]/g;
+      let match;
+      while ((match = statusRegex.exec(aiText)) !== null) {
+         const targetName = match[1].trim().replace(/\s+/g, '');
+         const newHp = parseInt(match[2], 10);
+         const newSan = parseInt(match[3], 10);
+         
+         if (joinedCharacter && joinedCharacter.name.replace(/\s+/g, '').includes(targetName)) {
+             setJoinedCharacter(prev => prev ? { ...prev, hp: newHp, san: newSan } : null);
+         }
+         setAiPlayersList(prev => prev.map(p => p.name.replace(/\s+/g, '').includes(targetName) ? { ...p, hp: newHp, san: newSan } : p));
+      }
+
+      await supabase.from('ai_memory').insert({ room_id: activeRoom.id, role: 'assistant', content: aiText });
+      
+      const msgSender = targetTab === "consult" ? "ai_player" : "gm";
+      
+      const cleanAiText = aiText
+        .replace(/\[SPLIT_PROPOSAL:.*?\]/g, '')
+        .replace(/\[STATUS_UPDATE:.*?\]/g, '')
+        .trim();
+
+      await pushMessage(activeRoom.id, { sender: msgSender, text: cleanAiText, type: targetTab === "gm" ? "ooc" : "ic", sceneId: myScene?.id, charName: targetTab === "consult" ? "AI相棒" : "AI GM", channel: targetTab });
+
+    } catch (err: any) {
+      alert(err.message);
+      await pushMessage(activeRoom.id, { sender: "gm", text: `（システムエラー: ${err.message}）`, type: "system", sceneId: myScene?.id, channel: "system" }, false);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const executeCreateRoom = async () => {
+    if (!currentUser || !roomConfigModal) return;
+    const { scenario, charId, privacy, message } = roomConfigModal;
+    if (!charId) { alert("キャラクターを選択してください。"); return; }
+    
+    const isAuthor = scenario.authorId === currentUser.id;
+    if (!isAuthor) {
+      const currentTickets = scenario.purchasedTickets || {};
+      const myTickets = currentTickets[currentUser.id] || 0;
+      if (myTickets <= 0) { alert("プレイチケットがありません。"); return; }
+      const newTickets = { ...currentTickets, [currentUser.id]: myTickets - 1 };
+      const { error: ticketError } = await supabase.from('scenarios').update({ purchased_tickets: newTickets }).eq('id', scenario.id);
+      if (ticketError) { alert("チケットの消費処理に失敗しました。"); return; }
+    }
+
+    const initialScenes: Scene[] = [{ id: `scene_main_${Date.now()}`, name: "メインルーム", memberIds: scenario.presetCharacters.map(c => c.id) }];
+    
+    const { data, error } = await supabase.from('rooms').insert({ 
+      scenario_id: scenario.id, host_name: currentUser.handleName, host_id: currentUser.id, 
+      status: "recruiting", scenes: initialScenes,
+      privacy: privacy, host_message: message, joined_users: { [currentUser.id]: charId }
+    }).select().single();
+    
+    if (error) { alert("データベースエラーが発生しました: " + error.message); return; }
+    if (data) {
+      setRoomConfigModal(null);
+      await fetchData();
+      const newRoom: Room = { id: data.id, scenario_id: data.scenario_id, scenario: scenario, host_name: data.host_name, host_id: data.host_id, status: data.status, scenes: data.scenes, privacy: data.privacy, host_message: data.host_message, joined_users: data.joined_users };
+      const hostChar = scenario.presetCharacters.find(c => c.id === charId);
+      if (hostChar) {
+        setActiveRoom(newRoom); setJoinedCharacter(hostChar);
+        setMessages([]); 
+        await pushMessage(newRoom.id, { sender: "gm", text: `【入室完了】プレイヤー全員の準備が整うまでお待ちください。`, type: "system", sceneId: newRoom.scenes?.[0]?.id, channel: "system" });
+        setCurrentView("game");
+      }
+    }
+  };
+
+  const executeJoinRoom = async (room: Room, charId: string) => {
+    if (!currentUser || !room || !charId) return;
+    
+    const { data: latestRoom } = await supabase.from('rooms').select('joined_users').eq('id', room.id).single();
+    const currentUsers = latestRoom?.joined_users || {};
+    if (Object.values(currentUsers).includes(charId)) {
+      alert("申し訳ありません、そのキャラクターは先ほど他のプレイヤーに選択されました！");
+      await fetchData(); return;
+    }
+
+    const newUsers = { ...currentUsers, [currentUser.id]: charId };
+    const { error } = await supabase.from('rooms').update({ joined_users: newUsers }).eq('id', room.id);
+    if (error) { alert("入室エラー: " + error.message); return; }
+
+    const char = room.scenario?.presetCharacters.find(c => c.id === charId);
+    if (char) {
+      const updatedRoom = { ...room, joined_users: newUsers };
+      setActiveRoom(updatedRoom); setJoinedCharacter(char);
+      await loadChatLogs(room.id);
+      await pushMessage(room.id, { sender: "gm", text: `【入室完了】${char.name}として参加しました！ホストの開始をお待ちください。`, type: "system", sceneId: room.scenes?.[0]?.id, channel: "system" });
+      setCurrentView("game");
+    }
+  };
+
+  const spectateRoom = async (room: Room) => {
+    setActiveRoom(room);
+    setJoinedCharacter(null); 
+    await loadChatLogs(room.id);
+    await pushMessage(room.id, { sender: "gm", text: `【観戦モード】部屋に入室しました。チャットやダイスは使用できません。`, type: "system", sceneId: room.scenes?.[0]?.id, channel: "system" }, false);
+    setCurrentView("game");
+  };
+
+  const startGame = async () => {
+    if(!activeRoom || !activeRoom.scenario || !joinedCharacter || !myScene) return;
+    
+    let aiChars: Character[] = [];
+    const takenIds = Object.values(activeRoom.joined_users || {});
+    const emptyChars = activeRoom.scenario.presetCharacters.filter(c => !takenIds.includes(c.id));
+    if (emptyChars.length > 0) {
+      if (confirm(`参加していないキャラクターが ${emptyChars.length} 人います。\n彼らを「AIプレイヤー（相棒）」として参加させますか？\n（キャンセルを押すとソロプレイになります）`)) {
+        aiChars = emptyChars;
+      }
+    }
+    setAiPlayersList(aiChars);
+
+    await supabase.from('rooms').update({ status: 'playing' }).eq('id', activeRoom.id);
+    setActiveRoom({...activeRoom, status: 'playing'});
+    await pushMessage(activeRoom.id, { sender: "gm", text: `【システム】ゲームを開始しました。AI GMを呼び出しています...`, type: "system", sceneId: myScene.id, channel: "system" });
+    
+    await callAIGM(`【システムコマンド】セッションが開始されました。プロットに従い、導入部分の情景描写を行い、プレイヤーに行動方針の相談を促してください。`, "story");
+  };
+
+  const endGame = async () => {
+    if(!activeRoom) return;
+    if (currentUser?.id === activeRoom.host_id) {
+      await supabase.from('rooms').update({ status: 'finished' }).eq('id', activeRoom.id);
+      setActiveRoom({...activeRoom, status: 'finished'});
+      await pushMessage(activeRoom.id, { sender: "gm", text: `【システム】セッションが完了しました！\nこれより「感想戦モード」になります（AIは停止し、プレイヤー間のチャットのみ可能です）。お疲れ様でした！`, type: "system", sceneId: myScene?.id, channel: "system" });
+    }
+  };
+
+  const leaveGame = async () => {
+    if (!activeRoom || !currentUser) return;
+    
+    if (activeRoom.status === 'finished') {
+       setCurrentView("evaluation");
+       return;
+    }
+
+    if (!joinedCharacter) {
+      setCurrentView("lobby"); setActiveRoom(null); return;
+    }
+
+    const isHost = activeRoom.host_id === currentUser.id;
+    const isRecruiting = activeRoom.status === 'recruiting';
+    const remainingPlayers = Object.keys(activeRoom.joined_users || {}).filter(id => id !== currentUser.id).length;
+
+    if (isRecruiting) {
+      const newUsers = { ...activeRoom.joined_users };
+      delete newUsers[currentUser.id];
+      await supabase.from('rooms').update({ joined_users: newUsers }).eq('id', activeRoom.id);
+      if (isHost && remainingPlayers === 0) {
+         await supabase.from('rooms').update({ status: 'finished' }).eq('id', activeRoom.id);
+      }
+      setCurrentView("lobby"); setActiveRoom(null); setJoinedCharacter(null); return;
+    }
+
+    if (remainingPlayers === 0) {
+      const confirmLeave = confirm("【警告】\n他に人間プレイヤーがいないため、退出すると部屋は完全に閉じられ、現在のセッションに二度と復帰できなくなります。\n本当によろしいですか？");
+      if (confirmLeave) {
+        await supabase.from('rooms').update({ status: 'finished' }).eq('id', activeRoom.id);
+        setCurrentView("lobby"); setActiveRoom(null); setJoinedCharacter(null); setAiPlayersList([]); setMessages([]); await fetchData(); 
+      }
+    } else {
+      const confirmLeave = confirm("自分のキャラクターをAIに引き継がせて離脱します。よろしいですか？");
+      if (confirmLeave) {
+        const newUsers = { ...activeRoom.joined_users };
+        delete newUsers[currentUser.id];
+        await supabase.from('rooms').update({ joined_users: newUsers }).eq('id', activeRoom.id);
+        setCurrentView("lobby"); setActiveRoom(null); setJoinedCharacter(null); setAiPlayersList([]); setMessages([]); await fetchData(); 
+      }
+    }
+  };
+
+  const handleSend = async () => {
+    if (!input.trim() || isLoading || !activeRoom || !joinedCharacter || !currentUser || !myScene) return;
+    
+    const currentInput = input;
+    const isFinished = activeRoom.status === 'finished';
+
+    if (isFinished || (chatTab === "consult" && !consultWithAI)) {
+      await pushMessage(activeRoom.id, { sender: "player", text: currentInput, type: isFinished ? "ooc" : "ic", sceneId: myScene.id, charName: joinedCharacter.name, channel: chatTab });
+      setInput("");
+      return;
+    }
+
+    await pushMessage(activeRoom.id, { sender: "player", text: currentInput, type: chatTab === "story" ? "ic" : "ooc", sceneId: myScene.id, charName: joinedCharacter.name, channel: chatTab });
+    setInput(""); 
+    
+    const teamPrefix = isSplitMode && myScene.id !== 'scene_main' ? `[${myScene.name}チーム - ${joinedCharacter.name}] ` : `${joinedCharacter.name}「`;
+    const teamSuffix = isSplitMode && myScene.id !== 'scene_main' ? `` : `」`;
+
+    let context = "";
+    if (chatTab === "story") context = `【行動宣言】${teamPrefix}${currentInput}${teamSuffix}`;
+    else if (chatTab === "consult") context = `【PL間相談】${teamPrefix}${currentInput}${teamSuffix}`;
+    else context = `【GMへの質問】PL: ${currentInput}`;
+
+    await callAIGM(context, chatTab);
+  };
+
+  // ★ ダイスの送信先（channelとtype）を開いているタブに合わせるように修正
+  const rollDice = async (targetValue: number, label: string, is1d100: boolean) => {
+    if(!myScene || !activeRoom || isLoading || !joinedCharacter) return;
+    let res = 0; let isSuccess = false; let msgText = "";
+
+    if (is1d100) {
+      res = Math.floor(Math.random() * 100) + 1;
+      isSuccess = res <= targetValue;
+      msgText = `🎲 ${label} (1d100 ≦ ${targetValue}%) ➔ 出目: ${res} 【${isSuccess ? "成功" : "失敗"}】`;
+    } else {
+      const d1 = Math.floor(Math.random() * 6) + 1; const d2 = Math.floor(Math.random() * 6) + 1; const d3 = Math.floor(Math.random() * 6) + 1;
+      res = d1 + d2 + d3;
+      isSuccess = res <= targetValue;
+      msgText = `🎲 ${label} (3d6 ≦ ${targetValue}) ➔ 出目: ${res} [${d1},${d2},${d3}] 【${isSuccess ? "成功" : "失敗"}】`;
+    }
+
+    const msgType = chatTab === "gm" ? "ooc" : "ic";
+
+    await pushMessage(activeRoom.id, { sender: "player", text: msgText, type: msgType, sceneId: myScene.id, charName: joinedCharacter.name, channel: chatTab });
+    
+    if (activeRoom.status !== 'finished') {
+        let promptSuffix = "この結果を踏まえてGMとして情景描写を行ってください。";
+        if (chatTab === "gm") {
+            promptSuffix = "この結果を踏まえて、システム・ルールの裁定やヒントの提示を行ってください。";
+        } else if (chatTab === "consult") {
+            promptSuffix = "この結果を踏まえて、AI相棒としてリアクションを返してください。";
+        }
+        await callAIGM(`【システム判定結果】${joinedCharacter.name}が${label}ロールを行いました。\n結果: ${msgText}\n${promptSuffix}`, chatTab);
+    }
+  };
+
+  const exportToPDF = async (type: 'chat' | 'summary' | 'novel') => {
+    if (!activeRoom) return;
+
+    const printWindow = window.open('', '_blank');
+    if (!printWindow) {
+      alert("ポップアップがブロックされました。ブラウザの設定でポップアップを許可してください。");
+      return;
+    }
+    printWindow.document.write('<div style="padding: 20px; font-family: sans-serif; color: #333;">生成中...しばらくお待ちください。（AI執筆中の場合は十数秒かかることがあります）</div>');
+
+    const endIndex = messages.findIndex(m => m.text.includes('[SCENARIO_END]'));
+    const baseMessages = endIndex !== -1 ? messages.slice(0, endIndex + 1) : messages;
+    
+    const targetMessages = baseMessages.filter(m => m.channel !== 'gm');
+
+    let contentHtml = "";
+
+    if (type === 'chat') {
+      contentHtml = targetMessages.map(m => {
+        const senderName = m.charName || (m.sender === "player" ? "プレイヤー" : m.sender === "gm" ? "AI GM" : "システム");
+        const text = m.text.replace(/\[SPLIT_PROPOSAL:.*?\]/, '').replace('[SCENARIO_END]', '').trim();
+        if (!text) return "";
+        return `<div style="margin-bottom: 12px; border-bottom: 1px dashed #eee; padding-bottom: 8px;">
+                  <strong style="color: #2c3e50;">${senderName}</strong><br>
+                  <span style="white-space: pre-wrap; color: #34495e;">${text}</span>
+                </div>`;
+      }).join('');
+    } else {
+      setIsExporting(true);
+      
+      const prompt = type === 'summary' 
+        ? "以下のTRPGセッションのチャットログを読み込み、物語のあらすじ・結末として分かりやすく要約してください。\n※ログには「GMへの行動宣言」と「キャラクター同士の相談・会話」が含まれています。キャラクター同士の相談内容も物語の展開として要約に含めてください。"
+        : "以下のTRPGセッションのチャットログを元に、プロの小説家が書いたような臨場感あふれる【本格的なリプレイ小説】を執筆してください。\n\n【執筆の条件】\n1. 単調な事実の羅列（〜した。〜と言った）を避け、五感（光、音、匂い、温度など）を刺激する情景描写と、キャラクターの深い心理描写を大幅に肉付けしてください。\n2. プレイヤー間の「相談」や「作戦会議」は、キャラクター同士の緊迫感や関係性が伝わる魅力的な会話劇（ダイアログ）として昇華してください。\n3. ダイスロールの成否はシステム的な数値として書くのではなく、「間一髪での回避」「絶望的な見落とし」などのドラマチックな演出に変換してください。\n4. 起承転結のペース配分を意識し、読者を惹きつける一つの完成された短編小説に仕上げてください。";
+      
+      const logText = targetMessages.map(m => `${m.charName || (m.sender === 'gm' ? 'GM' : 'システム')}: ${m.text.replace(/\[SPLIT_PROPOSAL:.*?\]/, '').replace('[SCENARIO_END]', '').trim()}`).join('\n');
+      
+      try {
+        const generatedText = await generateAITextWithPrompt(prompt + "\n\n【チャットログ】\n" + logText);
+        contentHtml = `<div style="white-space: pre-wrap; line-height: 1.8; color: #333; font-size: 14px;">${generatedText}</div>`;
+      } catch(e: any) {
+        alert("エクスポート生成エラー: " + e.message);
+        setIsExporting(false);
+        printWindow.close();
+        return;
+      }
+      setIsExporting(false);
+    }
+
+    printWindow.document.open();
+    printWindow.document.write(`
+      <!DOCTYPE html>
+      <html>
+        <head>
+          <meta charset="utf-8">
+          <title>${activeRoom.scenario?.title} - ${type === 'chat' ? 'チャットログ' : type === 'summary' ? '要約データ' : 'リプレイ小説'}</title>
+          <style>
+            body { font-family: 'Hiragino Kaku Gothic ProN', 'Meiryo', sans-serif; padding: 40px; color: #333; max-width: 800px; margin: 0 auto; }
+            h1 { font-size: 24px; border-bottom: 2px solid #2c3e50; padding-bottom: 10px; margin-bottom: 30px; color: #2c3e50; }
+            @media print { body { padding: 0; } }
+          </style>
+        </head>
+        <body>
+          <h1>${activeRoom.scenario?.title} - ${type === 'chat' ? 'チャットログ' : type === 'summary' ? 'あらすじ要約' : 'リプレイ小説'}</h1>
+          ${contentHtml}
+          <script>
+            setTimeout(() => { window.print(); window.close(); }, 500);
+          </script>
+        </body>
+      </html>
+    `);
+    printWindow.document.close();
+  };
+
+  const unreadCount = myNotifications.filter(n => !n.isRead).length;
+
+  const isChatDisabled = Boolean(isLoading || (isSplitMode && myScene && myScene.isMerged === true && chatTab !== 'consult'));
+
+  return (
+    <main className="h-screen w-full bg-slate-900 text-slate-100 flex flex-col font-sans overflow-hidden">
+      
+      {/* 画面群（1つずつのみ表示） */}
+      {currentView === "admin" && currentUser?.isAdmin && (
+        <AdminView 
+          isMaintenance={isMaintenance}
+          toggleMaintenance={toggleMaintenance}
+          reports={reports}
+          allUsers={allUsers}
+          scenarios={scenarios}
+          resolveReport={resolveReport}
+          setBanTargetUser={setBanTargetUser}
+          setBanReason={setBanReason}
+          setBanTargetScenario={setBanTargetScenario}
+          setScenarioBanReason={setScenarioBanReason}
+          unbanScenarioFromAppeal={unbanScenarioFromAppeal}
+          userSearchQuery={userSearchQuery}
+          setUserSearchQuery={setUserSearchQuery}
+          toggleAdminStatus={toggleAdminStatus}
+          scenarioSearchQuery={scenarioSearchQuery}
+          setScenarioSearchQuery={setScenarioSearchQuery}
+          setCurrentView={setCurrentView}
+        />
+      )}
+
+      {currentView === "banned" && <BannedView handleLogout={handleLogout} />}
+
+      {currentView === "maintenance" && <MaintenanceView handleLogout={handleLogout} />}
+
+      {currentView === "login" && (
+        <LoginView 
+          email={email}
+          setEmail={setEmail}
+          password={password}
+          setPassword={setPassword}
+          isLoginMode={isLoginMode}
+          setIsLoginMode={setIsLoginMode}
+          authLoading={authLoading}
+          handleEmailAuth={handleEmailAuth}
+          handleGoogleAuth={handleGoogleAuth}
+        />
+      )}
+
+      {currentView === "lobby" && currentUser && (
+        <LobbyView 
+          currentUser={currentUser}
+          handleLogout={handleLogout}
+          setShowMailbox={setShowMailbox}
+          unreadCount={unreadCount}
+          secretRoomIdSearch={secretRoomIdSearch}
+          setSecretRoomIdSearch={setSecretRoomIdSearch}
+          rooms={rooms}
+          searchedSecretRoom={searchedSecretRoom}
+          setSearchedSecretRoom={setSearchedSecretRoom}
+          executeJoinRoom={executeJoinRoom}
+          availableRooms={availableRooms}
+          spectateRoom={spectateRoom}
+          setEditingScenario={setEditingScenario}
+          setCurrentView={setCurrentView}
+          createdScenarios={createdScenarios}
+          deleteScenario={deleteScenario}
+          setRoomConfigModal={setRoomConfigModal}
+          fetchAdminData={fetchAdminData}
+        />
+      )}
+
+      {currentView === "scenarioEdit" && editingScenario && (
+        <ScenarioEditView 
+          editingScenario={editingScenario}
+          setEditingScenario={setEditingScenario}
+          editingCharIndex={editingCharIndex}
+          setEditingCharIndex={setEditingCharIndex}
+          saveScenario={saveScenario}
+          setCurrentView={setCurrentView}
+        />
+      )}
+
+      {currentView === "game" && activeRoom && myScene && (
+        <GameView 
+          activeRoom={activeRoom}
+          myScene={myScene}
+          currentUser={currentUser!}
+          joinedCharacter={joinedCharacter}
+          leaveGame={leaveGame}
+          setReportTarget={setReportTarget as React.Dispatch<React.SetStateAction<{type: 'user' | 'scenario' | 'room', id: string, name: string, roomId?: string, scenarioId?: string, scenarioName?: string, availableUsers?: { id: string, name: string }[]} | null>>}
+          rollDice={rollDice}
+          startGame={startGame}
+          startSplitting={startSplitting}
+          isSplitMode={isSplitMode}
+          chatTab={chatTab}
+          messages={messages}
+          isLoading={isLoading}
+          isScenarioEnded={isScenarioEnded}
+          setCurrentView={setCurrentView}
+          endGame={endGame}
+          input={input}
+          setInput={setInput}
+          handleSend={handleSend}
+          handleTabClick={handleTabClick}
+          unreadIndicators={unreadIndicators}
+          consultWithAI={consultWithAI}
+          setConsultWithAI={setConsultWithAI}
+          isChatDisabled={isChatDisabled}
+          mergeTeam={mergeTeam}
+          executeMergeAll={executeMergeAll}
+          draftAction={draftAction}
+          setDraftAction={setDraftAction}
+          draftMembers={draftMembers}
+          setDraftMembers={setDraftMembers}
+          draftLeader={draftLeader}
+          setDraftLeader={setDraftLeader}
+          addTeamDraft={addTeamDraft}
+          finishSplitting={finishSplitting}
+        />
+      )}
+
+      {currentView === "evaluation" && activeRoom && (
+        <EvaluationView 
+          activeRoom={activeRoom}
+          ratingScenario={ratingScenario}
+          setRatingScenario={setRatingScenario}
+          ratingGM={ratingGM}
+          setRatingGM={setRatingGM}
+          submitEvaluation={submitEvaluation}
+          exportToPDF={exportToPDF}
+          isExporting={isExporting}
+        />
+      )}
+
+
+      {/* モーダル群（fixed z-[60]で最前面に完全固定） */}
+      {reportTarget && (
+        <div className="fixed inset-0 bg-black/80 z-[60] flex items-center justify-center p-4">
+          <div className="bg-slate-800 border border-red-700/50 rounded-xl p-6 w-full max-w-lg shadow-2xl">
+            <h3 className="text-xl font-bold text-red-400 mb-4">🚩 通報する</h3>
+            
+            {reportTarget.roomId ? (
+              <div className="mb-4">
+                <label className="text-xs text-slate-400 block mb-1">通報対象を選択</label>
+                <select 
+                  className="w-full bg-slate-900 border border-slate-700 rounded p-2 text-sm text-white"
+                  onChange={(e) => {
+                    const val = e.target.value;
+                    if (val === 'room') {
+                      setReportTarget({...reportTarget, type: 'room', id: reportTarget.roomId!, name: 'この部屋の進行・チャット全般'});
+                    } else if (val === 'scenario') {
+                      setReportTarget({...reportTarget, type: 'scenario', id: reportTarget.scenarioId!, name: `シナリオ: ${reportTarget.scenarioName}`});
+                    } else {
+                      const user = reportTarget.availableUsers?.find(u => u.id === val);
+                      if (user) setReportTarget({...reportTarget, type: 'user', id: user.id, name: `プレイヤー: ${user.name}`});
+                    }
+                  }}
+                  value={reportTarget.type === 'user' ? reportTarget.id : reportTarget.type}
+                >
+                  <option value="room">この部屋の進行・チャット全般</option>
+                  <option value="scenario">シナリオの不適切・規約違反</option>
+                  {reportTarget.availableUsers?.map(u => (
+                    <option key={u.id} value={u.id}>プレイヤー: {u.name} を通報</option>
+                  ))}
+                </select>
               </div>
+            ) : (
+              <p className="text-xs text-slate-400 mb-4">対象: {reportTarget.name}</p>
+            )}
 
-              {/* 自分のアバター（右側） */}
-              {isMe && !isSystem && (
-                <div className="ml-2 flex-shrink-0 flex items-end">
-                    {messageAvatar ? (
-                        <img src={messageAvatar} alt={msg.charName} className="w-10 h-10 rounded-full object-cover border border-slate-600 bg-slate-800 shadow-sm" />
-                    ) : (
-                        <div className="w-10 h-10 rounded-full bg-slate-700 flex items-center justify-center text-[10px] text-slate-400 border border-slate-600 font-bold shadow-sm">
-                            {(msg.charName || "ME").charAt(0)}
-                        </div>
-                    )}
-                </div>
-              )}
+            <div className="space-y-3 mb-4">
+              <textarea value={reportReason} onChange={e=>setReportReason(e.target.value)} placeholder="不適切な発言や、規約違反の内容を詳しく記入してください。（対象のログも一緒に運営に送信されます）" className="w-full h-32 bg-slate-900 border border-slate-700 rounded p-3 text-sm text-white" />
             </div>
-          )
-        })}
-        {isLoading && <div className="text-xs text-emerald-400 animate-pulse font-bold bg-slate-900/50 w-fit px-3 py-1 rounded">AI思考中...</div>}
-      </div>
-
-      <div className="bg-slate-800 border border-slate-700 rounded-xl p-3 flex flex-col gap-2 shadow-lg">
-        
-        {isScenarioEnded && (
-          activeRoom.status === 'finished' ? (
-            <div className="bg-amber-900/50 border border-amber-500 rounded p-2 flex justify-between items-center mb-2">
-              <span className="text-amber-400 text-sm font-bold">🎉 感想戦モード（AIは停止しています）</span>
-              <button onClick={() => setCurrentView("evaluation")} className="bg-amber-600 hover:bg-amber-500 text-white text-xs font-bold px-4 py-2 rounded shadow">
-                評価して退出する
-              </button>
+            <div className="flex gap-4">
+              <button onClick={() => { setReportTarget(null); setReportReason(""); }} className="flex-1 bg-slate-700 hover:bg-slate-600 py-3 rounded text-sm font-bold">キャンセル</button>
+              <button onClick={submitUserReport} disabled={!reportReason.trim()} className="flex-1 bg-red-600 hover:bg-red-500 disabled:bg-slate-600 py-3 rounded text-sm font-bold shadow-lg shadow-red-900/50">運営に送信する</button>
             </div>
-          ) : currentUser?.id === activeRoom.host_id ? (
-            <button onClick={endGame} className="w-full bg-amber-600 hover:bg-amber-500 text-white font-bold py-2 rounded-xl shadow-lg animate-pulse text-sm mb-2">
-              🎉 セッション完了！感想戦モードへ移行する
-            </button>
-          ) : (
-            <div className="bg-amber-900/50 border border-amber-500 rounded p-2 text-center text-amber-400 text-sm font-bold mb-2">
-              🎉 エンディング到達！ホストの完了操作をお待ちください...
-            </div>
-          )
-        )}
-
-        {isSplitMode && myScene.isMerged && activeRoom.status === 'playing' && (
-          <div className="bg-indigo-900/50 border border-indigo-500 rounded p-2 text-center text-indigo-300 text-sm font-bold mb-2">
-            ⏳ {myScene.name}チームの行動を終了し、他チームの合流を待っています... (相談チャットのみ使用可能)
           </div>
-        )}
+        </div>
+      )}
 
-        {joinedCharacter ? (
-          activeRoom.status === 'finished' ? (
-            <div className="flex gap-2 pt-1">
-              <div className="flex items-center justify-center bg-amber-600/20 text-amber-400 border border-amber-500/30 px-4 py-2 rounded-lg text-xs font-bold">
-                🗣️ 感想戦
-              </div>
-              <input type="text" value={input} onChange={(e) => setInput(e.target.value)} onKeyDown={(e) => e.key === "Enter" && handleSend()} 
-                placeholder="他のプレイヤーとセッションの感想を語り合いましょう！（AIは反応しません）" 
-                className="flex-1 bg-slate-900 border border-slate-600 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-amber-500 transition" />
-              <button onClick={handleSend} disabled={isLoading} className="text-white px-6 py-2 rounded-lg text-sm font-bold shadow transition bg-amber-600 hover:bg-amber-500 disabled:opacity-50">送信</button>
+      {scenarioAppealTarget && (
+        <div className="fixed inset-0 bg-black/80 z-[60] flex items-center justify-center p-4">
+          <div className="bg-slate-800 border border-amber-700/50 rounded-xl p-6 w-full max-w-lg shadow-2xl">
+            <h3 className="text-xl font-bold text-amber-400 mb-2">📝 再審査（修正完了）の申請</h3>
+            <p className="text-xs text-slate-400 mb-4">対象シナリオ: {scenarioAppealTarget.title}</p>
+            <div className="space-y-3 mb-4">
+              <textarea value={scenarioAppealText} onChange={e=>setScenarioAppealText(e.target.value)} placeholder="修正した箇所や、非公開措置へのコメントを入力してください。" className="w-full h-32 bg-slate-900 border border-slate-700 rounded p-3 text-sm text-white" />
             </div>
-          ) : (
-            <>
-              <div className="flex gap-2 border-b border-slate-700 pb-2 items-center overflow-x-auto whitespace-nowrap">
-                <button onClick={() => handleTabClick("story")} className={`relative text-xs font-bold px-4 py-2 rounded-t-lg transition ${chatTab === "story" ? "bg-emerald-600/20 text-emerald-400 border-b-2 border-emerald-500" : "text-slate-400 hover:text-white"}`}>
-                  📖 {isSplitMode && myScene.id !== 'scene_main' ? 'チーム行動宣言 (GMへ)' : '行動宣言 (GMへ)'}
-                  {unreadIndicators.story && <span className="absolute top-1 right-1 w-2 h-2 bg-red-500 rounded-full animate-pulse"></span>}
-                </button>
-                <button onClick={() => handleTabClick("consult")} className={`relative text-xs font-bold px-4 py-2 rounded-t-lg transition ${chatTab === "consult" ? "bg-indigo-600/20 text-indigo-400 border-b-2 border-indigo-500" : "text-slate-400 hover:text-white"}`}>
-                  🗣️ 相談 (PL・AI相棒へ)
-                  {unreadIndicators.consult && <span className="absolute top-1 right-1 w-2 h-2 bg-red-500 rounded-full animate-pulse"></span>}
-                </button>
-                <button onClick={() => handleTabClick("gm")} className={`relative text-xs font-bold px-4 py-2 rounded-t-lg transition ${chatTab === "gm" ? "bg-amber-600/20 text-amber-400 border-b-2 border-amber-500" : "text-slate-400 hover:text-white"}`}>
-                  ⚙️ GMへのメタ質問
-                  {unreadIndicators.gm && <span className="absolute top-1 right-1 w-2 h-2 bg-red-500 rounded-full animate-pulse"></span>}
-                </button>
+            <div className="flex gap-4">
+              <button onClick={() => { setScenarioAppealTarget(null); setScenarioAppealText(""); }} className="flex-1 bg-slate-700 hover:bg-slate-600 py-3 rounded text-sm font-bold">キャンセル</button>
+              <button onClick={submitScenarioAppeal} disabled={!scenarioAppealText.trim()} className="flex-1 bg-amber-600 hover:bg-amber-500 disabled:bg-slate-600 py-3 rounded text-sm font-bold shadow-lg shadow-amber-900/50">運営に申請を送信する</button>
+            </div>
+          </div>
+        </div>
+      )}
 
-                {chatTab === "consult" && !isScenarioEnded && (
-                  <label className="ml-auto text-[10px] flex items-center gap-1.5 text-indigo-300 bg-slate-900 px-2 py-1 rounded border border-slate-600 cursor-pointer hover:bg-slate-800 transition">
-                    <input type="checkbox" checked={consultWithAI} onChange={(e) => setConsultWithAI(e.target.checked)} className="accent-indigo-500 w-3 h-3" />
-                    AI相棒にも意見を求める
-                  </label>
+      {banTargetScenario && (
+        <div className="fixed inset-0 bg-black/80 z-[60] flex items-center justify-center p-4">
+          <div className="bg-slate-800 border border-slate-700 rounded-xl p-6 w-full max-w-lg shadow-2xl">
+            <h3 className="text-xl font-bold text-white mb-2">⚙️ シナリオの管理措置</h3>
+            <p className="text-xs text-slate-400 mb-4">対象: {banTargetScenario.title}</p>
+            <div className="space-y-3 mb-4">
+              <textarea value={scenarioBanReason} onChange={e=>setScenarioBanReason(e.target.value)} placeholder="措置の理由を入力してください（作者にメールで通知されます）" className="w-full h-32 bg-slate-900 border border-slate-700 rounded p-3 text-sm text-white" />
+            </div>
+            <div className="flex flex-col gap-3">
+              <div className="flex gap-2">
+                {!banTargetScenario.isBanned ? (
+                  <button onClick={() => executeScenarioBan('soft')} disabled={!scenarioBanReason.trim()} className="flex-1 bg-amber-600 hover:bg-amber-500 disabled:bg-slate-600 py-3 rounded text-sm font-bold shadow-lg">一時非公開にする</button>
+                ) : (
+                  <button onClick={() => executeScenarioBan('unban')} className="flex-1 bg-emerald-600 hover:bg-emerald-500 py-3 rounded text-sm font-bold shadow-lg">非公開を解除する</button>
                 )}
+                <button onClick={() => executeScenarioBan('hard')} disabled={!scenarioBanReason.trim()} className="flex-1 bg-red-600 hover:bg-red-500 disabled:bg-slate-600 py-3 rounded text-sm font-bold shadow-lg">完全に削除する</button>
               </div>
-              
-              <div className="flex gap-2 pt-1">
-                {isSplitMode && myScene.id !== 'scene_main' && !myScene.isMerged && (currentUser?.id === myScene.leaderId || activeRoom.host_id === currentUser?.id) && (
-                  <button onClick={mergeTeam} className="bg-indigo-600 hover:bg-indigo-500 text-white px-3 rounded-lg text-xs font-bold shadow-lg flex-shrink-0">
-                    🚪 このチームだけ合流する
-                  </button>
-                )}
-                
-                <input type="text" value={input} onChange={(e) => setInput(e.target.value)} onKeyDown={(e) => e.key === "Enter" && handleSend()} 
-                  placeholder={chatTab === "story" ? "例：鍵穴を覗き込みます。" : (chatTab === "consult" ? (consultWithAI && !isScenarioEnded ? "例：ねえ、どうしようか？ (AI相棒が返答します)" : "例：PL同士の作戦会議メモ (AIは反応しません)") : "例：今の状況でもう一度目星は振れますか？")} 
-                  className="flex-1 bg-slate-900 border border-slate-600 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-emerald-500 transition" 
-                  disabled={isChatDisabled}
-                />
-                <button onClick={handleSend} disabled={isChatDisabled} className={`text-white px-6 py-2 rounded-lg text-sm font-bold shadow transition ${chatTab === "story" ? "bg-emerald-600 hover:bg-emerald-500" : (chatTab === "consult" ? "bg-indigo-600 hover:bg-indigo-500" : "bg-amber-600 hover:bg-amber-500")} disabled:opacity-50`}>送信</button>
+              <button onClick={() => setBanTargetScenario(null)} className="w-full bg-slate-700 hover:bg-slate-600 py-3 rounded text-sm font-bold mt-2">キャンセル</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {banTargetUser && (
+        <div className="fixed inset-0 bg-black/80 z-[60] flex items-center justify-center p-4">
+          <div className="bg-slate-800 border border-red-700/50 rounded-xl p-6 w-full max-w-lg shadow-2xl">
+            <h3 className="text-xl font-bold text-red-500 mb-2">⛔ ユーザーをBANする</h3>
+            <p className="text-xs text-slate-400 mb-4">対象: {banTargetUser.handleName} ({banTargetUser.email})</p>
+            <div className="space-y-3 mb-4">
+              <textarea value={banReason} onChange={e=>setBanReason(e.target.value)} placeholder="通報ログ・BANの理由を入力してください" className="w-full h-32 bg-slate-900 border border-slate-700 rounded p-3 text-sm text-white" />
+            </div>
+            <div className="flex gap-4">
+              <button onClick={() => setBanTargetUser(null)} className="flex-1 bg-slate-700 hover:bg-slate-600 py-3 rounded text-sm font-bold">キャンセル</button>
+              <button onClick={executeBan} disabled={!banReason.trim()} className="flex-1 bg-red-600 hover:bg-red-500 disabled:bg-slate-600 py-3 rounded text-sm font-bold shadow-lg shadow-red-900/50">BANを実行する</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {showMailbox && (
+        <div className="fixed inset-0 bg-black/80 z-[60] flex items-center justify-center p-4">
+          <div className="bg-slate-800 border border-slate-700 rounded-xl p-6 w-full max-w-lg shadow-2xl flex flex-col max-h-[80vh]">
+            <div className="flex justify-between items-center mb-4"><h3 className="text-xl font-bold">✉️ 受信箱</h3><button onClick={() => setShowMailbox(false)} className="text-xl">×</button></div>
+            <div className="h-[400px] overflow-y-scroll space-y-3 pr-2">
+              {myNotifications.length === 0 ? <p className="text-sm text-slate-500 text-center py-8">お知らせはありません。</p> : myNotifications.map(n => (
+                <div key={n.id} className={`p-4 rounded-lg border ${n.isRead ? 'bg-slate-900 border-slate-700' : 'bg-slate-800 border-blue-500/50'}`}>
+                  <h4 className="font-bold text-sm">{n.title}</h4>
+                  <p className="text-xs text-slate-300 whitespace-pre-wrap mt-2">{n.message}</p>
+                  {!n.isRead && <button onClick={() => markNotificationAsRead(n.id)} className="text-[10px] bg-slate-700 px-3 py-1 rounded mt-3">既読にする</button>}
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {roomConfigModal && (
+        <div className="fixed inset-0 bg-black/80 z-[60] flex items-center justify-center p-4">
+          <div className="bg-slate-800 border border-emerald-700/50 rounded-xl p-6 w-full max-w-lg shadow-2xl">
+            <h3 className="text-xl font-bold text-emerald-400 mb-4">🚪 部屋の作成: {roomConfigModal.scenario.title}</h3>
+            
+            <div className="space-y-4 mb-6">
+              <div>
+                <label className="text-xs text-slate-400 block mb-1">使用するキャラクター <span className="text-red-400">*</span></label>
+                <select value={roomConfigModal.charId} onChange={(e) => setRoomConfigModal({...roomConfigModal, charId: e.target.value})} className="w-full bg-slate-900 border border-slate-700 rounded p-2 text-sm text-white">
+                  <option value="" disabled>選択してください</option>
+                  {roomConfigModal.scenario.presetCharacters?.map(c => <option key={c.id} value={c.id}>{c.name} ({c.job})</option>)}
+                </select>
               </div>
-            </>
-          )
-        ) : (
-          <div className="text-center p-2 text-slate-400 text-sm font-bold">あなたは観戦モードです（チャットは行えません）</div>
-        )}
-      </div>
-    </div>
+
+              <div>
+                <label className="text-xs text-slate-400 block mb-1">公開設定</label>
+                <div className="flex gap-4">
+                  <label className="flex items-center gap-2 text-sm"><input type="radio" checked={roomConfigModal.privacy === 'open'} onChange={() => setRoomConfigModal({...roomConfigModal, privacy: 'open'})} /> 🔓 オープン（誰でも観戦可能）</label>
+                  <label className="flex items-center gap-2 text-sm"><input type="radio" checked={roomConfigModal.privacy === 'secret'} onChange={() => setRoomConfigModal({...roomConfigModal, privacy: 'secret'})} /> 🔒 シークレット（IDを知る人のみ）</label>
+                </div>
+              </div>
+
+              <div>
+                <label className="text-xs text-slate-400 block mb-1">ひとことメッセージ</label>
+                <input type="text" value={roomConfigModal.message} onChange={(e) => setRoomConfigModal({...roomConfigModal, message: e.target.value})} placeholder="例：初心者歓迎！ゆっくり遊びましょう" className="w-full bg-slate-900 border border-slate-700 rounded p-2 text-sm text-white" />
+              </div>
+            </div>
+
+            <div className="flex gap-4">
+              <button onClick={() => setRoomConfigModal(null)} className="flex-1 bg-slate-700 hover:bg-slate-600 py-3 rounded text-sm font-bold">キャンセル</button>
+              <button onClick={executeCreateRoom} disabled={!roomConfigModal.charId} className="flex-1 bg-emerald-600 hover:bg-emerald-500 disabled:bg-slate-600 py-3 rounded text-sm font-bold shadow-lg shadow-emerald-900/50">作成して入室</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+    </main>
   );
 }
