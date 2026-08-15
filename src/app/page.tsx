@@ -7,6 +7,9 @@ import {
   Character, Scenario, Scene, Room, Message, ChatTab 
 } from "../types";
 
+// ★ 先ほど作ったコンポーネントをインポート
+import LoginView from "../components/views/LoginView";
+
 const NO_IMAGE_SCENARIO = "https://images.unsplash.com/photo-1614729939124-03290b5609ce?auto=format&fit=crop&w=400&q=80";
 const DEFAULT_AVATAR = "https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&w=150&q=80";
 
@@ -515,7 +518,6 @@ export default function Home() {
     await callAIGM(`【システムコマンド】全チームの別行動が終了し、一箇所に合流しました。これまでの各チームの報告を踏まえ、合流時の情景描写と今後の展開を提示してください。`, "story");
   };
 
-
   const callAIGM = async (extraUserContext?: string, targetTab: ChatTab = "story") => {
     if (!activeRoom || !joinedCharacter || !myScene) return;
     setIsLoading(true);
@@ -546,13 +548,14 @@ export default function Home() {
       let roleInstruction = "";
       if (targetTab === "story") {
         roleInstruction = `
-【重要：GMの絶対ルール（行動判定と時間管理）】
+【重要：GMの絶対ルール（行動判定とゲーム性の担保）】
 1. PLたちが明確な「行動宣言」を出した時のみ物語を進行させてください。
 2. リスクや不確実性を伴う行動には必ずダイスロールを要求し、結果が出るまで描写を待機してください。
 3. 【行動のヒント禁止】PLに具体的な行動の例や選択肢（例：「〇〇して逃げる」「〇〇を攻撃する」など）を絶対に提示しないでください。PL自身に考えさせてください。
 4. 【ダイスの自己処理禁止】GM自身がダイスを振ったり、PLのSAN値やステータスを勝手に推測・仮定してはいけません。必ずプロンプトに記載された【人間PL】の正確な数値を使用し、PLが画面のダイスボタンを振って結果が送信されるのを待機してください。
-5. 想定プレイ時間は約${activeRoom.scenario?.playTime || 60}分です。適切なペースでエンディングへ誘導してください。
-6. 【エンディングの処理】物語が結末を迎えた場合、最後の情景描写の末尾に必ず [SCENARIO_END] というシステムタグを記述してください。
+5. 【安易な成功・AIの忖度厳禁（最重要）】PLの行動が論理的に不自然であったり、シナリオの解決条件（例：特定のアイテムを『燃やす』『特定の手順で破壊する』など）を正確に満たしていない場合は、絶対に成功させてはいけません。「ただ投げつけただけ」「間違ったアイテムを使った」などの甘いプレイには、容赦なく「効果がなかった」「状況が悪化した（敵の反撃やダメージなど）」として厳しく処理してください。AIとしてのPLへの忖度や接待プレイは、TRPGの緊迫感を損なうため固く禁じます。
+6. 【ゲーム性の重視】想定プレイ時間（約${activeRoom.scenario?.playTime || 60}分）はあくまで目安です。時間を守るために無理やりご都合主義なハッピーエンドに急ぐくらいなら、時間が延びても構わないので、論理的整合性と緊迫感のある試練を優先してください。
+7. 【エンディングの処理】物語が結末（クリア、または全滅などのゲームオーバー）を迎えた場合、最後の情景描写の末尾に必ず [SCENARIO_END] というシステムタグを記述してください。
 
 ${isSplitMode && myScene.id !== 'scene_main' ? `
 【チーム分割中の対応（超重要）】
@@ -571,7 +574,12 @@ ${isSplitMode && myScene.id !== 'scene_main' ? `
 ${isSplitMode && myScene.id !== 'scene_main' ? `※現在別行動中です。同じチームにいるAI相棒だけが返答してください。` : ''}
 `;
       } else if (targetTab === "gm") {
-        roleInstruction = `【重要：GMへのメタ質問対応】現在は「GMへの質問・ルール確認」の時間です。物語は進めず、ルールの裁定などのシステム的な回答のみを行ってください。`;
+        roleInstruction = `
+【重要：GMへのメタ質問対応】
+現在は「GMへの質問・ルール確認」の時間です。物語は進めず、ルールの裁定などのシステム的な回答のみを行ってください。
+【ヒントの要求について】
+もしPLが謎解きや行動の「ヒント」を要求した場合、無条件で教えずに「ヒント（アイデア・ひらめき）を得るにはSAN値を1d3（または固定値）減少させる必要があります。よろしければ【行動宣言】タブでSANダイスを振って、その旨を宣言してください」と代償を提示してください。
+`;
       }
 
       const sysPrompt = `あなたはTRPGの優秀なAIシステムです。
@@ -903,7 +911,7 @@ ${roleInstruction}`;
 
   const unreadCount = myNotifications.filter(n => !n.isRead).length;
 
-  const isChatDisabled = !!(isLoading || (isSplitMode && myScene?.isMerged === true && chatTab !== 'consult'));
+  const isChatDisabled = Boolean(isLoading || (isSplitMode && myScene?.isMerged === true && chatTab !== 'consult'));
 
   return (
     <main className="h-screen w-full bg-slate-900 text-slate-100 flex flex-col font-sans overflow-hidden">
@@ -1055,19 +1063,17 @@ ${roleInstruction}`;
       )}
 
       {currentView === "login" && (
-        <div className="flex-1 flex flex-col items-center justify-center p-6 w-full min-h-0 overflow-y-auto">
-          <div className="bg-slate-800 border border-slate-700 rounded-2xl p-8 w-full max-w-md shadow-2xl">
-            <h1 className="text-3xl font-extrabold text-emerald-400 mb-2 text-center">AI GM MORPG</h1>
-            <p className="text-slate-400 text-sm text-center mb-8">ログインして冒険を始める</p>
-            <form onSubmit={handleEmailAuth} className="space-y-4">
-              <input type="email" value={email} onChange={e => setEmail(e.target.value)} required placeholder="メールアドレス" className="w-full bg-slate-900 border border-slate-700 rounded-lg px-4 py-3 text-sm text-white" />
-              <input type="password" value={password} onChange={e => setPassword(e.target.value)} required placeholder="パスワード" className="w-full bg-slate-900 border border-slate-700 rounded-lg px-4 py-3 text-sm text-white" />
-              <button type="submit" disabled={authLoading} className="w-full bg-emerald-600 hover:bg-emerald-500 text-white font-bold py-3 rounded-xl">{isLoginMode ? "ログイン" : "新規登録してはじめる"}</button>
-            </form>
-            <div className="mt-4"><button onClick={handleGoogleAuth} disabled={authLoading} className="w-full bg-white text-slate-800 font-bold py-3 rounded-xl hover:bg-slate-200">Googleでログイン</button></div>
-            <div className="text-center mt-6"><button onClick={() => setIsLoginMode(!isLoginMode)} type="button" className="text-sm text-emerald-400 underline">{isLoginMode ? "新規登録はこちら" : "ログインはこちら"}</button></div>
-          </div>
-        </div>
+        <LoginView 
+          email={email}
+          setEmail={setEmail}
+          password={password}
+          setPassword={setPassword}
+          isLoginMode={isLoginMode}
+          setIsLoginMode={setIsLoginMode}
+          authLoading={authLoading}
+          handleEmailAuth={handleEmailAuth}
+          handleGoogleAuth={handleGoogleAuth}
+        />
       )}
 
       {/* ユーザー・シナリオ通報モーダル */}
