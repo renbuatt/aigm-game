@@ -556,7 +556,6 @@ export default function Home() {
       let roleInstruction = "";
       let scenarioPlotText = activeRoom.scenario?.plot || "";
 
-      // ★ タブごとにルールを分ける
       if (targetTab === "story") {
         roleInstruction = `
 【重要：GMの絶対ルール（行動判定とゲーム性の担保）】
@@ -586,7 +585,6 @@ ${isSplitMode && myScene.id !== 'scene_main' ? `
 ${isSplitMode && myScene.id !== 'scene_main' ? `※現在別行動中です。同じチームにいるAI相棒だけが返答してください。` : ''}
 `;
       } else if (targetTab === "gm") {
-        // ★ GMタブの時のネタバレ禁止を強化
         roleInstruction = `
 【重要：GMへのメタ質問対応（絶対厳守ルール）】
 1. 現在は「GMへの質問・ルール確認」の時間です。物語は進めず、ルールの裁定やシステム的な回答のみを行ってください。
@@ -799,9 +797,11 @@ ${roleInstruction}`;
     
     const currentInput = input;
     const isFinished = activeRoom.status === 'finished';
+    const isRecruiting = activeRoom.status === 'recruiting';
 
-    if (isFinished || (chatTab === "consult" && !consultWithAI)) {
-      await pushMessage(activeRoom.id, { sender: "player", text: currentInput, type: isFinished ? "ooc" : "ic", sceneId: myScene.id, charName: joinedCharacter.name, channel: chatTab });
+    // ★ 修正：待機中はAIを一切呼び出さない
+    if (isFinished || isRecruiting || (chatTab === "consult" && !consultWithAI)) {
+      await pushMessage(activeRoom.id, { sender: "player", text: currentInput, type: (isFinished || isRecruiting) ? "ooc" : "ic", sceneId: myScene.id, charName: joinedCharacter.name, channel: chatTab });
       setInput("");
       return;
     }
@@ -835,11 +835,13 @@ ${roleInstruction}`;
       msgText = `🎲 ${label} (3d6 ≦ ${targetValue}) ➔ 出目: ${res} [${d1},${d2},${d3}] 【${isSuccess ? "成功" : "失敗"}】`;
     }
 
-    const msgType = chatTab === "gm" ? "ooc" : "ic";
+    const isRecruiting = activeRoom.status === 'recruiting';
+    const msgType = (chatTab === "gm" || isRecruiting) ? "ooc" : "ic";
 
     await pushMessage(activeRoom.id, { sender: "player", text: msgText, type: msgType, sceneId: myScene.id, charName: joinedCharacter.name, channel: chatTab });
     
-    if (activeRoom.status !== 'finished') {
+    // ★ 修正：ゲームが開始されている場合のみAIを呼び出す
+    if (!isRecruiting && activeRoom.status !== 'finished') {
         let promptSuffix = "この結果を踏まえてGMとして情景描写を行ってください。";
         if (chatTab === "gm") {
             promptSuffix = "この結果を踏まえて、システム・ルールの裁定やヒントの提示を行ってください。";
