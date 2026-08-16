@@ -43,6 +43,8 @@ export type Scenario = {
   setting: string;
   npcList: string;
   plot: string;
+  prologue?: string; // ★ 追加
+  epilogue?: string; // ★ 追加
   imageUrl: string;
   presetCharacters: Character[];
   ratingSum: number;
@@ -56,7 +58,7 @@ export type Scenario = {
   playTime?: number;
   isPlayableByOthers?: boolean;
   isTrialOk?: boolean;
-  itemVisibility?: "all" | "self" | "none"; // ★ 追加
+  itemVisibility?: "all" | "self" | "none";
 };
 
 export type Scene = {

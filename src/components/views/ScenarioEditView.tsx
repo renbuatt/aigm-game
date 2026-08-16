@@ -44,7 +44,7 @@ export default function ScenarioEditView({ editingScenario, setEditingScenario, 
       <div className="flex gap-2 border-b border-slate-700 mb-4">
         <button onClick={() => setActiveTab('basic')} className={`px-4 py-2 text-sm font-bold border-b-2 transition-colors ${activeTab === 'basic' ? 'border-emerald-500 text-emerald-400' : 'border-transparent text-slate-400 hover:text-white'}`}>基本設定</button>
         <button onClick={() => setActiveTab('characters')} className={`px-4 py-2 text-sm font-bold border-b-2 transition-colors ${activeTab === 'characters' ? 'border-blue-500 text-blue-400' : 'border-transparent text-slate-400 hover:text-white'}`}>キャラクター ({editingScenario.presetCharacters.length})</button>
-        <button onClick={() => setActiveTab('plot')} className={`px-4 py-2 text-sm font-bold border-b-2 transition-colors ${activeTab === 'plot' ? 'border-purple-500 text-purple-400' : 'border-transparent text-slate-400 hover:text-white'}`}>プロット(AI指示)</button>
+        <button onClick={() => setActiveTab('plot')} className={`px-4 py-2 text-sm font-bold border-b-2 transition-colors ${activeTab === 'plot' ? 'border-purple-500 text-purple-400' : 'border-transparent text-slate-400 hover:text-white'}`}>シナリオ本文設定</button>
       </div>
 
       <div className="flex-1 overflow-y-auto pr-2 custom-scrollbar space-y-4">
@@ -57,7 +57,6 @@ export default function ScenarioEditView({ editingScenario, setEditingScenario, 
               <div className="flex-1"><label className="text-xs text-slate-400 block mb-1">販売価格 (pt)</label><input type="number" value={editingScenario.price || 0} onChange={e=>updateScenario('price', parseInt(e.target.value))} className="w-full bg-slate-800 border border-slate-700 rounded p-2 text-sm" /></div>
             </div>
             
-            {/* ★ デフォルトのアイテム設定 */}
             <div className="bg-slate-900 border border-slate-700 p-4 rounded-lg">
               <label className="text-xs text-slate-400 block mb-2 font-bold">このシナリオのデフォルトのアイテム表示設定</label>
               <select value={editingScenario.itemVisibility || "none"} onChange={e=>updateScenario('itemVisibility', e.target.value)} className="w-full bg-slate-800 border border-slate-600 rounded p-2 text-sm text-white">
@@ -113,9 +112,29 @@ export default function ScenarioEditView({ editingScenario, setEditingScenario, 
         )}
 
         {activeTab === 'plot' && (
-          <div className="space-y-4">
-            <div><label className="text-xs text-slate-400 block mb-1">世界観・時代設定</label><textarea value={editingScenario.setting || ""} onChange={e=>updateScenario('setting', e.target.value)} placeholder="例: 1920年代のアーカム..." className="w-full h-20 bg-slate-800 border border-slate-700 rounded p-2 text-sm" /></div>
-            <div><label className="text-xs text-slate-400 block mb-1">進行プロット・真相・ギミックの解法 (GMのみに公開)</label><textarea value={editingScenario.plot || ""} onChange={e=>updateScenario('plot', e.target.value)} placeholder="AI GMが読み込むシナリオの台本です。" className="w-full h-64 bg-slate-800 border border-slate-700 rounded p-2 text-sm" /></div>
+          <div className="space-y-6 pb-8">
+            <div>
+              <label className="text-sm text-slate-300 font-bold block mb-1">🌍 世界観・時代設定</label>
+              <textarea value={editingScenario.setting || ""} onChange={e=>updateScenario('setting', e.target.value)} placeholder="例: 1920年代のアーカム。禁酒法時代の暗い街並み..." className="w-full h-20 bg-slate-800 border border-slate-700 rounded p-3 text-sm" />
+            </div>
+            
+            <div className="border-l-4 border-emerald-500 pl-4">
+              <label className="text-sm text-emerald-400 font-bold block mb-1">🎬 プロローグ (導入)</label>
+              <p className="text-[10px] text-slate-400 mb-2">未入力の場合はAIが本編プロットから自動生成します。</p>
+              <textarea value={editingScenario.prologue || ""} onChange={e=>updateScenario('prologue', e.target.value)} placeholder="探索者たちは古びた洋館の前に立っていた。扉は少しだけ開いている..." className="w-full h-32 bg-slate-800 border border-emerald-900/50 rounded p-3 text-sm" />
+            </div>
+
+            <div className="border-l-4 border-blue-500 pl-4">
+              <label className="text-sm text-blue-400 font-bold block mb-1">📜 本編プロット・真相・ギミック解法</label>
+              <p className="text-[10px] text-slate-400 mb-2">AI GMが物語を進行させるための台本（プレイヤーには見えません）。</p>
+              <textarea value={editingScenario.plot || ""} onChange={e=>updateScenario('plot', e.target.value)} placeholder="【真相】実は依頼人が犯人。2階の書斎にある日記を読むと事実が判明する..." className="w-full h-64 bg-slate-800 border border-blue-900/50 rounded p-3 text-sm" />
+            </div>
+
+            <div className="border-l-4 border-amber-500 pl-4">
+              <label className="text-sm text-amber-400 font-bold block mb-1">🌅 エピローグ (結末)</label>
+              <p className="text-[10px] text-slate-400 mb-2">未入力の場合はAIが物語の結末から自動生成します。</p>
+              <textarea value={editingScenario.epilogue || ""} onChange={e=>updateScenario('epilogue', e.target.value)} placeholder="事件は解決したが、心の奥底に言いようのない不安が残った。探索者たちは日常へと帰っていく..." className="w-full h-32 bg-slate-800 border border-amber-900/50 rounded p-3 text-sm" />
+            </div>
           </div>
         )}
       </div>
