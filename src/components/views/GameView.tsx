@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from "react";
-import { ViewState, UserProfile, Room, Character, Scene, Message, ChatTab } from "../../types";
+import { ViewState, UserProfile, Room, Character, Scene, Message, ChatTab, Scenario } from "../../types";
 
 const DEFAULT_AVATAR = "https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&w=150&q=80";
 
@@ -9,7 +9,15 @@ type Props = {
   currentUser: UserProfile;
   joinedCharacter: Character | null;
   leaveGame: () => Promise<void>;
-  setReportTarget: React.Dispatch<React.SetStateAction<any>>;
+  setReportTarget: React.Dispatch<React.SetStateAction<{
+    type: 'user' | 'scenario' | 'room';
+    id: string;
+    name: string;
+    roomId?: string;
+    scenarioId?: string;
+    scenarioName?: string;
+    availableUsers?: { id: string, name: string }[];
+  } | null>>;
   rollDice: (targetValue: number, label: string, is1d100?: boolean) => Promise<void>;
   startGame: () => Promise<void>;
   startSplitting: () => Promise<void>;
@@ -40,7 +48,8 @@ type Props = {
   togglePauseRoom: () => Promise<void>;
   toggleAFK: (userId: string, forceRemove?: boolean) => Promise<void>;
   triggerAutoAction: () => Promise<void>;
-  updateInventory: (newItems: string) => Promise<void>; // ★ 追加
+  updateInventory: (newItems: string) => Promise<void>;
+  openRoomConfigModal?: (scenario: Scenario) => void; // ★ 追加
 };
 
 export default function GameView({
@@ -49,7 +58,7 @@ export default function GameView({
   setCurrentView, endGame, input, setInput, handleSend, handleTabClick, unreadIndicators,
   consultWithAI, setConsultWithAI, isChatDisabled, mergeTeam, executeMergeAll, generateSceneImage,
   proposedTeams, setProposedTeams, isGeneratingSplit, generateSplitProposal, finishSplitting, cancelSplitting,
-  togglePauseRoom, toggleAFK, triggerAutoAction, updateInventory
+  togglePauseRoom, toggleAFK, triggerAutoAction, updateInventory, openRoomConfigModal
 }: Props) {
   const isRecruiting = activeRoom.status === 'recruiting';
   const isHost = currentUser?.id === activeRoom.host_id || currentUser?.handleName === activeRoom.host_name;
@@ -104,7 +113,6 @@ export default function GameView({
         </div>
       )}
 
-      {/* チーム分けモーダル類省略 (既存と同じ) */}
       {activeRoom.status === 'splitting' && isHost && (
         <div className="absolute inset-0 bg-black/80 z-50 flex items-center justify-center p-4">
           <div className="bg-slate-800 border border-blue-500/50 rounded-xl p-6 w-full max-w-2xl shadow-2xl space-y-4 max-h-[85vh] flex flex-col">
@@ -166,6 +174,7 @@ export default function GameView({
                   </div>
                 </div>
               ))}
+              
               {!isGeneratingSplit && (
                 <button onClick={() => setProposedTeams([...proposedTeams, { id: `team_${Date.now()}`, action: "", members: [], leader: "" }])} className="w-full bg-slate-800 border-2 border-dashed border-slate-600 text-slate-400 hover:text-white hover:border-slate-500 py-3 rounded-lg text-sm font-bold transition-colors">
                   ＋ 手動でチームを追加する
@@ -271,7 +280,6 @@ export default function GameView({
             {isSplitMode && myScene.id !== 'scene_main' && <span className="text-[10px] bg-indigo-600 px-2 py-0.5 rounded-full">{myScene.name} 班</span>}
           </span>
           <div className="flex flex-wrap items-center gap-1 justify-end">
-            {/* ★ 所持品のポップオーバー表示（表示設定がONの場合のみ） */}
             {joinedCharacter && activeRoom.show_items && (
                <div className="relative group flex items-center mr-2">
                  <button className="bg-amber-800/80 hover:bg-amber-700 text-amber-100 border border-amber-500/50 text-[10px] px-2 py-1.5 rounded font-bold shadow-lg flex items-center">🎒 所持品</button>
@@ -428,11 +436,21 @@ export default function GameView({
 
         {isScenarioEnded && (
           activeRoom.status === 'finished' ? (
-            <div className="bg-amber-900/50 border border-amber-500 rounded p-2 flex justify-between items-center mb-2">
-              <span className="text-amber-400 text-sm font-bold">🎉 感想戦モード（AIは停止しています）</span>
-              <button onClick={() => setCurrentView("evaluation")} className="bg-amber-600 hover:bg-amber-500 text-white text-xs font-bold px-4 py-2 rounded shadow">
-                評価して退出する
-              </button>
+            <div className="bg-amber-900/50 border border-amber-500 rounded p-4 mb-2 flex flex-col gap-3">
+              <div className="flex justify-between items-center">
+                <span className="text-amber-400 text-sm font-bold">🎉 感想戦モード（AIは停止しています）</span>
+                <div className="flex gap-2">
+                  {/* ★ お試しプレイ終了後、他プレイヤー作成許可ONなら本編作成ボタンを表示 */}
+                  {activeRoom.is_trial && activeRoom.scenario && (activeRoom.scenario.isPlayableByOthers || activeRoom.scenario.authorId === currentUser.id) && openRoomConfigModal && (
+                    <button onClick={() => openRoomConfigModal(activeRoom.scenario!)} className="bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold px-4 py-2 rounded shadow transition">
+                      ✨ このまま本編の部屋を作る
+                    </button>
+                  )}
+                  <button onClick={() => setCurrentView("evaluation")} className="bg-amber-600 hover:bg-amber-500 text-white text-xs font-bold px-4 py-2 rounded shadow">
+                    評価して退出する
+                  </button>
+                </div>
+              </div>
             </div>
           ) : (isHost || activeRoom.is_trial) ? (
             <button onClick={endGame} className="w-full bg-amber-600 hover:bg-amber-500 text-white font-bold py-2 rounded-xl shadow-lg animate-pulse text-sm mb-2">
