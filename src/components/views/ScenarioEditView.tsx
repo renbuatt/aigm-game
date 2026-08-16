@@ -1,5 +1,7 @@
 import React, { useState } from "react";
 import { ViewState, Scenario, Character } from "../../types";
+// ★ Geminiのテキスト生成機能を呼び出すために追加
+import { generateAITextWithPrompt } from "../../lib/ai"; 
 
 type Props = {
   editingScenario: Scenario;
@@ -45,13 +47,35 @@ export default function ScenarioEditView({
   const generateImageWithAI = async (basePrompt: string, isChar: boolean) => {
     setIsGenerating(true);
     try {
+      // ★ 日本語のプロンプトをGeminiで安全な英語プロンプトに変換＆NSFW対策タグを強制付与
+      const translationPrompt = `
+以下の日本語の設定情報を、画像生成AI用のカンマ区切りの英語プロンプト（タグの羅列）に変換してください。
+【絶対条件】
+・文章ではなく、英単語のカンマ区切りで出力してください。
+・性別が指定されている場合は、必ず「1boy, male」「1girl, female」「old man」など、画像生成AIが認識しやすいタグに変換してください。
+・不適切な画像（裸、エロティック、グロテスク）が生成されるのを防ぐため、プロンプトの最後に必ず「SFW, fully clothed, decent, wearing clothes」を含めてください。
+
+対象設定：
+${basePrompt}
+      `;
+
+      let englishPrompt = "";
+      try {
+        englishPrompt = await generateAITextWithPrompt(translationPrompt);
+      } catch (err) {
+        // AIの翻訳に失敗した場合は元のテキスト＋安全タグを付与
+        englishPrompt = `${basePrompt}, SFW, fully clothed`;
+      }
+
       const styleKeywords = isChar 
-        ? "anime style character portrait, highly detailed, dramatic lighting, TRPG" 
-        : "TRPG cover art, dark fantasy landscape, cinematic lighting, masterpiece";
+        ? "anime style character portrait, highly detailed, dramatic lighting, TRPG, safe for work, masterpiece" 
+        : "TRPG cover art, dark fantasy landscape, cinematic lighting, masterpiece, safe for work";
       
-      const prompt = encodeURIComponent(`${basePrompt}, ${styleKeywords}`);
+      const prompt = encodeURIComponent(`${englishPrompt}, ${styleKeywords}`);
       const seed = Math.floor(Math.random() * 100000);
-      const url = `https://image.pollinations.ai/prompt/${prompt}?nologo=true&seed=${seed}`;
+      
+      // ★ safe=true オプションも追加して二重でブロック
+      const url = `https://image.pollinations.ai/prompt/${prompt}?nologo=true&seed=${seed}&safe=true`;
 
       const res = await fetch(url);
       if (!res.ok) throw new Error("AIサーバーが混雑しています");
@@ -211,7 +235,6 @@ export default function ScenarioEditView({
                     placeholder="https://..." 
                   />
                 </div>
-                {/* ★ プレビューを見切れないように修正 */}
                 {editingScenario.imageUrl && (
                   <div className="mt-2 flex justify-center bg-slate-950 rounded-xl border border-slate-500 overflow-hidden">
                     <img src={editingScenario.imageUrl} alt="パッケージプレビュー" className="w-full h-auto max-h-64 object-contain" />
