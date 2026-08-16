@@ -80,7 +80,7 @@ export default function Home() {
   const [scenarioAppealTarget, setScenarioAppealTarget] = useState<Scenario | null>(null);
   const [scenarioAppealText, setScenarioAppealText] = useState("");
 
-  const [roomConfigModal, setRoomConfigModal] = useState<{ scenario: Scenario, charId: string, privacy: 'open'|'secret', message: string, difficulty: any, rule: any, showItems: boolean } | null>(null);
+  const [roomConfigModal, setRoomConfigModal] = useState<{ scenario: Scenario, charId: string, privacy: 'open'|'secret', message: string, difficulty: any, rule: any, itemVisibility: "all"|"self"|"none" } | null>(null);
   const [secretRoomIdSearch, setSecretRoomIdSearch] = useState("");
   const [searchedSecretRoom, setSearchedSecretRoom] = useState<Room | null>(null);
 
@@ -188,7 +188,8 @@ export default function Home() {
         authorId: d.author_id, price: d.price || 500, playLimit: d.play_limit || 1, giftLimit: d.gift_limit || 1,
         purchasedTickets: d.purchased_tickets || {}, isBanned: d.is_banned || false, playTime: d.play_time || 60,
         isPlayableByOthers: d.is_playable_by_others || false,
-        isTrialOk: d.is_trial_ok || false 
+        isTrialOk: d.is_trial_ok || false,
+        itemVisibility: d.item_visibility || "none" // ★ 追加
       }));
       setScenarios(loadedScenarios);
     }
@@ -205,7 +206,7 @@ export default function Home() {
         is_paused: r.is_paused || false,
         afk_users: r.afk_users || [],
         is_trial: r.is_trial || false,
-        show_items: r.show_items || false,
+        item_visibility: r.item_visibility || "none", // ★ 変更
         inventories: r.inventories || {}
       })).filter(r => r.scenario) as Room[];
       setRooms(formattedRooms);
@@ -375,7 +376,8 @@ export default function Home() {
       price: editingScenario.price || 500, play_limit: editingScenario.playLimit || 1, gift_limit: editingScenario.giftLimit || 1,
       play_time: editingScenario.playTime || 60,
       is_playable_by_others: editingScenario.isPlayableByOthers || false,
-      is_trial_ok: editingScenario.isTrialOk || false 
+      is_trial_ok: editingScenario.isTrialOk || false,
+      item_visibility: editingScenario.itemVisibility || "none" // ★ 追加
     };
 
     if (editingScenario.id && !editingScenario.id.startsWith('s')) {
@@ -723,7 +725,7 @@ export default function Home() {
       const afkInstruction = afkInstructionLines.join('\n');
 
       const inventoryTextLines: string[] = [];
-      if (activeRoom.show_items) {
+      if (activeRoom.item_visibility && activeRoom.item_visibility !== 'none') {
         inventoryTextLines.push(
           "",
           "【現在の全キャラクターの所持アイテム】"
@@ -894,7 +896,7 @@ export default function Home() {
           roleInstructionLines.push(
             "【ターンの概念と別行動の提案】",
             "1ターンは「行動の宣言」から「ダイスの判定」までとします。特定の誰かと一緒に行動したい場合はPLにそう宣言させてください。",
-            "PLたちの意見がまとまらない場合や、探索箇所が複数ある場合は、GMから積極的に「では、〇〇チームと△△チームに分かれて行動しますか？」と別行動（チーム分け）を提案し、出力の最後に必ず \"[SPLIT_PROPOSAL: 行動案A, 行案案B]\" のシステムタグを出力してください。"
+            "PLたちの意見がまとまらない場合や、探索箇所が複数ある場合は、GMから積極的に「では、〇〇チームと△△チームに分かれて行動しますか？」と別行動（チーム分け）を提案し、出力の最後に必ず \"[SPLIT_PROPOSAL: 行動案A, 行動案B]\" のシステムタグを出力してください。"
           );
         }
 
@@ -1015,7 +1017,7 @@ export default function Home() {
 
   const executeCreateRoom = async () => {
     if (!currentUser || !roomConfigModal) return;
-    const { scenario, charId, privacy, message, difficulty, rule, showItems } = roomConfigModal;
+    const { scenario, charId, privacy, message, difficulty, rule, itemVisibility } = roomConfigModal;
     if (!charId) { alert("キャラクターを選択してください。"); return; }
     
     const isAuthor = scenario.authorId === currentUser.id;
@@ -1048,7 +1050,7 @@ export default function Home() {
       is_paused: false,
       afk_users: [],
       is_trial: false,
-      show_items: showItems,
+      item_visibility: itemVisibility,
       inventories: initialInventories
     }).select().single();
     
@@ -1056,7 +1058,7 @@ export default function Home() {
     if (data) {
       setRoomConfigModal(null);
       await fetchData();
-      const newRoom: Room = { id: data.id, scenario_id: data.scenario_id, scenario: scenario, host_name: data.host_name, host_id: data.host_id, status: data.status, scenes: data.scenes, privacy: data.privacy, host_message: data.host_message, joined_users: data.joined_users, current_summary: "", difficulty: data.difficulty, rule: data.rule, is_paused: false, afk_users: [], is_trial: false, show_items: data.show_items, inventories: data.inventories };
+      const newRoom: Room = { id: data.id, scenario_id: data.scenario_id, scenario: scenario, host_name: data.host_name, host_id: data.host_id, status: data.status, scenes: data.scenes, privacy: data.privacy, host_message: data.host_message, joined_users: data.joined_users, current_summary: "", difficulty: data.difficulty, rule: data.rule, is_paused: false, afk_users: [], is_trial: false, item_visibility: data.item_visibility, inventories: data.inventories };
       
       await supabase.from('ai_memory').delete().eq('room_id', newRoom.id);
       setActiveRoom(newRoom); setJoinedCharacter(hostChar);
@@ -1092,14 +1094,14 @@ export default function Home() {
       is_paused: false,
       afk_users: [],
       is_trial: true,
-      show_items: false,
+      item_visibility: "none",
       inventories: initialInventories
     }).select().single();
     
     if (error) { alert("データベースエラーが発生しました: " + error.message); return; }
     if (data) {
       await fetchData();
-      const newRoom: Room = { id: data.id, scenario_id: data.scenario_id, scenario: scenario, host_name: data.host_name, host_id: data.host_id, status: data.status, scenes: data.scenes, privacy: data.privacy, host_message: data.host_message, joined_users: data.joined_users, current_summary: "", difficulty: data.difficulty, rule: data.rule, is_paused: false, afk_users: [], is_trial: true, show_items: data.show_items, inventories: data.inventories };
+      const newRoom: Room = { id: data.id, scenario_id: data.scenario_id, scenario: scenario, host_name: data.host_name, host_id: data.host_id, status: data.status, scenes: data.scenes, privacy: data.privacy, host_message: data.host_message, joined_users: data.joined_users, current_summary: "", difficulty: data.difficulty, rule: data.rule, is_paused: false, afk_users: [], is_trial: true, item_visibility: "none", inventories: data.inventories };
       
       await supabase.from('ai_memory').delete().eq('room_id', newRoom.id);
       setActiveRoom(newRoom); setJoinedCharacter(hostChar);
@@ -1116,8 +1118,9 @@ export default function Home() {
   const executeJoinRoom = async (room: Room, charId: string) => {
     if (!currentUser || !room || !charId) return;
     
-    const { data: latestRoom } = await supabase.from('rooms').select('joined_users').eq('id', room.id).single();
+    const { data: latestRoom } = await supabase.from('rooms').select('joined_users, inventories').eq('id', room.id).single();
     const currentUsers = latestRoom?.joined_users || {};
+    const currentInventories = latestRoom?.inventories || {};
 
     if (Object.values(currentUsers).includes(charId)) {
       alert("申し訳ありません、そのキャラクターは先ほど他のプレイヤーに選択されました！");
@@ -1128,11 +1131,12 @@ export default function Home() {
     if (!char) return;
 
     const newUsers = { ...currentUsers, [currentUser.id]: charId };
+    const newInventories = { ...currentInventories, [currentUser.id]: char.items || "" };
 
-    const { error } = await supabase.from('rooms').update({ joined_users: newUsers }).eq('id', room.id);
+    const { error } = await supabase.from('rooms').update({ joined_users: newUsers, inventories: newInventories }).eq('id', room.id);
     if (error) { alert("入室エラー: " + error.message); return; }
 
-    const updatedRoom = { ...room, joined_users: newUsers };
+    const updatedRoom = { ...room, joined_users: newUsers, inventories: newInventories };
     setActiveRoom(updatedRoom); setJoinedCharacter(char);
     await loadChatLogs(room.id);
     await pushMessage(room.id, { sender: "system", text: `【入室完了】${char.name}として参加しました！ホストの開始をお待ちください。`, type: "system", sceneId: room.scenes?.[0]?.id, channel: "system" });
@@ -1526,7 +1530,7 @@ export default function Home() {
     setAiPlayersList([]);
     setMessages([]);
     setCurrentView("lobby");
-    setRoomConfigModal({ scenario, charId: "", privacy: "open", message: "", difficulty: "normal", rule: "coc_jp", showItems: true });
+    setRoomConfigModal({ scenario, charId: "", privacy: "open", message: "", difficulty: "normal", rule: "coc_jp", itemVisibility: "all" });
   };
 
   const unreadCount = myNotifications.filter(n => !n.isRead).length;
@@ -1862,11 +1866,13 @@ export default function Home() {
                 </div>
               </div>
 
-              <div className="bg-slate-900/80 border border-slate-600 p-4 rounded-lg shadow-lg">
-                <label className="flex items-center gap-2 text-sm font-bold text-amber-300 cursor-pointer">
-                  <input type="checkbox" checked={roomConfigModal.showItems} onChange={(e) => setRoomConfigModal({...roomConfigModal, showItems: e.target.checked})} className="w-4 h-4 accent-amber-500" />
-                  🎒 この部屋で「所有アイテム表示機能」を有効にする
-                </label>
+              <div>
+                <label className="text-xs text-slate-400 block mb-1">アイテム表示機能</label>
+                <select value={roomConfigModal.itemVisibility} onChange={(e) => setRoomConfigModal({...roomConfigModal, itemVisibility: e.target.value as any})} className="w-full bg-slate-900 border border-slate-700 rounded p-2 text-sm text-white">
+                  <option value="none">非表示</option>
+                  <option value="self">自分の所持品のみ表示</option>
+                  <option value="all">パーティー全員の所持品を表示</option>
+                </select>
               </div>
 
               <div>
