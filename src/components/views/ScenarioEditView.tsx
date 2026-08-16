@@ -18,6 +18,14 @@ export default function ScenarioEditView({
 
   const [isGenerating, setIsGenerating] = useState(false);
 
+  // ★ 修正：入力した文字が即座に最新状態として保存されるようにする安全な更新関数
+  const updateCharacter = (field: keyof Character, value: any) => {
+    if (editingCharIndex === null) return;
+    const newChars = [...editingScenario.presetCharacters];
+    newChars[editingCharIndex] = { ...newChars[editingCharIndex], [field]: value };
+    setEditingScenario({ ...editingScenario, presetCharacters: newChars });
+  };
+
   const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>, isChar: boolean) => {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -32,9 +40,7 @@ export default function ScenarioEditView({
       const base64String = reader.result as string;
       
       if (isChar && editingCharIndex !== null) {
-        const newC = [...editingScenario.presetCharacters];
-        newC[editingCharIndex].imageUrl = base64String;
-        setEditingScenario({ ...editingScenario, presetCharacters: newC });
+        updateCharacter('imageUrl', base64String);
       } else {
         setEditingScenario({ ...editingScenario, imageUrl: base64String });
       }
@@ -85,9 +91,10 @@ ${basePrompt}
       reader.onloadend = () => {
         const base64data = reader.result as string;
         if (isChar && editingCharIndex !== null) {
-          const newC = [...editingScenario.presetCharacters];
-          newC[editingCharIndex].imageUrl = base64data;
-          setEditingScenario({ ...editingScenario, presetCharacters: newC });
+          // ★ 修正：生成された画像も正しく即時反映
+          const newChars = [...editingScenario.presetCharacters];
+          newChars[editingCharIndex] = { ...newChars[editingCharIndex], imageUrl: base64data };
+          setEditingScenario({ ...editingScenario, presetCharacters: newChars });
         } else {
           setEditingScenario({ ...editingScenario, imageUrl: base64data });
         }
@@ -115,15 +122,15 @@ ${basePrompt}
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
             <div>
               <label className="text-xs text-slate-400 block mb-1">名前</label>
-              <input type="text" value={editingScenario.presetCharacters[editingCharIndex].name} onChange={(e) => { const newC = [...editingScenario.presetCharacters]; newC[editingCharIndex].name = e.target.value; setEditingScenario({ ...editingScenario, presetCharacters: newC }); }} className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white" />
+              <input type="text" value={editingScenario.presetCharacters[editingCharIndex].name} onChange={(e) => updateCharacter('name', e.target.value)} className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white" />
             </div>
             <div>
               <label className="text-xs text-slate-400 block mb-1">職業</label>
-              <input type="text" value={editingScenario.presetCharacters[editingCharIndex].job} onChange={(e) => { const newC = [...editingScenario.presetCharacters]; newC[editingCharIndex].job = e.target.value; setEditingScenario({ ...editingScenario, presetCharacters: newC }); }} className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white" />
+              <input type="text" value={editingScenario.presetCharacters[editingCharIndex].job} onChange={(e) => updateCharacter('job', e.target.value)} className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white" />
             </div>
             <div>
               <label className="text-xs text-slate-400 block mb-1">性別・種族</label>
-              <input type="text" value={editingScenario.presetCharacters[editingCharIndex].genderOrRace || ""} onChange={(e) => { const newC = [...editingScenario.presetCharacters]; newC[editingCharIndex].genderOrRace = e.target.value; setEditingScenario({ ...editingScenario, presetCharacters: newC }); }} placeholder="例：男性、エルフなど" className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white" />
+              <input type="text" value={editingScenario.presetCharacters[editingCharIndex].genderOrRace || ""} onChange={(e) => updateCharacter('genderOrRace', e.target.value)} placeholder="例：男性、エルフなど" className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white" />
             </div>
           </div>
 
@@ -135,6 +142,7 @@ ${basePrompt}
                 onClick={() => {
                   const char = editingScenario.presetCharacters[editingCharIndex!];
                   if (!char.name) { alert("先に「名前」を入力してください！"); return; }
+                  // 即座に最新のデータが送られます
                   const promptStr = `${char.name}, ${char.genderOrRace ? char.genderOrRace + ', ' : ''}${char.job || ""}, ${char.personality || ""}`.slice(0, 150);
                   generateImageWithAI(promptStr, true);
                 }}
@@ -157,7 +165,7 @@ ${basePrompt}
                 <input 
                   type="text" 
                   value={editingScenario.presetCharacters[editingCharIndex].imageUrl || ""} 
-                  onChange={(e) => { const newC = [...editingScenario.presetCharacters]; newC[editingCharIndex].imageUrl = e.target.value; setEditingScenario({ ...editingScenario, presetCharacters: newC }); }} 
+                  onChange={(e) => updateCharacter('imageUrl', e.target.value)} 
                   className="flex-1 bg-slate-800 border border-slate-600 rounded px-2 py-1 text-[10px] text-white" 
                   placeholder="https://..." 
                 />
@@ -173,18 +181,18 @@ ${basePrompt}
           <div className="bg-slate-900 border border-slate-700 rounded-lg p-4">
             <h4 className="text-xs font-bold text-amber-400 mb-3">ステータス設定</h4>
             <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
-              <div><label className="text-[10px] text-slate-400 block mb-1">SAN (1〜100%)</label><input type="number" min="1" max="100" value={editingScenario.presetCharacters[editingCharIndex].san} onChange={(e) => { const newC = [...editingScenario.presetCharacters]; newC[editingCharIndex].san = Number(e.target.value); setEditingScenario({ ...editingScenario, presetCharacters: newC }); }} className="w-full bg-slate-800 border border-slate-600 rounded p-1.5 text-sm text-white text-center" /></div>
-              <div><label className="text-[10px] text-slate-400 block mb-1">HP</label><input type="number" value={editingScenario.presetCharacters[editingCharIndex].hp} onChange={(e) => { const newC = [...editingScenario.presetCharacters]; newC[editingCharIndex].hp = Number(e.target.value); setEditingScenario({ ...editingScenario, presetCharacters: newC }); }} className="w-full bg-slate-800 border border-slate-600 rounded p-1.5 text-sm text-white text-center" /></div>
-              <div><label className="text-[10px] text-slate-400 block mb-1">STR</label><input type="number" min="3" max="18" value={editingScenario.presetCharacters[editingCharIndex].str} onChange={(e) => { const newC = [...editingScenario.presetCharacters]; newC[editingCharIndex].str = Number(e.target.value); setEditingScenario({ ...editingScenario, presetCharacters: newC }); }} className="w-full bg-slate-800 border border-slate-600 rounded p-1.5 text-sm text-white text-center" /></div>
-              <div><label className="text-[10px] text-slate-400 block mb-1">DEX</label><input type="number" min="3" max="18" value={editingScenario.presetCharacters[editingCharIndex].dex} onChange={(e) => { const newC = [...editingScenario.presetCharacters]; newC[editingCharIndex].dex = Number(e.target.value); setEditingScenario({ ...editingScenario, presetCharacters: newC }); }} className="w-full bg-slate-800 border border-slate-600 rounded p-1.5 text-sm text-white text-center" /></div>
-              <div><label className="text-[10px] text-slate-400 block mb-1">INT</label><input type="number" min="3" max="18" value={editingScenario.presetCharacters[editingCharIndex].int} onChange={(e) => { const newC = [...editingScenario.presetCharacters]; newC[editingCharIndex].int = Number(e.target.value); setEditingScenario({ ...editingScenario, presetCharacters: newC }); }} className="w-full bg-slate-800 border border-slate-600 rounded p-1.5 text-sm text-white text-center" /></div>
-              <div><label className="text-[10px] text-slate-400 block mb-1">CON</label><input type="number" min="3" max="18" value={editingScenario.presetCharacters[editingCharIndex].con} onChange={(e) => { const newC = [...editingScenario.presetCharacters]; newC[editingCharIndex].con = Number(e.target.value); setEditingScenario({ ...editingScenario, presetCharacters: newC }); }} className="w-full bg-slate-800 border border-slate-600 rounded p-1.5 text-sm text-white text-center" /></div>
+              <div><label className="text-[10px] text-slate-400 block mb-1">SAN (1〜100%)</label><input type="number" min="1" max="100" value={editingScenario.presetCharacters[editingCharIndex].san} onChange={(e) => updateCharacter('san', Number(e.target.value))} className="w-full bg-slate-800 border border-slate-600 rounded p-1.5 text-sm text-white text-center" /></div>
+              <div><label className="text-[10px] text-slate-400 block mb-1">HP</label><input type="number" value={editingScenario.presetCharacters[editingCharIndex].hp} onChange={(e) => updateCharacter('hp', Number(e.target.value))} className="w-full bg-slate-800 border border-slate-600 rounded p-1.5 text-sm text-white text-center" /></div>
+              <div><label className="text-[10px] text-slate-400 block mb-1">STR</label><input type="number" min="3" max="18" value={editingScenario.presetCharacters[editingCharIndex].str} onChange={(e) => updateCharacter('str', Number(e.target.value))} className="w-full bg-slate-800 border border-slate-600 rounded p-1.5 text-sm text-white text-center" /></div>
+              <div><label className="text-[10px] text-slate-400 block mb-1">DEX</label><input type="number" min="3" max="18" value={editingScenario.presetCharacters[editingCharIndex].dex} onChange={(e) => updateCharacter('dex', Number(e.target.value))} className="w-full bg-slate-800 border border-slate-600 rounded p-1.5 text-sm text-white text-center" /></div>
+              <div><label className="text-[10px] text-slate-400 block mb-1">INT</label><input type="number" min="3" max="18" value={editingScenario.presetCharacters[editingCharIndex].int} onChange={(e) => updateCharacter('int', Number(e.target.value))} className="w-full bg-slate-800 border border-slate-600 rounded p-1.5 text-sm text-white text-center" /></div>
+              <div><label className="text-[10px] text-slate-400 block mb-1">CON</label><input type="number" min="3" max="18" value={editingScenario.presetCharacters[editingCharIndex].con} onChange={(e) => updateCharacter('con', Number(e.target.value))} className="w-full bg-slate-800 border border-slate-600 rounded p-1.5 text-sm text-white text-center" /></div>
             </div>
           </div>
           
           <div>
             <label className="text-xs text-slate-400 block mb-1">性格・特徴 (ハンドアウト内容)</label>
-            <textarea value={editingScenario.presetCharacters[editingCharIndex].personality} onChange={(e) => { const newC = [...editingScenario.presetCharacters]; newC[editingCharIndex].personality = e.target.value; setEditingScenario({ ...editingScenario, presetCharacters: newC }); }} className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white h-24" />
+            <textarea value={editingScenario.presetCharacters[editingCharIndex].personality} onChange={(e) => updateCharacter('personality', e.target.value)} className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white h-24" />
           </div>
           
           <button onClick={() => setEditingCharIndex(null)} className="w-full bg-emerald-600 hover:bg-emerald-500 text-white font-semibold py-3 rounded-lg mt-2">キャラクター設定を確定して戻る</button>
