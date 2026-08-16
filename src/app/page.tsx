@@ -189,7 +189,7 @@ export default function Home() {
         purchasedTickets: d.purchased_tickets || {}, isBanned: d.is_banned || false, playTime: d.play_time || 60,
         isPlayableByOthers: d.is_playable_by_others || false,
         isTrialOk: d.is_trial_ok || false,
-        itemVisibility: d.item_visibility || "none" // ★ 追加
+        itemVisibility: d.item_visibility || "none"
       }));
       setScenarios(loadedScenarios);
     }
@@ -206,7 +206,7 @@ export default function Home() {
         is_paused: r.is_paused || false,
         afk_users: r.afk_users || [],
         is_trial: r.is_trial || false,
-        item_visibility: r.item_visibility || "none", // ★ 変更
+        item_visibility: r.item_visibility || "none",
         inventories: r.inventories || {}
       })).filter(r => r.scenario) as Room[];
       setRooms(formattedRooms);
@@ -377,7 +377,7 @@ export default function Home() {
       play_time: editingScenario.playTime || 60,
       is_playable_by_others: editingScenario.isPlayableByOthers || false,
       is_trial_ok: editingScenario.isTrialOk || false,
-      item_visibility: editingScenario.itemVisibility || "none" // ★ 追加
+      item_visibility: editingScenario.itemVisibility || "none"
     };
 
     if (editingScenario.id && !editingScenario.id.startsWith('s')) {

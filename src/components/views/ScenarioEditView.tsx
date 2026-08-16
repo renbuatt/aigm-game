@@ -57,9 +57,18 @@ export default function ScenarioEditView({ editingScenario, setEditingScenario, 
               <div className="flex-1"><label className="text-xs text-slate-400 block mb-1">販売価格 (pt)</label><input type="number" value={editingScenario.price || 0} onChange={e=>updateScenario('price', parseInt(e.target.value))} className="w-full bg-slate-800 border border-slate-700 rounded p-2 text-sm" /></div>
             </div>
             
+            {/* ★ デフォルトのアイテム設定 */}
+            <div className="bg-slate-900 border border-slate-700 p-4 rounded-lg">
+              <label className="text-xs text-slate-400 block mb-2 font-bold">このシナリオのデフォルトのアイテム表示設定</label>
+              <select value={editingScenario.itemVisibility || "none"} onChange={e=>updateScenario('itemVisibility', e.target.value)} className="w-full bg-slate-800 border border-slate-600 rounded p-2 text-sm text-white">
+                <option value="none">非表示</option>
+                <option value="self">自分の所持品のみ表示</option>
+                <option value="all">パーティー全員の所持品を表示</option>
+              </select>
+            </div>
+
             <div className="bg-slate-900/80 border border-slate-600 p-4 rounded-lg mt-4 space-y-4 shadow-lg">
               <label className="flex items-center gap-3 text-sm font-bold text-white cursor-pointer hover:text-blue-300 transition select-none">
-                {/* ★ 確実に保存されるように !! を付与 */}
                 <input type="checkbox" checked={!!editingScenario.isPlayableByOthers} onChange={(e) => updateScenario('isPlayableByOthers', e.target.checked)} className="w-5 h-5 accent-blue-500 cursor-pointer" />
                 🌍 他のプレイヤーがこのシナリオで部屋を作成して遊ぶことを許可する
               </label>

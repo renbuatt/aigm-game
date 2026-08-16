@@ -56,6 +56,7 @@ export type Scenario = {
   playTime?: number;
   isPlayableByOthers?: boolean;
   isTrialOk?: boolean;
+  itemVisibility?: "all" | "self" | "none"; // ★ 追加
 };
 
 export type Scene = {
@@ -85,8 +86,8 @@ export type Room = {
   is_paused?: boolean;
   afk_users?: string[];
   is_trial?: boolean;
-  show_items?: boolean; // 旧カラム（後方互換用）
-  item_visibility?: "all" | "self" | "none"; // ★ 3パターンの新カラム
+  show_items?: boolean; 
+  item_visibility?: "all" | "self" | "none"; 
   inventories?: Record<string, string>;
 };
 

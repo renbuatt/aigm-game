@@ -20,7 +20,7 @@ type Props = {
   setCurrentView: React.Dispatch<React.SetStateAction<ViewState>>;
   createdScenarios: Scenario[];
   deleteScenario: (id: string) => Promise<void>;
-  setRoomConfigModal: React.Dispatch<React.SetStateAction<{ scenario: Scenario, charId: string, privacy: 'open'|'secret', message: string, difficulty: RoomDifficulty, rule: GameRule, showItems: boolean } | null>>;
+  setRoomConfigModal: React.Dispatch<React.SetStateAction<{ scenario: Scenario, charId: string, privacy: 'open'|'secret', message: string, difficulty: RoomDifficulty, rule: GameRule, itemVisibility: "all"|"self"|"none" } | null>>;
   fetchAdminData: () => Promise<void>;
   startTrialPlay: (scenario: Scenario) => void;
   availableScenarios: Scenario[];
@@ -33,7 +33,6 @@ export default function LobbyView({
   fetchAdminData, startTrialPlay, availableScenarios
 }: Props) {
   
-  // ★ ロビーのタブ切り替え
   const [lobbyTab, setLobbyTab] = useState<'rooms' | 'scenarios' | 'trials'>('rooms');
   const [trialSort, setTrialSort] = useState<'new'|'popular'>('new');
 
@@ -56,7 +55,6 @@ export default function LobbyView({
         </div>
       </header>
 
-      {/* ★ タブメニュー */}
       <div className="flex gap-4 mb-6 border-b border-slate-700">
         <button onClick={() => setLobbyTab('rooms')} className={`pb-2 text-sm font-bold transition-colors border-b-2 ${lobbyTab === 'rooms' ? 'border-blue-500 text-blue-400' : 'border-transparent text-slate-400 hover:text-white'}`}>🌐 募集中のセッション</button>
         <button onClick={() => setLobbyTab('scenarios')} className={`pb-2 text-sm font-bold transition-colors border-b-2 ${lobbyTab === 'scenarios' ? 'border-emerald-500 text-emerald-400' : 'border-transparent text-slate-400 hover:text-white'}`}>📖 シナリオを探す・部屋を作る</button>
@@ -66,7 +64,6 @@ export default function LobbyView({
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         <div className="lg:col-span-2 flex flex-col gap-4">
           
-          {/* 【タブ1】募集中ルーム */}
           {lobbyTab === 'rooms' && (
             <>
               <div className="flex justify-between items-end">
@@ -125,7 +122,7 @@ export default function LobbyView({
                           <span className="px-1.5 py-0.5 rounded text-white bg-slate-700 border border-slate-500">
                             {room.rule === 'dnd' ? '🟥 D&D' : room.rule === 'coc_en' ? '🟦 CoC海外版' : room.rule === 'sw25' ? '🟨 SW2.5' : room.rule === 'storytelling' ? '🟪 ストテリ' : '🟩 CoC日本卓'}
                           </span>
-                          {room.show_items && <span className="px-1.5 py-0.5 rounded text-amber-200 bg-amber-900/50 border border-amber-700">🎒 アイテム表示ON</span>}
+                          {room.item_visibility !== 'none' && <span className="px-1.5 py-0.5 rounded text-amber-200 bg-amber-900/50 border border-amber-700">🎒 アイテム有</span>}
                         </div>
                         {room.host_message && <p className="text-xs text-slate-300 italic mb-2">「{room.host_message}」</p>}
                         
@@ -150,7 +147,6 @@ export default function LobbyView({
             </>
           )}
 
-          {/* 【タブ2】シナリオ一覧（誰かのシナリオで部屋を作る） */}
           {lobbyTab === 'scenarios' && (
             <div className="h-[500px] overflow-y-scroll space-y-4 pr-2 custom-scrollbar">
               {playableScenarios.length === 0 ? <p className="text-slate-400 text-sm p-4 text-center">公開されているシナリオはありません。</p> :
@@ -163,7 +159,7 @@ export default function LobbyView({
                         <span className="text-emerald-400">目安: {s.playTime || 60}分</span>
                         <span className="text-amber-400 font-bold">⭐ {s.ratingCount ? (s.ratingSum / s.ratingCount).toFixed(1) : "未評価"}</span>
                       </div>
-                      <button onClick={() => setRoomConfigModal({ scenario: s, charId: "", privacy: "open", message: "", difficulty: "normal", rule: "coc_jp", showItems: true })} className="w-full bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold py-2 rounded shadow mt-2">
+                      <button onClick={() => setRoomConfigModal({ scenario: s, charId: "", privacy: "open", message: "", difficulty: "normal", rule: "coc_jp", itemVisibility: s.itemVisibility || "none" })} className="w-full bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold py-2 rounded shadow mt-2">
                         このシナリオで部屋を作成する
                       </button>
                     </div>
@@ -173,7 +169,6 @@ export default function LobbyView({
             </div>
           )}
 
-          {/* 【タブ3】お試しプレイ */}
           {lobbyTab === 'trials' && (
             <>
               <div className="flex justify-between items-end mb-2">
@@ -227,7 +222,7 @@ export default function LobbyView({
           <div className="bg-slate-800 border border-slate-700 rounded-xl p-4 flex flex-col shadow-lg border-t-2 border-t-emerald-500">
             <div className="flex justify-between items-center mb-3">
               <h2 className="text-sm font-bold text-emerald-400">📜 作成したシナリオ</h2>
-              <button onClick={() => { setEditingScenario({ id: "", title: "", system: "", tags: "", setting: "", npcList: "", plot: "", imageUrl: "", presetCharacters: [], ratingSum: 0, ratingCount: 0, price: 500, playLimit: 1, giftLimit: 1, playTime: 60, isTrialOk: false, isPlayableByOthers: false }); setCurrentView("scenarioEdit"); }} className="text-[10px] bg-slate-700 px-2 py-1 rounded hover:bg-slate-600">＋ 新規作成</button>
+              <button onClick={() => { setEditingScenario({ id: "", title: "", system: "", tags: "", setting: "", npcList: "", plot: "", imageUrl: "", presetCharacters: [], ratingSum: 0, ratingCount: 0, price: 500, playLimit: 1, giftLimit: 1, playTime: 60, isTrialOk: false, isPlayableByOthers: false, itemVisibility: "none" }); setCurrentView("scenarioEdit"); }} className="text-[10px] bg-slate-700 px-2 py-1 rounded hover:bg-slate-600">＋ 新規作成</button>
             </div>
             {createdScenarios.length === 0 ? (
               <p className="text-xs text-slate-400 mt-2 text-center p-2 bg-slate-900 rounded border border-slate-700/50">作成したシナリオはありません。</p>
@@ -252,7 +247,7 @@ export default function LobbyView({
                         </div>
                       </div>
                       {!s.isBanned && (
-                        <button onClick={() => setRoomConfigModal({ scenario: s, charId: "", privacy: "open", message: "", difficulty: "normal", rule: "coc_jp", showItems: true })} className="w-full bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold py-2 rounded mt-2 shadow">
+                        <button onClick={() => setRoomConfigModal({ scenario: s, charId: "", privacy: "open", message: "", difficulty: "normal", rule: "coc_jp", itemVisibility: s.itemVisibility || "none" })} className="w-full bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold py-2 rounded mt-2 shadow">
                           部屋を立てる
                         </button>
                       )}
