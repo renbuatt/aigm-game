@@ -35,6 +35,12 @@ export default function LobbyView({
       <header className="mb-6 flex justify-between items-end border-b border-slate-700 pb-4">
         <div><h1 className="text-3xl font-extrabold text-emerald-400 mb-1">AI GM MORPG Lobby</h1></div>
         <div className="flex items-center gap-4">
+          
+          {/* ★ マイページへ飛ぶ特別なボタン */}
+          <button onClick={() => setCurrentView("mypage")} className="bg-amber-600/20 text-amber-400 border border-amber-500/50 hover:bg-amber-600/40 px-3 py-1.5 rounded font-bold text-xs flex items-center gap-1 transition-colors">
+            <span className="text-base">👑</span> プレイ書庫 (Premium)
+          </button>
+          
           <button onClick={() => setShowMailbox(true)} className="relative text-slate-300 hover:text-white p-2 text-xl">
             ✉️{unreadCount > 0 && <span className="absolute top-0 right-0 bg-red-500 text-white text-[9px] px-1.5 rounded-full">{unreadCount}</span>}
           </button>
@@ -95,7 +101,6 @@ export default function LobbyView({
                         {isHost && room.privacy === 'secret' && <span className="text-[10px] text-slate-400 select-all" title="友達に共有">ID: {room.id}</span>}
                       </h3>
                     </div>
-                    {/* ★ ここに星（評価）を追加しました */}
                     <div className="text-xs text-slate-400 mb-2 flex items-center gap-2">
                       <span>ホスト: {room.host_name}</span>
                       <span className="text-amber-400 font-bold ml-2">
