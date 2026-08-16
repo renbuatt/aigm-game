@@ -18,7 +18,7 @@ type Props = {
   } | null>>;
   rollDice: (targetValue: number, label: string, is1d100: boolean) => Promise<void>;
   startGame: () => Promise<void>;
-  startSplitting: () => void;
+  startSplitting: () => Promise<void>;
   isSplitMode: boolean;
   chatTab: ChatTab;
   messages: Message[];
@@ -36,23 +36,22 @@ type Props = {
   isChatDisabled: boolean;
   mergeTeam: () => Promise<void>;
   executeMergeAll: () => Promise<void>;
-  draftAction: string;
-  setDraftAction: React.Dispatch<React.SetStateAction<string>>;
-  draftMembers: string[];
-  setDraftMembers: React.Dispatch<React.SetStateAction<string[]>>;
-  draftLeader: string;
-  setDraftLeader: React.Dispatch<React.SetStateAction<string>>;
-  addTeamDraft: () => Promise<void>;
-  finishSplitting: () => Promise<void>;
   generateSceneImage: (promptText: string) => Promise<void>;
+  // ★ チーム分けの自動生成用に追加
+  proposedTeams: {id: string, action: string, members: string[], leader: string}[];
+  setProposedTeams: React.Dispatch<React.SetStateAction<{id: string, action: string, members: string[], leader: string}[]>>;
+  isGeneratingSplit: boolean;
+  generateSplitProposal: () => Promise<void>;
+  finishSplitting: () => Promise<void>;
+  cancelSplitting: () => Promise<void>;
 };
 
 export default function GameView({
   activeRoom, myScene, currentUser, joinedCharacter, leaveGame, setReportTarget, rollDice,
   startGame, startSplitting, isSplitMode, chatTab, messages, isLoading, isScenarioEnded,
   setCurrentView, endGame, input, setInput, handleSend, handleTabClick, unreadIndicators,
-  consultWithAI, setConsultWithAI, isChatDisabled, mergeTeam, executeMergeAll, draftAction, setDraftAction,
-  draftMembers, setDraftMembers, draftLeader, setDraftLeader, addTeamDraft, finishSplitting, generateSceneImage
+  consultWithAI, setConsultWithAI, isChatDisabled, mergeTeam, executeMergeAll, generateSceneImage,
+  proposedTeams, setProposedTeams, isGeneratingSplit, generateSplitProposal, finishSplitting, cancelSplitting
 }: Props) {
   const isRecruiting = activeRoom.status === 'recruiting';
   const isHost = currentUser?.id === activeRoom.host_id || currentUser?.handleName === activeRoom.host_name;
@@ -63,10 +62,8 @@ export default function GameView({
   const [imagePromptText, setImagePromptText] = useState("");
   const [isGeneratingImg, setIsGeneratingImg] = useState(false);
 
-  // ★ チャットコンテナの参照（自動スクロール用）
   const chatContainerRef = useRef<HTMLDivElement>(null);
 
-  // ★ メッセージが追加された時、またはタブが切り替わった時に一番下まで自動スクロールする
   useEffect(() => {
     if (chatContainerRef.current) {
       chatContainerRef.current.scrollTop = chatContainerRef.current.scrollHeight;
@@ -85,70 +82,97 @@ export default function GameView({
   return (
     <div className="flex-1 flex flex-col max-w-5xl mx-auto w-full p-4 min-h-0 relative">
       
+      {/* ★ リニューアルしたチーム分け編成モーダル */}
       {activeRoom.status === 'splitting' && isHost && (
         <div className="absolute inset-0 bg-black/80 z-50 flex items-center justify-center p-4">
-          <div className="bg-slate-800 border border-blue-500/50 rounded-xl p-6 w-full max-w-lg shadow-2xl space-y-4">
-            <h3 className="text-xl font-bold text-blue-400">👥 チーム編成</h3>
-            <p className="text-xs text-slate-300 mb-2">※現在作成中のチームを設定してください。</p>
-            <div>
-              <label className="text-xs text-slate-400 block mb-1">チームの行動・目的地</label>
-              <input type="text" value={draftAction} onChange={e=>setDraftAction(e.target.value)} placeholder="例：管理室に行く" className="w-full bg-slate-900 border border-slate-700 rounded p-2 text-sm text-white" />
+          <div className="bg-slate-800 border border-blue-500/50 rounded-xl p-6 w-full max-w-2xl shadow-2xl space-y-4 max-h-[85vh] flex flex-col">
+            <div className="flex justify-between items-center border-b border-slate-700 pb-3">
+              <h3 className="text-xl font-bold text-blue-400">👥 チーム編成</h3>
+              <button onClick={generateSplitProposal} disabled={isGeneratingSplit} className="text-xs bg-indigo-600 hover:bg-indigo-500 disabled:bg-slate-700 text-white px-3 py-1.5 rounded font-bold shadow flex items-center gap-1 transition-colors">
+                {isGeneratingSplit ? "⏳ AI考案中..." : "✨ AIに再提案させる"}
+              </button>
             </div>
-            <div>
-              <label className="text-xs text-slate-400 block mb-1">メンバー</label>
-              {draftMembers.map((m: string, i: number) => (
-                <div key={i} className="flex gap-2 mb-2">
-                  <select value={m} onChange={e => { const nm=[...draftMembers]; nm[i]=e.target.value; setDraftMembers(nm); }} className="flex-1 bg-slate-900 border border-slate-700 rounded p-2 text-sm text-white">
-                    <option value="" disabled>メンバーを選択...</option>
-                    {Object.values(activeRoom.joined_users || {}).map((charId: string) => {
-                      const isAssigned = activeRoom.scenes.some((s: Scene) => s.id !== 'scene_main' && s.memberIds.includes(charId));
-                      if (isAssigned) return null;
-                      const c = activeRoom.scenario?.presetCharacters.find((pc: Character) => pc.id === charId);
-                      return c ? <option key={c.id} value={c.id}>{c.name}</option> : null;
-                    })}
-                  </select>
-                  {i === draftMembers.length - 1 && <button onClick={()=>setDraftMembers([...draftMembers, ""])} className="bg-slate-700 px-3 rounded text-xs font-bold text-white">＋</button>}
+            
+            <p className="text-xs text-slate-300">AIが提案したチーム構成を編集し、完了を押してください。</p>
+            
+            <div className="flex-1 overflow-y-auto space-y-3 pr-2 custom-scrollbar">
+              {proposedTeams.length === 0 && isGeneratingSplit && (
+                <div className="text-center py-10 text-indigo-400 font-bold animate-pulse">AIが最適なチーム構成を考案しています...</div>
+              )}
+              {proposedTeams.map((team, tIdx) => (
+                <div key={team.id} className="bg-slate-900 border border-slate-700 rounded-lg p-4 shadow">
+                  <div className="flex justify-between items-center mb-3">
+                    <span className="text-sm font-bold text-blue-300 bg-blue-900/30 px-2 py-0.5 rounded">チーム {tIdx + 1}</span>
+                    <button onClick={() => { const nt = [...proposedTeams]; nt.splice(tIdx, 1); setProposedTeams(nt); }} className="text-[10px] bg-red-900/50 text-red-300 px-3 py-1 rounded hover:bg-red-800">削除</button>
+                  </div>
+                  <div className="space-y-3">
+                    <div>
+                      <label className="text-[10px] text-slate-400 block mb-1">行動・目的地</label>
+                      <input type="text" value={team.action} onChange={e => { const nt=[...proposedTeams]; nt[tIdx].action=e.target.value; setProposedTeams(nt); }} placeholder="例：2階の書庫を調べる" className="w-full bg-slate-800 border border-slate-600 rounded p-2 text-xs text-white" />
+                    </div>
+                    <div>
+                      <label className="text-[10px] text-slate-400 block mb-2">メンバー</label>
+                      <div className="flex flex-wrap gap-2">
+                         {Object.values(activeRoom.joined_users || {}).map((charId: string) => {
+                            const c = activeRoom.scenario?.presetCharacters.find((pc: Character) => pc.id === charId);
+                            if(!c) return null;
+                            const isChecked = team.members.includes(charId);
+                            return (
+                              <label key={charId} className={`flex items-center gap-1 text-[11px] font-bold px-3 py-1.5 rounded cursor-pointer border transition-colors ${isChecked ? 'bg-blue-600 border-blue-500 text-white shadow-lg' : 'bg-slate-800 border-slate-600 text-slate-400 hover:bg-slate-700'}`}>
+                                <input type="checkbox" checked={isChecked} onChange={(e) => {
+                                  const nt = [...proposedTeams];
+                                  if (e.target.checked) nt[tIdx].members.push(charId);
+                                  else nt[tIdx].members = nt[tIdx].members.filter(id => id !== charId);
+                                  if (nt[tIdx].members.length > 0 && !nt[tIdx].members.includes(nt[tIdx].leader)) nt[tIdx].leader = nt[tIdx].members[0];
+                                  setProposedTeams(nt);
+                                }} className="hidden" />
+                                {c.name}
+                              </label>
+                            )
+                         })}
+                      </div>
+                    </div>
+                    {team.members.length > 0 && !team.members.includes(joinedCharacter?.id || "") && (
+                       <div className="bg-amber-900/20 border border-amber-900/50 p-2 rounded">
+                         <label className="text-[10px] text-amber-400 block mb-1">リーダー (システム代表者を選択)</label>
+                         <div className="flex gap-4">
+                           {team.members.map(mId => {
+                             const c = activeRoom.scenario?.presetCharacters.find((pc: Character) => pc.id === mId);
+                             return <label key={mId} className="flex items-center gap-1 text-xs text-amber-100 cursor-pointer"><input type="radio" checked={team.leader === mId} onChange={() => { const nt=[...proposedTeams]; nt[tIdx].leader=mId; setProposedTeams(nt); }} className="accent-amber-500" /> {c?.name}</label>
+                           })}
+                         </div>
+                       </div>
+                    )}
+                  </div>
                 </div>
               ))}
+              
+              {!isGeneratingSplit && (
+                <button onClick={() => setProposedTeams([...proposedTeams, { id: `team_${Date.now()}`, action: "", members: [], leader: "" }])} className="w-full bg-slate-800 border-2 border-dashed border-slate-600 text-slate-400 hover:text-white hover:border-slate-500 py-3 rounded-lg text-sm font-bold transition-colors">
+                  ＋ 手動でチームを追加する
+                </button>
+              )}
             </div>
-            {draftMembers.filter((m: string)=>m!=="").length > 0 && !draftMembers.includes(joinedCharacter?.id || "") && (
-              <div>
-                <label className="text-xs text-slate-400 block mb-1">このチームのリーダー</label>
-                <div className="flex gap-4">
-                  {draftMembers.filter((m: string)=>m!=="").map((m: string) => {
-                    const c = activeRoom.scenario?.presetCharacters.find((pc: Character) => pc.id === m);
-                    if(!c) return null;
-                    return <label key={m} className="flex items-center gap-2 text-sm cursor-pointer"><input type="radio" name="leader" value={m} checked={draftLeader===m} onChange={()=>setDraftLeader(m)} /> {c.name}</label>;
-                  })}
-                </div>
-              </div>
-            )}
-            <div className="flex gap-2 mt-4">
-              <button onClick={addTeamDraft} className="flex-1 bg-blue-600 hover:bg-blue-500 py-3 rounded text-sm font-bold shadow-lg">このチームを確定して次へ</button>
-              <button onClick={finishSplitting} className="flex-1 bg-emerald-600 hover:bg-emerald-500 py-3 rounded text-sm font-bold shadow-lg">編成を完了して再開する</button>
+
+            <div className="flex gap-3 pt-4 border-t border-slate-700">
+              <button onClick={cancelSplitting} className="flex-1 bg-slate-700 hover:bg-slate-600 py-3 rounded text-sm font-bold text-white">キャンセル</button>
+              <button onClick={finishSplitting} disabled={isGeneratingSplit} className="flex-1 bg-emerald-600 hover:bg-emerald-500 disabled:bg-slate-600 py-3 rounded text-sm font-bold text-white shadow-lg shadow-emerald-900/50">編成を確定して再開する</button>
             </div>
           </div>
         </div>
       )}
 
+      {/* チーム分け待機画面（ゲスト用） */}
       {activeRoom.status === 'splitting' && !isHost && (
         <div className="absolute inset-0 bg-black/80 z-40 flex items-center justify-center p-4">
           <div className="bg-slate-800 border border-slate-700 rounded-xl p-6 w-full max-w-md shadow-2xl text-center">
             <h3 className="text-lg font-bold text-blue-400 mb-2 animate-pulse">ホストがチーム分けを行っています...</h3>
-            <div className="space-y-2 mt-4 text-left">
-              {activeRoom.scenes.filter((s: Scene) => s.id !== 'scene_main').map((s: Scene) => (
-                <div key={s.id} className="bg-slate-900 border border-slate-700 p-3 rounded">
-                  <span className="text-xs text-amber-400 font-bold bg-amber-900/30 px-2 py-0.5 rounded mr-2">{s.name}</span>
-                  <span className="text-sm text-slate-300">
-                    {s.memberIds.map((id: string) => activeRoom.scenario?.presetCharacters.find((c: Character)=>c.id===id)?.name).join(', ')}
-                  </span>
-                </div>
-              ))}
-            </div>
+            <p className="text-xs text-slate-400">AIが最適なチーム構成を考案し、ホストが確認中です。</p>
           </div>
         </div>
       )}
 
+      {/* 情景画像生成モーダル（ホスト専用） */}
       {showImagePromptModal && (
         <div className="absolute inset-0 bg-black/80 z-50 flex items-center justify-center p-4">
           <div className="bg-slate-800 border border-purple-500/50 rounded-xl p-6 w-full max-w-lg shadow-2xl">
@@ -205,7 +229,6 @@ export default function GameView({
         <div className="flex flex-wrap items-center gap-2 justify-end max-w-md">
           {joinedCharacter && (
             <>
-              {/* ★ HP表示を追加 */}
               <div className="bg-red-900/80 text-red-200 border border-red-500/50 text-[10px] px-2 py-1.5 rounded font-bold shadow-lg flex items-center gap-1">
                 ❤️ HP:{joinedCharacter.hp}
               </div>
@@ -236,7 +259,6 @@ export default function GameView({
         </div>
       </header>
 
-      {/* ★ chatContainerRef を付与して自動スクロールできるように対応 */}
       <div ref={chatContainerRef} className="flex-1 overflow-y-scroll space-y-3 p-4 bg-slate-800/80 rounded-xl border border-slate-700 mb-3 min-h-0 custom-scrollbar">
         {messages.filter((msg: Message) => {
           if (msg.type === "system" || msg.type === "image") return true;

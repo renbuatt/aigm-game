@@ -36,9 +36,6 @@ export default function Home() {
   const [editingScenario, setEditingScenario] = useState<Scenario | null>(null);
   const [editingCharIndex, setEditingCharIndex] = useState<number | null>(null);
   
-  const [charSelects, setCharSelects] = useState<Record<string, string>>({});
-  const [giftInputs, setGiftInputs] = useState<Record<string, string>>({});
-
   const [rooms, setRooms] = useState<Room[]>([]);
   const [activeRoom, setActiveRoom] = useState<Room | null>(null);
   const [joinedCharacter, setJoinedCharacter] = useState<Character | null>(null);
@@ -52,10 +49,9 @@ export default function Home() {
   
   const [consultWithAI, setConsultWithAI] = useState<boolean>(true);
 
-  const [splitSuggestions, setSplitSuggestions] = useState<string[]>([]);
-  const [draftAction, setDraftAction] = useState("");
-  const [draftMembers, setDraftMembers] = useState<string[]>([""]);
-  const [draftLeader, setDraftLeader] = useState<string>("");
+  // ★ 追加：AIのチーム提案を受け取るステート
+  const [proposedTeams, setProposedTeams] = useState<{id: string, action: string, members: string[], leader: string}[]>([]);
+  const [isGeneratingSplit, setIsGeneratingSplit] = useState(false);
 
   const [ratingScenario, setRatingScenario] = useState<number>(5);
   const [ratingGM, setRatingGM] = useState<number>(5);
@@ -66,10 +62,6 @@ export default function Home() {
   const [showMailbox, setShowMailbox] = useState(false);
   
   const [playArchives, setPlayArchives] = useState<PlayArchive[]>([]);
-
-  const [warningModalUser, setWarningModalUser] = useState<UserProfile | null>(null);
-  const [warningTitle, setWarningTitle] = useState("");
-  const [warningText, setWarningText] = useState("");
 
   const [banTargetUser, setBanTargetUser] = useState<UserProfile | null>(null);
   const [banReason, setBanReason] = useState("");
@@ -83,17 +75,7 @@ export default function Home() {
   const [scenarioBanReason, setScenarioBanReason] = useState("");
 
   const [reports, setReports] = useState<Report[]>([]);
-  
-  const [reportTarget, setReportTarget] = useState<{
-    type: 'user' | 'scenario' | 'room';
-    id: string;
-    name: string;
-    roomId?: string;
-    scenarioId?: string;
-    scenarioName?: string;
-    availableUsers?: { id: string, name: string }[];
-  } | null>(null);
-  
+  const [reportTarget, setReportTarget] = useState<{ type: 'user' | 'scenario' | 'room'; id: string; name: string; roomId?: string; scenarioId?: string; scenarioName?: string; availableUsers?: { id: string, name: string }[]; } | null>(null);
   const [reportReason, setReportReason] = useState("");
 
   const [scenarioAppealTarget, setScenarioAppealTarget] = useState<Scenario | null>(null);
@@ -103,8 +85,6 @@ export default function Home() {
   const [secretRoomIdSearch, setSecretRoomIdSearch] = useState("");
   const [searchedSecretRoom, setSearchedSecretRoom] = useState<Room | null>(null);
   
-  const [shopScenarioId, setShopScenarioId] = useState<string>(""); 
-
   const [unreadIndicators, setUnreadIndicators] = useState({ story: false, consult: false, gm: false });
   const chatTabRef = useRef<ChatTab>(chatTab);
   const prevMessagesLength = useRef(0);
@@ -221,7 +201,7 @@ export default function Home() {
         id: r.id, scenario_id: r.scenario_id, scenario: loadedScenarios.find(s => s.id === r.scenario_id),
         host_name: r.host_name, host_id: r.host_id, status: r.status, scenes: r.scenes || [],
         privacy: r.privacy || "open", host_message: r.host_message || "", joined_users: r.joined_users || {},
-        current_summary: r.current_summary || "" // ★ 追加
+        current_summary: r.current_summary || ""
       })).filter(r => r.scenario) as Room[];
       setRooms(formattedRooms);
     }
@@ -493,55 +473,98 @@ export default function Home() {
   const submitAppeal = async () => { if(!currentUser || !appealText) return; await supabase.from('ban_appeals').insert({ user_id: currentUser.id, reason: "不明", appeal_text: appealText, status: 'appealing' }); alert("調査依頼を送信しました。"); setAppealText(""); };
   const markNotificationAsRead = async (notifId: string) => { await supabase.from('notifications').update({ is_read: true }).eq('id', notifId); setMyNotifications(myNotifications.map(n => n.id === notifId ? { ...n, isRead: true } : n)); };
 
-  const startSplitting = () => {
+  // ==========================================
+  // ★ AIによるチーム分けの自動提案機能
+  // ==========================================
+  const startSplitting = async () => {
     if (!activeRoom) return;
-    supabase.from('rooms').update({ status: 'splitting' }).eq('id', activeRoom.id).then(() => {
-      setActiveRoom({ ...activeRoom, status: 'splitting', scenes: [{ id: 'scene_main', name: 'メインルーム', memberIds: [] }] });
-    });
-    setDraftAction(splitSuggestions[0] || "");
-    setDraftMembers([""]);
-    setDraftLeader("");
+    await supabase.from('rooms').update({ status: 'splitting' }).eq('id', activeRoom.id);
+    setActiveRoom({ ...activeRoom, status: 'splitting', scenes: [{ id: 'scene_main', name: 'メインルーム', memberIds: [] }] });
+    
+    setProposedTeams([]);
+    generateSplitProposal();
   };
 
-  const addTeamDraft = async () => {
-    if (!activeRoom || !draftAction) return;
-    const validMembers = draftMembers.filter(m => m !== "");
-    if (validMembers.length === 0) { alert("メンバーを選択してください。"); return; }
-    if (!draftLeader && validMembers.length > 0) { alert("リーダー（または代表者）を選択してください。"); return; }
+  const generateSplitProposal = async () => {
+    if (!activeRoom) return;
+    setIsGeneratingSplit(true);
+    try {
+      const { data: memoryData } = await supabase.from('ai_memory')
+        .select('*')
+        .eq('room_id', activeRoom.id)
+        .order('created_at', { ascending: false })
+        .limit(15);
+      
+      const recentLogs = memoryData?.reverse().map(m => `${m.role === 'user' ? 'PL' : 'GM'}: ${m.content}`).join('\n') || "";
+      const chars = activeRoom.scenario?.presetCharacters.filter(c => Object.values(activeRoom.joined_users || {}).includes(c.id)).map(c => `{"id": "${c.id}", "name": "${c.name}"}`).join(", ") || "";
 
-    const newScene: Scene = {
-      id: `team_${Date.now()}`, name: draftAction, memberIds: validMembers, leaderId: draftLeader, isMerged: false
-    };
+      const prompt = `あなたはTRPGのシステムAIです。以下の「現在参加しているキャラクター」と「直近のチャットログ」を分析し、物語の展開上、最も自然な【チーム分け（2つ以上のグループへの分割）の構成案】を作成してください。
 
-    const updatedScenes = [...activeRoom.scenes, newScene];
-    await supabase.from('rooms').update({ scenes: updatedScenes }).eq('id', activeRoom.id);
-    setActiveRoom({ ...activeRoom, scenes: updatedScenes });
+【参加キャラクター】
+[${chars}]
 
-    setDraftAction(""); setDraftMembers([""]); setDraftLeader("");
+【直近のログ】
+${recentLogs}
+
+【出力形式（絶対遵守）】
+必ず以下のJSONフォーマットのみを出力してください。余計な文章やマークダウン記号は一切含めないでください。
+{"teams": [{"action": "目的A（例：2階を探索する）", "members": ["キャラID1", "キャラID2"]}, {"action": "目的B", "members": ["キャラID3"]}]}
+`;
+      const aiResponse = await generateAITextWithPrompt(prompt);
+      const jsonStr = aiResponse.replace(/```json/g, "").replace(/```/g, "").trim();
+      const parsed = JSON.parse(jsonStr);
+      
+      if (parsed && parsed.teams) {
+         setProposedTeams(parsed.teams.map((t: any) => ({ 
+           id: `team_${Date.now()}_${Math.random()}`, 
+           action: t.action, 
+           members: t.members, 
+           leader: t.members[0] || "" 
+         })));
+      } else {
+         setProposedTeams([{ id: `team_${Date.now()}`, action: "", members: [], leader: "" }]);
+      }
+    } catch (e) {
+      console.error(e);
+      setProposedTeams([{ id: `team_${Date.now()}`, action: "", members: [], leader: "" }]);
+    } finally {
+      setIsGeneratingSplit(false);
+    }
   };
 
   const finishSplitting = async () => {
     if (!activeRoom) return;
     
-    const validMembers = draftMembers.filter(m => m !== "");
-    if (draftAction && validMembers.length > 0) {
-       if(confirm("作成途中のチームがあります。このチームも追加してから編成を完了しますか？\n（キャンセルを押すと、作成途中のチームは破棄されます）")) {
-           if (!draftLeader && validMembers.length > 0) { alert("リーダー（または代表者）を選択してください。"); return; }
-           
-           const newScene: Scene = {
-             id: `team_${Date.now()}`, name: draftAction, memberIds: validMembers, leaderId: draftLeader, isMerged: false
-           };
-           const updatedScenes = [...activeRoom.scenes, newScene];
-           await supabase.from('rooms').update({ scenes: updatedScenes, status: 'playing' }).eq('id', activeRoom.id);
-           setActiveRoom({ ...activeRoom, scenes: updatedScenes, status: 'playing' });
-           await pushMessage(activeRoom.id, { sender: "gm", text: `【システム】チーム分けが完了しました！各チームごとに独立して行動・相談を行ってください。`, type: "system", sceneId: "scene_main", channel: "system" });
-           return;
-       }
+    const validTeams = proposedTeams.filter(t => t.action && t.members.length > 0);
+    if (validTeams.length === 0) { alert("有効なチームがありません。"); return; }
+    
+    for (const t of validTeams) {
+      if (!t.members.includes(joinedCharacter?.id || "") && !t.leader) {
+        alert("ホストが含まれないチームにはリーダーを指定してください。");
+        return;
+      }
     }
 
+    const newScenes: Scene[] = [
+      { id: 'scene_main', name: 'メインルーム', memberIds: [] },
+      ...validTeams.map(t => ({
+        id: t.id,
+        name: t.action,
+        memberIds: t.members,
+        leaderId: t.leader,
+        isMerged: false
+      }))
+    ];
+
+    await supabase.from('rooms').update({ scenes: newScenes, status: 'playing' }).eq('id', activeRoom.id);
+    setActiveRoom({ ...activeRoom, scenes: newScenes, status: 'playing' });
+    await pushMessage(activeRoom.id, { sender: "gm", text: `【システム】チーム分けが完了しました！各チームごとに独立して行動・相談を行ってください。`, type: "system", sceneId: "scene_main", channel: "system" });
+  };
+
+  const cancelSplitting = async () => {
+    if (!activeRoom) return;
     await supabase.from('rooms').update({ status: 'playing' }).eq('id', activeRoom.id);
     setActiveRoom({ ...activeRoom, status: 'playing' });
-    await pushMessage(activeRoom.id, { sender: "gm", text: `【システム】チーム分けが完了しました！各チームごとに独立して行動・相談を行ってください。`, type: "system", sceneId: "scene_main", channel: "system" });
   };
 
   const mergeTeam = async () => {
@@ -567,7 +590,6 @@ export default function Home() {
     await callAIGM(extraUserContext, "story");
   };
 
-  // ★ 記憶の自動圧縮ロジックを追加した callAIGM
   const callAIGM = async (extraUserContext?: string, targetTab: ChatTab = "story", isStarting: boolean = false) => {
     if (!activeRoom || !joinedCharacter || !myScene) return;
     if (!isStarting && activeRoom.status !== 'playing') return;
@@ -586,11 +608,7 @@ export default function Home() {
       let currentMemory = memoryDataRaw || [];
       let currentSummary = activeRoom.current_summary || "";
 
-      // ==========================================
-      // ★ 長編対応: 記憶が30件を超えたら「あらすじ」に圧縮する
-      // ==========================================
       if (currentMemory.length > 30) {
-        // 直近10件を残し、それより古いログを圧縮対象にする
         const logsToCompress = currentMemory.slice(0, currentMemory.length - 10);
         const recentLogs = currentMemory.slice(-10);
         
@@ -608,18 +626,14 @@ ${logText}`;
         
         try {
           currentSummary = await generateAITextWithPrompt(compressionPrompt);
-          
-          // 圧縮したあらすじを部屋のデータに保存
           await supabase.from('rooms').update({ current_summary: currentSummary }).eq('id', activeRoom.id);
           setActiveRoom(prev => prev ? { ...prev, current_summary: currentSummary } : null);
           
-          // 圧縮済みの古い記憶を削除
           const idsToDelete = logsToCompress.map(m => m.id);
           if (idsToDelete.length > 0) {
             await supabase.from('ai_memory').delete().in('id', idsToDelete);
           }
-          
-          currentMemory = recentLogs; // 以降のAI送信処理は直近10件で行う
+          currentMemory = recentLogs;
         } catch(e) {
           console.error("あらすじの圧縮処理に失敗しました", e);
         }
@@ -688,7 +702,6 @@ ${isSplitMode && myScene.id !== 'scene_main' ? `※現在別行動中です。�
 `;
       }
 
-      // ★ システムプロンプトにあらすじを組み込む
       const sysPrompt = `あなたはTRPGの優秀なAIシステムです。
 タイトル: ${activeRoom.scenario?.title}
 世界観: ${activeRoom.scenario?.setting}
@@ -1242,15 +1255,13 @@ ${promptText}
           isChatDisabled={isChatDisabled}
           mergeTeam={mergeTeam}
           executeMergeAll={executeMergeAll}
-          draftAction={draftAction}
-          setDraftAction={setDraftAction}
-          draftMembers={draftMembers}
-          setDraftMembers={setDraftMembers}
-          draftLeader={draftLeader}
-          setDraftLeader={setDraftLeader}
-          addTeamDraft={addTeamDraft}
-          finishSplitting={finishSplitting}
           generateSceneImage={generateSceneImage}
+          proposedTeams={proposedTeams}
+          setProposedTeams={setProposedTeams}
+          isGeneratingSplit={isGeneratingSplit}
+          generateSplitProposal={generateSplitProposal}
+          finishSplitting={finishSplitting}
+          cancelSplitting={cancelSplitting}
         />
       )}
 
