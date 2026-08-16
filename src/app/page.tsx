@@ -49,12 +49,8 @@ export default function Home() {
   
   const [consultWithAI, setConsultWithAI] = useState<boolean>(true);
 
-  // ★ 誤って消してしまっていた手動入力用の変数を復活（エラー回避のため）
   const [splitSuggestions, setSplitSuggestions] = useState<string[]>([]);
-  const [draftAction, setDraftAction] = useState("");
-  const [draftMembers, setDraftMembers] = useState<string[]>([""]);
-  const [draftLeader, setDraftLeader] = useState<string>("");
-
+  
   // ★ AIのチーム提案を受け取るステート
   const [proposedTeams, setProposedTeams] = useState<{id: string, action: string, members: string[], leader: string}[]>([]);
   const [isGeneratingSplit, setIsGeneratingSplit] = useState(false);
@@ -1258,20 +1254,13 @@ ${promptText}
           isChatDisabled={isChatDisabled}
           mergeTeam={mergeTeam}
           executeMergeAll={executeMergeAll}
-          draftAction={draftAction}
-          setDraftAction={setDraftAction}
-          draftMembers={draftMembers}
-          setDraftMembers={setDraftMembers}
-          draftLeader={draftLeader}
-          setDraftLeader={setDraftLeader}
-          addTeamDraft={addTeamDraft}
-          finishSplitting={finishSplitting}
-          cancelSplitting={cancelSplitting}
           generateSceneImage={generateSceneImage}
           proposedTeams={proposedTeams}
           setProposedTeams={setProposedTeams}
           isGeneratingSplit={isGeneratingSplit}
           generateSplitProposal={generateSplitProposal}
+          finishSplitting={finishSplitting}
+          cancelSplitting={cancelSplitting}
         />
       )}
 
