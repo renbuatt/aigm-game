@@ -233,17 +233,19 @@ export default function Home() {
     let profileData: UserProfile;
     const { data } = await supabase.from('profiles').select('*').eq('id', userId).single();
     if (data) {
-      profileData = { id: data.id, handleName: data.handle_name, avatarUrl: data.avatar_url, bio: data.bio, discordId: data.discord_id, ratingSum: data.rating_sum || 0, ratingCount: data.rating_count || 0, isAdmin: data.is_admin || false, isBanned: data.is_banned || false, email: data.email };
+      // ★ isTester フラグを読み込む
+      profileData = { id: data.id, handleName: data.handle_name, avatarUrl: data.avatar_url, bio: data.bio, discordId: data.discord_id, ratingSum: data.rating_sum || 0, ratingCount: data.rating_count || 0, isAdmin: data.is_admin || false, isTester: data.is_tester || false, isBanned: data.is_banned || false, email: data.email };
       if (data.email !== emailStr) await supabase.from('profiles').update({ email: emailStr }).eq('id', userId);
     } else {
-      const newProfile = { id: userId, handle_name: emailStr.split("@")[0], avatar_url: DEFAULT_AVATAR, bio: "よろしくお願いします。", discord_id: "", rating_sum: 0, rating_count: 0, is_admin: false, is_banned: false, email: emailStr };
+      const newProfile = { id: userId, handle_name: emailStr.split("@")[0], avatar_url: DEFAULT_AVATAR, bio: "よろしくお願いします。", discord_id: "", rating_sum: 0, rating_count: 0, is_admin: false, is_tester: false, is_banned: false, email: emailStr };
       await supabase.from('profiles').insert(newProfile);
-      profileData = { id: userId, handleName: newProfile.handle_name, avatarUrl: newProfile.avatar_url, bio: newProfile.bio, discordId: newProfile.discord_id, ratingSum: 0, ratingCount: 0, isAdmin: false, isBanned: false, email: emailStr };
+      profileData = { id: userId, handleName: newProfile.handle_name, avatarUrl: newProfile.avatar_url, bio: newProfile.bio, discordId: newProfile.discord_id, ratingSum: 0, ratingCount: 0, isAdmin: false, isTester: false, isBanned: false, email: emailStr };
     }
     setCurrentUser(profileData);
     await fetchNotifications(userId);
 
-    if (!profileData.isBanned && (!currentMaintenance || profileData.isAdmin)) {
+    // ★ メンテナンス中でも「管理者」または「テスター」ならログイン続行可能にする
+    if (!profileData.isBanned && (!currentMaintenance || profileData.isAdmin || profileData.isTester)) {
       const activeMyRoom = roomsData.find(r => (r.status === 'playing' || r.status === 'splitting' || r.status === 'recruiting') && r.joined_users && r.joined_users[userId]);
       if (activeMyRoom && activeMyRoom.scenario) {
         const charId = activeMyRoom.joined_users[userId];
@@ -382,9 +384,37 @@ export default function Home() {
     else { alert("エラーが発生しました: " + error.message); }
   };
 
+  // ★ AdminView に渡すテスター発行関数
+  const executeCreateTester = async (testerEmail: string, testerPass: string) => {
+    try {
+      // サインアップ処理 (Supabase の仕様上、ブラウザのセッションが新規ユーザーに上書きされます)
+      const { data, error } = await supabase.auth.signUp({ email: testerEmail, password: testerPass });
+      if (error) throw error;
+      
+      if (data.user) {
+        // テスター権限を持つ Profile を作成
+        const { error: upsertError } = await supabase.from('profiles').upsert({
+          id: data.user.id,
+          handle_name: testerEmail.split("@")[0],
+          avatar_url: DEFAULT_AVATAR,
+          is_tester: true,
+          is_admin: false,
+          email: testerEmail
+        });
+        if (upsertError) throw upsertError;
+
+        alert("テスターアカウントを発行しました！\n\n※認証の仕様上、管理者セッションが一度切断されます。お手数ですが、再度「管理者アカウント」でログインし直してください。");
+        await handleLogout();
+      }
+    } catch (err: any) {
+      alert("テスターアカウントの作成に失敗しました: " + err.message);
+    }
+  };
+
   const fetchAdminData = async () => {
     const { data: usersData } = await supabase.from('profiles').select('*').order('created_at', { ascending: false });
-    if (usersData) { setAllUsers(usersData.map((d: any) => ({ id: d.id, handleName: d.handle_name, avatarUrl: d.avatar_url, bio: d.bio, discordId: d.discord_id, ratingSum: d.rating_sum || 0, ratingCount: d.rating_count || 0, isAdmin: d.is_admin || false, isBanned: d.is_banned || false, email: d.email }))); }
+    // ★ isTester フラグも取得
+    if (usersData) { setAllUsers(usersData.map((d: any) => ({ id: d.id, handleName: d.handle_name, avatarUrl: d.avatar_url, bio: d.bio, discordId: d.discord_id, ratingSum: d.rating_sum || 0, ratingCount: d.rating_count || 0, isAdmin: d.is_admin || false, isTester: d.is_tester || false, isBanned: d.is_banned || false, email: d.email }))); }
     const { data: appealsData } = await supabase.from('ban_appeals').select('*').order('created_at', { ascending: false });
     if (appealsData) { setBanAppeals(appealsData.map((d: any) => ({ id: d.id, userId: d.user_id, reason: d.reason, appealText: d.appeal_text, status: d.status, createdAt: d.created_at }))); }
     const { data: reportsData } = await supabase.from('reports').select('*').order('created_at', { ascending: false });
@@ -680,11 +710,10 @@ ${roleInstruction}`;
       const newRoom: Room = { id: data.id, scenario_id: data.scenario_id, scenario: scenario, host_name: data.host_name, host_id: data.host_id, status: data.status, scenes: data.scenes, privacy: data.privacy, host_message: data.host_message, joined_users: data.joined_users };
       const hostChar = scenario.presetCharacters.find(c => c.id === charId);
       if (hostChar) {
-        // ★ 部屋作成時に、過去の同名部屋のAI記憶があれば完全にリセットする
         await supabase.from('ai_memory').delete().eq('room_id', newRoom.id);
         setActiveRoom(newRoom); setJoinedCharacter(hostChar);
         setMessages([]); 
-        await pushMessage(newRoom.id, { sender: "gm", text: `【入室完了】プレイヤー全員の準備が整うまでお待ちください。`, type: "system", sceneId: newRoom.scenes?.[0]?.id, channel: "system" });
+        await pushMessage(newRoom.id, { sender: "gm", text: `【入室完了】プレイヤー全員の準備が整うまでお待ちください。\n【案内】シークレット設定の場合、画面左上の「共有ID」をコピーして友人に伝えてください。`, type: "system", sceneId: newRoom.scenes?.[0]?.id, channel: "system" });
         setCurrentView("game");
       }
     }
@@ -953,6 +982,7 @@ ${roleInstruction}`;
           scenarioSearchQuery={scenarioSearchQuery}
           setScenarioSearchQuery={setScenarioSearchQuery}
           setCurrentView={setCurrentView}
+          executeCreateTester={executeCreateTester}
         />
       )}
 

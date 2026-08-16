@@ -9,6 +9,7 @@ export type UserProfile = {
   ratingSum: number;
   ratingCount: number;
   isAdmin: boolean;
+  isTester: boolean; // ★ 追加
   isBanned: boolean;
   email: string;
 };
@@ -107,7 +108,7 @@ export type Report = {
   reporterId: string;
   targetType: 'user' | 'scenario' | 'scenario_appeal' | 'room';
   targetId: string;
-  roomId?: string; // ★ 追加: どの部屋で起きたか
+  roomId?: string;
   reason: string;
   status: 'pending' | 'resolved' | 'rejected';
   createdAt: string;
