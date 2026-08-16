@@ -44,7 +44,7 @@ type Props = {
   setDraftLeader: React.Dispatch<React.SetStateAction<string>>;
   addTeamDraft: () => Promise<void>;
   finishSplitting: () => Promise<void>;
-  generateSceneImage: (promptText: string) => Promise<void>; // ★ 追加
+  generateSceneImage: (promptText: string) => Promise<void>;
 };
 
 export default function GameView({
@@ -211,6 +211,7 @@ export default function GameView({
             <button onClick={startGame} className="bg-emerald-600 hover:bg-emerald-500 text-white text-[10px] font-bold px-4 py-2 rounded animate-pulse ml-2 shadow-lg shadow-emerald-900/50">▶ ゲーム開始</button>
           )}
 
+          {/* ★ ここのボタンが消えていたので復活させました！ */}
           {isHost && activeRoom.status === "playing" && !isScenarioEnded && (
              <>
                {imageCount < 3 && (
@@ -273,10 +274,8 @@ export default function GameView({
                   </span>
                 )}
                 
-                {/* テキスト表示 */}
                 {displayText && <p className={`text-sm whitespace-pre-wrap leading-relaxed ${isSystem && 'text-xs text-slate-300'}`}>{displayText}</p>}
                 
-                {/* ★ 画像がある場合の表示 */}
                 {msg.type === 'image' && msg.imageUrl && (
                   <div className="mt-2 border border-slate-600 rounded-lg overflow-hidden bg-black/50">
                     <img src={msg.imageUrl} alt="生成された情景" className="w-full h-auto max-h-64 object-contain" />
