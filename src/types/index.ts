@@ -9,7 +9,7 @@ export type UserProfile = {
   ratingSum: number;
   ratingCount: number;
   isAdmin: boolean;
-  isTester: boolean; // ★ 追加
+  isTester: boolean;
   isBanned: boolean;
   email: string;
 };
@@ -18,6 +18,7 @@ export type Character = {
   id: string;
   name: string;
   job: string;
+  genderOrRace?: string; // ★ 追加：性別・種族
   personality: string;
   imageUrl: string;
   hp: number;

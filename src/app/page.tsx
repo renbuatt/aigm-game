@@ -233,7 +233,6 @@ export default function Home() {
     let profileData: UserProfile;
     const { data } = await supabase.from('profiles').select('*').eq('id', userId).single();
     if (data) {
-      // ★ isTester フラグを読み込む
       profileData = { id: data.id, handleName: data.handle_name, avatarUrl: data.avatar_url, bio: data.bio, discordId: data.discord_id, ratingSum: data.rating_sum || 0, ratingCount: data.rating_count || 0, isAdmin: data.is_admin || false, isTester: data.is_tester || false, isBanned: data.is_banned || false, email: data.email };
       if (data.email !== emailStr) await supabase.from('profiles').update({ email: emailStr }).eq('id', userId);
     } else {
@@ -244,7 +243,6 @@ export default function Home() {
     setCurrentUser(profileData);
     await fetchNotifications(userId);
 
-    // ★ メンテナンス中でも「管理者」または「テスター」ならログイン続行可能にする
     if (!profileData.isBanned && (!currentMaintenance || profileData.isAdmin || profileData.isTester)) {
       const activeMyRoom = roomsData.find(r => (r.status === 'playing' || r.status === 'splitting' || r.status === 'recruiting') && r.joined_users && r.joined_users[userId]);
       if (activeMyRoom && activeMyRoom.scenario) {
@@ -384,15 +382,12 @@ export default function Home() {
     else { alert("エラーが発生しました: " + error.message); }
   };
 
-  // ★ AdminView に渡すテスター発行関数
   const executeCreateTester = async (testerEmail: string, testerPass: string) => {
     try {
-      // サインアップ処理 (Supabase の仕様上、ブラウザのセッションが新規ユーザーに上書きされます)
       const { data, error } = await supabase.auth.signUp({ email: testerEmail, password: testerPass });
       if (error) throw error;
       
       if (data.user) {
-        // テスター権限を持つ Profile を作成
         const { error: upsertError } = await supabase.from('profiles').upsert({
           id: data.user.id,
           handle_name: testerEmail.split("@")[0],
@@ -413,7 +408,6 @@ export default function Home() {
 
   const fetchAdminData = async () => {
     const { data: usersData } = await supabase.from('profiles').select('*').order('created_at', { ascending: false });
-    // ★ isTester フラグも取得
     if (usersData) { setAllUsers(usersData.map((d: any) => ({ id: d.id, handleName: d.handle_name, avatarUrl: d.avatar_url, bio: d.bio, discordId: d.discord_id, ratingSum: d.rating_sum || 0, ratingCount: d.rating_count || 0, isAdmin: d.is_admin || false, isTester: d.is_tester || false, isBanned: d.is_banned || false, email: d.email }))); }
     const { data: appealsData } = await supabase.from('ban_appeals').select('*').order('created_at', { ascending: false });
     if (appealsData) { setBanAppeals(appealsData.map((d: any) => ({ id: d.id, userId: d.user_id, reason: d.reason, appealText: d.appeal_text, status: d.status, createdAt: d.created_at }))); }
@@ -579,8 +573,9 @@ export default function Home() {
         history.push({ role: 'user', parts: [{ text: "セッションを開始してください。" }]});
       }
 
+      // ★ 性別・種族情報をプロンプトに組み込む
       const aiPlayersText = aiPlayersList.length > 0 
-        ? aiPlayersList.map(c => `・${c.name} (${c.job}) | HP:${c.hp} SAN:${c.san}% STR:${c.str} DEX:${c.dex} INT:${c.int} CON:${c.con}\n  設定: ${c.personality}`).join("\n\n")
+        ? aiPlayersList.map(c => `・${c.name} (${c.genderOrRace || "性別不詳"} / ${c.job}) | HP:${c.hp} SAN:${c.san}% STR:${c.str} DEX:${c.dex} INT:${c.int} CON:${c.con}\n  設定: ${c.personality}`).join("\n\n")
         : "なし（ソロプレイ）";
 
       let roleInstruction = "";
@@ -625,11 +620,12 @@ ${isSplitMode && myScene.id !== 'scene_main' ? `※現在別行動中です。�
 `;
       }
 
+      // ★ 人間PL側にも性別・種族情報を組み込む
       const sysPrompt = `あなたはTRPGの優秀なAIシステムです。
 タイトル: ${activeRoom.scenario?.title}
 世界観: ${activeRoom.scenario?.setting}
 プロット: ${scenarioPlotText}
-【人間PL】名前: ${joinedCharacter.name} / ステータス: HP:${joinedCharacter.hp} SAN:${joinedCharacter.san}% STR:${joinedCharacter.str} DEX:${joinedCharacter.dex} INT:${joinedCharacter.int} CON:${joinedCharacter.con}
+【人間PL】名前: ${joinedCharacter.name} (${joinedCharacter.genderOrRace || "性別不詳"}) / ステータス: HP:${joinedCharacter.hp} SAN:${joinedCharacter.san}% STR:${joinedCharacter.str} DEX:${joinedCharacter.dex} INT:${joinedCharacter.int} CON:${joinedCharacter.con}
 【AI相棒】\n${aiPlayersText}
 
 【共通の絶対システムルール】

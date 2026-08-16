@@ -14,7 +14,6 @@ export default function ScenarioEditView({
   editingScenario, setEditingScenario, editingCharIndex, setEditingCharIndex, saveScenario, setCurrentView
 }: Props) {
 
-  // ★ AI画像生成中のローディング状態
   const [isGenerating, setIsGenerating] = useState(false);
 
   const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>, isChar: boolean) => {
@@ -43,17 +42,15 @@ export default function ScenarioEditView({
     e.target.value = "";
   };
 
-  // ★ pollinations.ai を使った画像生成ロジック
   const generateImageWithAI = async (basePrompt: string, isChar: boolean) => {
     setIsGenerating(true);
     try {
-      // TRPGっぽい画風になるように英単語のキーワードを付与
       const styleKeywords = isChar 
         ? "anime style character portrait, highly detailed, dramatic lighting, TRPG" 
         : "TRPG cover art, dark fantasy landscape, cinematic lighting, masterpiece";
       
       const prompt = encodeURIComponent(`${basePrompt}, ${styleKeywords}`);
-      const seed = Math.floor(Math.random() * 100000); // 毎回違う画像を生成するため
+      const seed = Math.floor(Math.random() * 100000);
       const url = `https://image.pollinations.ai/prompt/${prompt}?nologo=true&seed=${seed}`;
 
       const res = await fetch(url);
@@ -91,7 +88,7 @@ export default function ScenarioEditView({
         <div className="w-full bg-slate-800 border border-slate-700 rounded-xl p-5 space-y-4 shadow-2xl">
           <h3 className="text-lg font-bold text-emerald-400 mb-2 border-b border-slate-700 pb-2">キャラクター設定</h3>
           
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
             <div>
               <label className="text-xs text-slate-400 block mb-1">名前</label>
               <input type="text" value={editingScenario.presetCharacters[editingCharIndex].name} onChange={(e) => { const newC = [...editingScenario.presetCharacters]; newC[editingCharIndex].name = e.target.value; setEditingScenario({ ...editingScenario, presetCharacters: newC }); }} className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white" />
@@ -100,18 +97,23 @@ export default function ScenarioEditView({
               <label className="text-xs text-slate-400 block mb-1">職業</label>
               <input type="text" value={editingScenario.presetCharacters[editingCharIndex].job} onChange={(e) => { const newC = [...editingScenario.presetCharacters]; newC[editingCharIndex].job = e.target.value; setEditingScenario({ ...editingScenario, presetCharacters: newC }); }} className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white" />
             </div>
+            <div>
+              <label className="text-xs text-slate-400 block mb-1">性別・種族</label>
+              <input type="text" value={editingScenario.presetCharacters[editingCharIndex].genderOrRace || ""} onChange={(e) => { const newC = [...editingScenario.presetCharacters]; newC[editingCharIndex].genderOrRace = e.target.value; setEditingScenario({ ...editingScenario, presetCharacters: newC }); }} placeholder="例：男性、エルフなど" className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white" />
+            </div>
           </div>
 
           <div className="bg-slate-900 border border-slate-700 rounded-lg p-4 relative">
             <div className="flex justify-between items-center mb-2">
               <label className="text-xs text-slate-400 block">キャラクター画像</label>
               
-              {/* ★ AI自動生成ボタン (キャラクター用) */}
               <button 
                 onClick={() => {
-                  const char = editingScenario.presetCharacters[editingCharIndex];
+                  const char = editingScenario.presetCharacters[editingCharIndex!];
                   if (!char.name) { alert("先に「名前」を入力してください！"); return; }
-                  generateImageWithAI(`${char.name}, ${char.job || ""}, ${char.personality || ""}`.slice(0, 150), true);
+                  // ★ 性別・種族情報をプロンプトに組み込む
+                  const promptStr = `${char.name}, ${char.genderOrRace ? char.genderOrRace + ', ' : ''}${char.job || ""}, ${char.personality || ""}`.slice(0, 150);
+                  generateImageWithAI(promptStr, true);
                 }}
                 disabled={isGenerating}
                 className="text-[10px] bg-indigo-600 hover:bg-indigo-500 disabled:bg-slate-700 disabled:text-slate-400 text-white font-bold px-3 py-1.5 rounded shadow-lg transition-colors"
@@ -181,7 +183,6 @@ export default function ScenarioEditView({
               <div className="flex justify-between items-center mb-2">
                 <label className="text-xs text-amber-200 block">パッケージ画像</label>
                 
-                {/* ★ AI自動生成ボタン (シナリオ用) */}
                 <button 
                   onClick={() => {
                     if (!editingScenario.title) { alert("先に「シナリオタイトル」を入力してください！"); return; }
@@ -250,7 +251,7 @@ export default function ScenarioEditView({
             <div className="bg-slate-800 border border-slate-700 rounded-xl p-5">
               <div className="flex justify-between items-center mb-4 border-b border-slate-700 pb-2">
                 <h3 className="text-lg font-bold text-emerald-400">専用キャラクター (HO)</h3>
-                <button onClick={() => { const newChar: Character = { id: `c${Date.now()}`, name: "新規キャラ", job: "", personality: "", imageUrl: "", hp: 10, san: 50, str: 10, dex: 10, int: 10, con: 10, wis: 10, cha: 10 }; setEditingScenario({ ...editingScenario, presetCharacters: [...editingScenario.presetCharacters, newChar] }); setEditingCharIndex(editingScenario.presetCharacters.length); }} className="text-xs bg-emerald-600/20 text-emerald-400 px-3 py-1.5 rounded">＋ 追加</button>
+                <button onClick={() => { const newChar: Character = { id: `c${Date.now()}`, name: "新規キャラ", job: "", genderOrRace: "", personality: "", imageUrl: "", hp: 10, san: 50, str: 10, dex: 10, int: 10, con: 10, wis: 10, cha: 10 }; setEditingScenario({ ...editingScenario, presetCharacters: [...editingScenario.presetCharacters, newChar] }); setEditingCharIndex(editingScenario.presetCharacters.length); }} className="text-xs bg-emerald-600/20 text-emerald-400 px-3 py-1.5 rounded">＋ 追加</button>
               </div>
               <div className="space-y-3">
                 {editingScenario.presetCharacters.map((char, idx) => (
@@ -262,7 +263,8 @@ export default function ScenarioEditView({
                         <div className="w-10 h-10 rounded-full bg-slate-700 flex items-center justify-center text-[10px] text-slate-400 border border-slate-600 font-bold">No Img</div>
                       )}
                       <div>
-                        <p className="text-sm font-bold text-white">{char.name} ({char.job || "職業未設定"})</p>
+                        {/* ★ 一覧表示部分にも性別を反映 */}
+                        <p className="text-sm font-bold text-white">{char.name} <span className="text-xs font-normal text-slate-300">({char.job || "職業未設定"} / {char.genderOrRace || "性別未設定"})</span></p>
                         <p className="text-[10px] text-slate-400">HP:{char.hp} | SAN:{char.san}% | STR:{char.str} DEX:{char.dex} INT:{char.int}</p>
                       </div>
                     </div>
