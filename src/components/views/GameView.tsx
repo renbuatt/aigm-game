@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useState } from "react";
 import { ViewState, UserProfile, Room, Character, Scene, Message, ChatTab } from "../../types";
 
 type Props = {
@@ -44,6 +44,7 @@ type Props = {
   setDraftLeader: React.Dispatch<React.SetStateAction<string>>;
   addTeamDraft: () => Promise<void>;
   finishSplitting: () => Promise<void>;
+  generateSceneImage: (promptText: string) => Promise<void>; // ★ 追加
 };
 
 export default function GameView({
@@ -51,15 +52,32 @@ export default function GameView({
   startGame, startSplitting, isSplitMode, chatTab, messages, isLoading, isScenarioEnded,
   setCurrentView, endGame, input, setInput, handleSend, handleTabClick, unreadIndicators,
   consultWithAI, setConsultWithAI, isChatDisabled, mergeTeam, executeMergeAll, draftAction, setDraftAction,
-  draftMembers, setDraftMembers, draftLeader, setDraftLeader, addTeamDraft, finishSplitting
+  draftMembers, setDraftMembers, draftLeader, setDraftLeader, addTeamDraft, finishSplitting, generateSceneImage
 }: Props) {
   const isRecruiting = activeRoom.status === 'recruiting';
+  const isHost = currentUser?.id === activeRoom.host_id || currentUser?.handleName === activeRoom.host_name;
+
+  // 生成された画像の数をカウント (1セッション3回まで)
+  const imageCount = messages.filter(m => m.type === 'image').length;
+  
+  const [showImagePromptModal, setShowImagePromptModal] = useState(false);
+  const [imagePromptText, setImagePromptText] = useState("");
+  const [isGeneratingImg, setIsGeneratingImg] = useState(false);
+
+  const handleGenerateImage = async () => {
+    if (!imagePromptText.trim() || imageCount >= 3) return;
+    setIsGeneratingImg(true);
+    await generateSceneImage(imagePromptText);
+    setIsGeneratingImg(false);
+    setShowImagePromptModal(false);
+    setImagePromptText("");
+  };
 
   return (
     <div className="flex-1 flex flex-col max-w-5xl mx-auto w-full p-4 min-h-0 relative">
       
       {/* チーム分け設定モーダル（ホスト専用） */}
-      {activeRoom.status === 'splitting' && currentUser?.id === activeRoom.host_id && (
+      {activeRoom.status === 'splitting' && isHost && (
         <div className="absolute inset-0 bg-black/80 z-50 flex items-center justify-center p-4">
           <div className="bg-slate-800 border border-blue-500/50 rounded-xl p-6 w-full max-w-lg shadow-2xl space-y-4">
             <h3 className="text-xl font-bold text-blue-400">👥 チーム編成</h3>
@@ -106,7 +124,7 @@ export default function GameView({
       )}
 
       {/* チーム分け待機画面（ゲスト用） */}
-      {activeRoom.status === 'splitting' && currentUser?.id !== activeRoom.host_id && (
+      {activeRoom.status === 'splitting' && !isHost && (
         <div className="absolute inset-0 bg-black/80 z-40 flex items-center justify-center p-4">
           <div className="bg-slate-800 border border-slate-700 rounded-xl p-6 w-full max-w-md shadow-2xl text-center">
             <h3 className="text-lg font-bold text-blue-400 mb-2 animate-pulse">ホストがチーム分けを行っています...</h3>
@@ -119,6 +137,30 @@ export default function GameView({
                   </span>
                 </div>
               ))}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 情景画像生成モーダル（ホスト専用） */}
+      {showImagePromptModal && (
+        <div className="absolute inset-0 bg-black/80 z-50 flex items-center justify-center p-4">
+          <div className="bg-slate-800 border border-purple-500/50 rounded-xl p-6 w-full max-w-lg shadow-2xl">
+            <h3 className="text-xl font-bold text-purple-400 mb-4">🖼️ 情景画像を生成 (残り {3 - imageCount}回)</h3>
+            <div className="mb-4">
+              <label className="text-xs text-slate-400 block mb-1">現在の状況を説明してください（日本語でOK）</label>
+              <textarea 
+                value={imagePromptText} 
+                onChange={e => setImagePromptText(e.target.value)} 
+                placeholder="例：薄暗い廃病院の廊下。壁には血文字が書かれており、奥から這い寄る影が見える。"
+                className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white h-24"
+              />
+            </div>
+            <div className="flex gap-4">
+              <button onClick={() => setShowImagePromptModal(false)} className="flex-1 bg-slate-700 hover:bg-slate-600 py-3 rounded text-sm font-bold text-white">キャンセル</button>
+              <button onClick={handleGenerateImage} disabled={!imagePromptText.trim() || isGeneratingImg} className="flex-1 bg-purple-600 hover:bg-purple-500 py-3 rounded text-sm font-bold text-white shadow-lg disabled:opacity-50">
+                {isGeneratingImg ? "⏳ 生成中..." : "生成して皆に共有する"}
+              </button>
             </div>
           </div>
         </div>
@@ -137,13 +179,9 @@ export default function GameView({
               });
             
             setReportTarget({
-              type: 'room', 
-              id: activeRoom.id, 
-              name: "この部屋の進行・チャット全般", 
-              roomId: activeRoom.id,
-              scenarioId: activeRoom.scenario_id,
-              scenarioName: activeRoom.scenario?.title || "",
-              availableUsers: users
+              type: 'room', id: activeRoom.id, name: "この部屋の進行・チャット全般", 
+              roomId: activeRoom.id, scenarioId: activeRoom.scenario_id,
+              scenarioName: activeRoom.scenario?.title || "", availableUsers: users
             });
           }} className="text-xs bg-slate-900 hover:bg-red-900/50 text-red-400 border border-slate-700 px-3 py-1.5 rounded font-bold">🚨 通報</button>
           
@@ -161,7 +199,6 @@ export default function GameView({
         <div className="flex flex-wrap items-center gap-2 justify-end max-w-md">
           {joinedCharacter && (
             <>
-              {/* ★ 待機中はダイスを振ってもAIを呼び出さないようボタンの挙動を制限しています */}
               <button onClick={() => rollDice(joinedCharacter.san, "SAN", true)} className="bg-cyan-700 hover:bg-cyan-600 text-white text-[10px] px-2 py-1.5 rounded font-bold shadow-lg">🎲 SAN({joinedCharacter.san}%)</button>
               <button onClick={() => rollDice(joinedCharacter.str, "STR", false)} className="bg-red-700 hover:bg-red-600 text-white text-[10px] px-2 py-1.5 rounded font-bold shadow-lg">🎲 STR({joinedCharacter.str})</button>
               <button onClick={() => rollDice(joinedCharacter.dex, "DEX", false)} className="bg-green-700 hover:bg-green-600 text-white text-[10px] px-2 py-1.5 rounded font-bold shadow-lg">🎲 DEX({joinedCharacter.dex})</button>
@@ -170,34 +207,37 @@ export default function GameView({
             </>
           )}
 
-          {/* ゲーム開始ボタン */}
-          {(currentUser?.id === activeRoom.host_id || currentUser?.handleName === activeRoom.host_name) && isRecruiting && joinedCharacter && (
+          {isHost && isRecruiting && joinedCharacter && (
             <button onClick={startGame} className="bg-emerald-600 hover:bg-emerald-500 text-white text-[10px] font-bold px-4 py-2 rounded animate-pulse ml-2 shadow-lg shadow-emerald-900/50">▶ ゲーム開始</button>
           )}
 
-          {/* チーム分け・強制合流ボタン */}
-          {(currentUser?.id === activeRoom.host_id || currentUser?.handleName === activeRoom.host_name) && activeRoom.status === "playing" && !isScenarioEnded && (
-             isSplitMode ? (
-               <button onClick={executeMergeAll} className="bg-indigo-700 hover:bg-indigo-600 text-white text-[10px] font-bold px-3 py-1.5 rounded shadow-lg ml-2">🚪 全員を強制合流</button>
-             ) : (
-               <button onClick={startSplitting} className="bg-blue-700 hover:bg-blue-600 text-white text-[10px] font-bold px-3 py-1.5 rounded shadow-lg ml-2">👥 チーム分け</button>
-             )
+          {isHost && activeRoom.status === "playing" && !isScenarioEnded && (
+             <>
+               {imageCount < 3 && (
+                 <button onClick={() => setShowImagePromptModal(true)} className="bg-purple-700 hover:bg-purple-600 text-white text-[10px] font-bold px-3 py-1.5 rounded shadow-lg ml-2">🖼️ 情景生成</button>
+               )}
+               {isSplitMode ? (
+                 <button onClick={executeMergeAll} className="bg-indigo-700 hover:bg-indigo-600 text-white text-[10px] font-bold px-3 py-1.5 rounded shadow-lg ml-2">🚪 全員を強制合流</button>
+               ) : (
+                 <button onClick={startSplitting} className="bg-blue-700 hover:bg-blue-600 text-white text-[10px] font-bold px-3 py-1.5 rounded shadow-lg ml-2">👥 チーム分け</button>
+               )}
+             </>
           )}
         </div>
       </header>
 
       <div className="flex-1 overflow-y-scroll space-y-3 p-4 bg-slate-800/80 rounded-xl border border-slate-700 mb-3 min-h-0">
         {messages.filter((msg: Message) => {
-          if (msg.type === "system") return true;
+          if (msg.type === "system" || msg.type === "image") return true;
           if (!isSplitMode) return msg.channel === chatTab;
           return (!msg.sceneId || msg.sceneId === 'scene_main' || msg.sceneId === myScene.id) && msg.channel === chatTab;
         }).map((msg: Message, index: number) => {
           const isMe = msg.sender === "player";
           const isAIPlayer = msg.sender === "ai_player";
-          const isSystem = msg.type === "system";
+          const isSystem = msg.type === "system" || msg.type === "image";
           
           const displayText = msg.text.replace(/\[SPLIT_PROPOSAL:.*?\]/, '').replace('[SCENARIO_END]', '').trim();
-          if (!displayText && !isSystem) return null;
+          if (!displayText && !isSystem && !msg.imageUrl) return null;
           
           let messageAvatar = "";
           if (!isSystem && activeRoom.scenario?.presetCharacters) {
@@ -232,7 +272,16 @@ export default function GameView({
                     {msg.type && ` [${msg.type.toUpperCase()}]`}
                   </span>
                 )}
-                <p className={`text-sm whitespace-pre-wrap leading-relaxed ${isSystem && 'text-xs text-slate-300'}`}>{displayText}</p>
+                
+                {/* テキスト表示 */}
+                {displayText && <p className={`text-sm whitespace-pre-wrap leading-relaxed ${isSystem && 'text-xs text-slate-300'}`}>{displayText}</p>}
+                
+                {/* ★ 画像がある場合の表示 */}
+                {msg.type === 'image' && msg.imageUrl && (
+                  <div className="mt-2 border border-slate-600 rounded-lg overflow-hidden bg-black/50">
+                    <img src={msg.imageUrl} alt="生成された情景" className="w-full h-auto max-h-64 object-contain" />
+                  </div>
+                )}
               </div>
 
               {isMe && !isSystem && (
@@ -254,7 +303,6 @@ export default function GameView({
 
       <div className="bg-slate-800 border border-slate-700 rounded-xl p-3 flex flex-col gap-2 shadow-lg">
         
-        {/* ★ 待機中であることを明示するメッセージ */}
         {isRecruiting && (
           <div className="bg-blue-900/40 border border-blue-500/50 rounded-lg p-2 text-center text-blue-300 text-xs font-bold mb-1">
             📢 現在はプレイヤー準備・待機中です。「▶ ゲーム開始」ボタンを押すまでAI GMは起動しません。
@@ -269,7 +317,7 @@ export default function GameView({
                 評価して退出する
               </button>
             </div>
-          ) : currentUser?.id === activeRoom.host_id ? (
+          ) : isHost ? (
             <button onClick={endGame} className="w-full bg-amber-600 hover:bg-amber-500 text-white font-bold py-2 rounded-xl shadow-lg animate-pulse text-sm mb-2">
               🎉 セッション完了！感想戦モードへ移行する
             </button>

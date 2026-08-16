@@ -18,7 +18,7 @@ export type Character = {
   id: string;
   name: string;
   job: string;
-  genderOrRace?: string; // ★ 追加：性別・種族
+  genderOrRace?: string;
   personality: string;
   imageUrl: string;
   hp: number;
@@ -78,10 +78,11 @@ export type Room = {
 export type Message = {
   sender: "player" | "gm" | "ai_player";
   text: string;
-  type: "system" | "ic" | "ooc";
+  type: "system" | "ic" | "ooc" | "image"; // ★ "image" 追加
   sceneId?: string;
   charName?: string;
   channel?: string;
+  imageUrl?: string; // ★ 生成されたBase64画像を格納
 };
 
 export type ChatTab = "story" | "consult" | "gm";

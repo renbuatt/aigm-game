@@ -1,61 +1,108 @@
-import React from "react";
-import { Room } from "../../types";
+import React, { useState } from "react";
+import { Room, Message } from "../../types";
 
 type Props = {
   activeRoom: Room;
+  messages: Message[];
   ratingScenario: number;
-  setRatingScenario: (val: number) => void;
+  setRatingScenario: React.Dispatch<React.SetStateAction<number>>;
   ratingGM: number;
-  setRatingGM: (val: number) => void;
+  setRatingGM: React.Dispatch<React.SetStateAction<number>>;
   submitEvaluation: () => Promise<void>;
-  exportToPDF: (type: 'chat' | 'summary' | 'novel') => Promise<void>;
+  exportToPDF: (type: 'chat' | 'summary' | 'novel', selectedImages?: string[]) => Promise<void>;
   isExporting: boolean;
 };
 
 export default function EvaluationView({
-  activeRoom, ratingScenario, setRatingScenario, ratingGM, setRatingGM, submitEvaluation, exportToPDF, isExporting
+  activeRoom, messages, ratingScenario, setRatingScenario, ratingGM, setRatingGM, submitEvaluation, exportToPDF, isExporting
 }: Props) {
+  const [showNovelModal, setShowNovelModal] = useState(false);
+  const [selectedImages, setSelectedImages] = useState<string[]>([]);
+
+  // 選択可能な画像（パッケージ、キャラクター、セッション中に生成した情景）を集める
+  const availableImages: string[] = [];
+  if (activeRoom.scenario?.imageUrl) availableImages.push(activeRoom.scenario.imageUrl);
+  activeRoom.scenario?.presetCharacters.forEach(c => { if(c.imageUrl) availableImages.push(c.imageUrl); });
+  messages.filter(m => m.type === 'image' && m.imageUrl).forEach(m => availableImages.push(m.imageUrl!));
+  
+  const uniqueImages = Array.from(new Set(availableImages));
+
+  const handleToggleImage = (url: string) => {
+    if (selectedImages.includes(url)) {
+      setSelectedImages(selectedImages.filter(i => i !== url));
+    } else {
+      setSelectedImages([...selectedImages, url]);
+    }
+  };
+
+  const handleNovelExport = () => {
+    setShowNovelModal(false);
+    exportToPDF('novel', selectedImages);
+  };
+
   return (
-    <div className="flex-1 flex flex-col items-center justify-center p-6 w-full min-h-0 overflow-y-auto">
-      <div className="bg-slate-800 border border-slate-700 rounded-2xl p-8 w-full max-w-lg shadow-2xl space-y-6">
-        <h1 className="text-2xl font-extrabold text-amber-400 text-center border-b border-slate-700 pb-4">セッション終了！お疲れ様でした</h1>
-        
-        <div className="bg-slate-900 border border-slate-700 rounded-xl p-5 space-y-3">
-          <h2 className="text-sm font-bold text-white mb-2">💾 思い出を保存する (PDF出力)</h2>
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-2">
-            <button onClick={() => exportToPDF('chat')} disabled={isExporting} className="bg-blue-600 hover:bg-blue-500 text-white text-[10px] font-bold py-2 rounded shadow disabled:opacity-50">そのままのチャット</button>
-            <button onClick={() => exportToPDF('summary')} disabled={isExporting} className="bg-indigo-600 hover:bg-indigo-500 text-white text-[10px] font-bold py-2 rounded shadow disabled:opacity-50">AI要約データ</button>
-            <button onClick={() => exportToPDF('novel')} disabled={isExporting} className="bg-purple-600 hover:bg-purple-500 text-white text-[10px] font-bold py-2 rounded shadow disabled:opacity-50">AIリプレイ小説化</button>
-          </div>
-          {isExporting && <p className="text-[10px] text-amber-400 animate-pulse text-center mt-2">AIが執筆しています... (数秒〜十数秒かかります)</p>}
-        </div>
+    <div className="flex-1 flex flex-col items-center justify-center p-6 max-w-2xl mx-auto w-full relative">
+      <div className="bg-slate-800 border border-slate-700 rounded-xl p-8 w-full shadow-2xl space-y-6 text-center">
+        <h2 className="text-3xl font-extrabold text-amber-400 mb-2">🎉 セッションクリア！</h2>
+        <p className="text-slate-300 mb-6">お疲れ様でした！このシナリオとGM（システム）の評価をお願いします。</p>
 
-        <p className="text-sm text-slate-400 text-center">次回のプレイをより良くするため、評価にご協力ください。</p>
-        
-        <div className="bg-slate-900 border border-slate-700 rounded-xl p-5 space-y-4">
+        <div className="space-y-4 bg-slate-900/50 p-6 rounded-lg border border-slate-700">
           <div>
-            <label className="text-sm text-white font-bold block mb-2">🎭 シナリオの評価: 「{activeRoom.scenario?.title}」</label>
-            <div className="flex gap-2 text-2xl text-amber-500 cursor-pointer justify-center">
-              {[1,2,3,4,5].map(star => (
-                <span key={star} onClick={() => setRatingScenario(star)} className="hover:scale-125 transition">{star <= ratingScenario ? "★" : "☆"}</span>
+            <label className="text-sm text-amber-200 block mb-2 font-bold">シナリオの評価（星1〜5）</label>
+            <div className="flex justify-center gap-2 text-2xl">
+              {[1, 2, 3, 4, 5].map(num => (
+                <button key={num} onClick={() => setRatingScenario(num)} className={`${ratingScenario >= num ? 'text-amber-400' : 'text-slate-600'} hover:text-amber-300 transition-colors`}>★</button>
               ))}
             </div>
           </div>
-          
-          <div className="border-t border-slate-700 pt-4">
-            <label className="text-sm text-white font-bold block mb-2">👑 プレイヤー（ホスト・GM）の評価: {activeRoom.host_name}</label>
-            <div className="flex gap-2 text-2xl text-blue-400 cursor-pointer justify-center">
-              {[1,2,3,4,5].map(star => (
-                <span key={star} onClick={() => setRatingGM(star)} className="hover:scale-125 transition">{star <= ratingGM ? "★" : "☆"}</span>
+          <div className="pt-4 border-t border-slate-700/50">
+            <label className="text-sm text-emerald-300 block mb-2 font-bold">GM (進行システム) の評価（星1〜5）</label>
+            <div className="flex justify-center gap-2 text-2xl">
+              {[1, 2, 3, 4, 5].map(num => (
+                <button key={num} onClick={() => setRatingGM(num)} className={`${ratingGM >= num ? 'text-emerald-400' : 'text-slate-600'} hover:text-emerald-300 transition-colors`}>★</button>
               ))}
             </div>
           </div>
         </div>
 
-        <button onClick={submitEvaluation} className="w-full bg-slate-700 hover:bg-slate-600 text-white font-bold py-4 rounded-xl">
-          評価を送信してロビーに戻る
-        </button>
+        <button onClick={submitEvaluation} className="w-full bg-amber-600 hover:bg-amber-500 text-white font-bold py-3 rounded-lg shadow-lg transition-transform active:scale-95 text-lg">評価を送信してロビーに戻る</button>
+
+        <div className="border-t border-slate-700 pt-6 mt-6">
+          <h3 className="text-sm font-bold text-slate-400 mb-3">💾 記録を残す (PDF出力・保存)</h3>
+          <div className="flex flex-col sm:flex-row gap-3">
+            <button onClick={() => exportToPDF('chat')} className="flex-1 bg-slate-700 hover:bg-slate-600 text-white py-2 rounded shadow text-xs font-bold transition-colors">💬 チャットログ</button>
+            <button onClick={() => exportToPDF('summary')} disabled={isExporting} className="flex-1 bg-blue-700 hover:bg-blue-600 disabled:bg-slate-700 text-white py-2 rounded shadow text-xs font-bold transition-colors">{isExporting ? '⏳ 生成中...' : '📝 あらすじ要約'}</button>
+            <button onClick={() => { if(uniqueImages.length > 0) { setShowNovelModal(true); } else { exportToPDF('novel'); } }} disabled={isExporting} className="flex-1 bg-purple-700 hover:bg-purple-600 disabled:bg-slate-700 text-white py-2 rounded shadow text-xs font-bold transition-colors">{isExporting ? '⏳ 生成中...' : '📖 リプレイ小説'}</button>
+          </div>
+        </div>
       </div>
+
+      {showNovelModal && (
+        <div className="fixed inset-0 bg-black/80 z-[70] flex items-center justify-center p-4">
+          <div className="bg-slate-800 border border-purple-500/50 rounded-xl p-6 w-full max-w-lg shadow-2xl flex flex-col max-h-[80vh]">
+            <h3 className="text-xl font-bold text-purple-400 mb-2">🖼️ 小説に挿入する画像を選択</h3>
+            <p className="text-xs text-slate-300 mb-4">リプレイ小説の中に挿絵として表示したい画像を選んでください（複数選択可）。</p>
+            <div className="flex-1 overflow-y-auto grid grid-cols-2 gap-3 mb-4 pr-2">
+              {uniqueImages.map((img, idx) => (
+                <div 
+                  key={idx} 
+                  onClick={() => handleToggleImage(img)}
+                  className={`relative cursor-pointer border-2 rounded-lg overflow-hidden ${selectedImages.includes(img) ? 'border-purple-500 shadow-[0_0_10px_rgba(168,85,247,0.5)]' : 'border-slate-700 opacity-70 hover:opacity-100'}`}
+                >
+                  <img src={img} className="w-full h-32 object-cover" />
+                  {selectedImages.includes(img) && (
+                    <div className="absolute top-2 right-2 bg-purple-500 text-white text-xs font-bold px-1.5 rounded-full">✓</div>
+                  )}
+                </div>
+              ))}
+            </div>
+            <div className="flex gap-4 mt-auto">
+              <button onClick={() => setShowNovelModal(false)} className="flex-1 bg-slate-700 hover:bg-slate-600 py-3 rounded text-sm font-bold text-white">キャンセル</button>
+              <button onClick={handleNovelExport} className="flex-1 bg-purple-600 hover:bg-purple-500 py-3 rounded text-sm font-bold text-white shadow-lg">小説を生成する</button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

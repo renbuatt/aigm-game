@@ -573,7 +573,6 @@ export default function Home() {
         history.push({ role: 'user', parts: [{ text: "セッションを開始してください。" }]});
       }
 
-      // ★ 性別・種族情報をプロンプトに組み込む
       const aiPlayersText = aiPlayersList.length > 0 
         ? aiPlayersList.map(c => `・${c.name} (${c.genderOrRace || "性別不詳"} / ${c.job}) | HP:${c.hp} SAN:${c.san}% STR:${c.str} DEX:${c.dex} INT:${c.int} CON:${c.con}\n  設定: ${c.personality}`).join("\n\n")
         : "なし（ソロプレイ）";
@@ -620,7 +619,6 @@ ${isSplitMode && myScene.id !== 'scene_main' ? `※現在別行動中です。�
 `;
       }
 
-      // ★ 人間PL側にも性別・種族情報を組み込む
       const sysPrompt = `あなたはTRPGの優秀なAIシステムです。
 タイトル: ${activeRoom.scenario?.title}
 世界観: ${activeRoom.scenario?.setting}
@@ -878,7 +876,57 @@ ${roleInstruction}`;
     }
   };
 
-  const exportToPDF = async (type: 'chat' | 'summary' | 'novel') => {
+  // ★ セッション中の情景画像生成ロジックを追加
+  const generateSceneImage = async (promptText: string) => {
+    if (!activeRoom || !myScene) return;
+    try {
+      const translationPrompt = `
+以下の日本語の情景描写を、画像生成AI用のカンマ区切りの英語プロンプトに変換してください。
+【絶対条件】
+・文章ではなく、英単語のカンマ区切りで出力してください。
+・不適切な画像が生成されるのを防ぐため、必ず最後に「SFW, fully clothed, masterpiece, high quality」を含めてください。
+
+情景描写：
+${promptText}
+      `;
+
+      let englishPrompt = "";
+      try {
+        englishPrompt = await generateAITextWithPrompt(translationPrompt);
+      } catch (err) {
+        englishPrompt = `${promptText}, SFW, fully clothed, masterpiece, high quality`;
+      }
+
+      const prompt = encodeURIComponent(`${englishPrompt}, TRPG scene, cinematic lighting, dramatic atmosphere`);
+      const seed = Math.floor(Math.random() * 100000);
+      const url = `https://image.pollinations.ai/prompt/${prompt}?nologo=true&seed=${seed}&safe=true`;
+
+      const res = await fetch(url);
+      if (!res.ok) throw new Error("AIサーバーが混雑しています");
+      const blob = await res.blob();
+      
+      const reader = new FileReader();
+      reader.onloadend = async () => {
+        const base64data = reader.result as string;
+        // チャットログに画像メッセージとしてプッシュ
+        await pushMessage(activeRoom.id, {
+          sender: "gm",
+          text: `【ホストが情景画像を生成しました】\n「${promptText}」`,
+          type: "image",
+          imageUrl: base64data,
+          sceneId: myScene.id,
+          channel: "story" // 行動宣言タブに表示
+        });
+      };
+      reader.readAsDataURL(blob);
+
+    } catch (err: any) {
+      alert("画像の生成に失敗しました（AIサーバー混雑エラー等）。\n少し時間をおいて再度お試しください。");
+    }
+  };
+
+  // ★ exportToPDF は引数が増えるため、受け取るように修正
+  const exportToPDF = async (type: 'chat' | 'summary' | 'novel', selectedImages?: string[]) => {
     if (!activeRoom) return;
 
     const printWindow = window.open('', '_blank');
@@ -891,12 +939,20 @@ ${roleInstruction}`;
     const endIndex = messages.findIndex(m => m.text.includes('[SCENARIO_END]'));
     const baseMessages = endIndex !== -1 ? messages.slice(0, endIndex + 1) : messages;
     
+    // システム画像メッセージも除外せず、GMからの情報として処理
     const targetMessages = baseMessages.filter(m => m.channel !== 'gm');
 
     let contentHtml = "";
 
     if (type === 'chat') {
       contentHtml = targetMessages.map(m => {
+        if (m.type === 'image' && m.imageUrl) {
+          return `<div style="margin-bottom: 12px; border-bottom: 1px dashed #eee; padding-bottom: 8px;">
+                    <strong style="color: #2c3e50;">AI GM (画像)</strong><br>
+                    <img src="${m.imageUrl}" style="max-width: 300px; border-radius: 8px;" /><br>
+                    <span style="white-space: pre-wrap; color: #34495e;">${m.text}</span>
+                  </div>`;
+        }
         const senderName = m.charName || (m.sender === "player" ? "プレイヤー" : m.sender === "gm" ? "AI GM" : "システム");
         const text = m.text.replace(/\[SPLIT_PROPOSAL:.*?\]/, '').replace('[SCENARIO_END]', '').trim();
         if (!text) return "";
@@ -916,7 +972,16 @@ ${roleInstruction}`;
       
       try {
         const generatedText = await generateAITextWithPrompt(prompt + "\n\n【チャットログ】\n" + logText);
-        contentHtml = `<div style="white-space: pre-wrap; line-height: 1.8; color: #333; font-size: 14px;">${generatedText}</div>`;
+        
+        // ★ 選択された画像があれば小説の上部に挿入
+        let imagesHtml = "";
+        if (type === 'novel' && selectedImages && selectedImages.length > 0) {
+          imagesHtml = `<div style="text-align: center; margin-bottom: 30px;">` + 
+            selectedImages.map(img => `<img src="${img}" style="max-width: 100%; border-radius: 8px; margin-bottom: 10px; max-height: 400px; object-fit: contain; box-shadow: 0 4px 6px rgba(0,0,0,0.1);" />`).join('') + 
+            `</div>`;
+        }
+
+        contentHtml = imagesHtml + `<div style="white-space: pre-wrap; line-height: 1.8; color: #333; font-size: 14px;">${generatedText}</div>`;
       } catch(e: any) {
         alert("エクスポート生成エラー: " + e.message);
         setIsExporting(false);
@@ -1070,12 +1135,14 @@ ${roleInstruction}`;
           setDraftLeader={setDraftLeader}
           addTeamDraft={addTeamDraft}
           finishSplitting={finishSplitting}
+          generateSceneImage={generateSceneImage} // ★ 追加
         />
       )}
 
       {currentView === "evaluation" && activeRoom && (
         <EvaluationView 
           activeRoom={activeRoom}
+          messages={messages} // ★ 追加
           ratingScenario={ratingScenario}
           setRatingScenario={setRatingScenario}
           ratingGM={ratingGM}
@@ -1086,8 +1153,7 @@ ${roleInstruction}`;
         />
       )}
 
-
-      {/* モーダル群 */}
+      {/* 以下、各種モーダル等（省略せずそのまま） */}
       {reportTarget && (
         <div className="fixed inset-0 bg-black/80 z-[60] flex items-center justify-center p-4">
           <div className="bg-slate-800 border border-red-700/50 rounded-xl p-6 w-full max-w-lg shadow-2xl">
