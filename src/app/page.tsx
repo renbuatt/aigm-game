@@ -527,7 +527,6 @@ export default function Home() {
   };
 
   const callAIGM = async (extraUserContext?: string, targetTab: ChatTab = "story") => {
-    // ★ 【絶対防壁】ゲーム中（playing）以外は絶対にAIを実行しない
     if (!activeRoom || activeRoom.status !== 'playing' || !joinedCharacter || !myScene) return;
     setIsLoading(true);
     
@@ -681,7 +680,7 @@ ${roleInstruction}`;
       const newRoom: Room = { id: data.id, scenario_id: data.scenario_id, scenario: scenario, host_name: data.host_name, host_id: data.host_id, status: data.status, scenes: data.scenes, privacy: data.privacy, host_message: data.host_message, joined_users: data.joined_users };
       const hostChar = scenario.presetCharacters.find(c => c.id === charId);
       if (hostChar) {
-        // ★ 新しい部屋なので古い記憶をリセット
+        // ★ 部屋作成時に、過去の同名部屋のAI記憶があれば完全にリセットする
         await supabase.from('ai_memory').delete().eq('room_id', newRoom.id);
         setActiveRoom(newRoom); setJoinedCharacter(hostChar);
         setMessages([]); 
@@ -803,7 +802,6 @@ ${roleInstruction}`;
     const isFinished = activeRoom.status === 'finished';
     const isRecruiting = activeRoom.status === 'recruiting';
 
-    // ★ 待機中はチャットログを残すだけでAIは呼び出さない
     if (isFinished || isRecruiting || (chatTab === "consult" && !consultWithAI)) {
       await pushMessage(activeRoom.id, { sender: "player", text: currentInput, type: (isFinished || isRecruiting) ? "ooc" : "ic", sceneId: myScene.id, charName: joinedCharacter.name, channel: chatTab });
       setInput("");
@@ -844,7 +842,6 @@ ${roleInstruction}`;
 
     await pushMessage(activeRoom.id, { sender: "player", text: msgText, type: msgType, sceneId: myScene.id, charName: joinedCharacter.name, channel: chatTab });
     
-    // ★ ゲーム中（playing）のときだけAIに判定結果を渡す
     if (!isRecruiting && activeRoom.status === 'playing') {
         let promptSuffix = "この結果を踏まえてGMとして情景描写を行ってください。";
         if (chatTab === "gm") {

@@ -161,7 +161,7 @@ export default function GameView({
         <div className="flex flex-wrap items-center gap-2 justify-end max-w-md">
           {joinedCharacter && (
             <>
-              {/* ★ 待機中はダイスを振ってもAIを煽らないようOOCテストロールとして実行されます */}
+              {/* ★ 待機中はダイスを振ってもAIを呼び出さないようボタンの挙動を制限しています */}
               <button onClick={() => rollDice(joinedCharacter.san, "SAN", true)} className="bg-cyan-700 hover:bg-cyan-600 text-white text-[10px] px-2 py-1.5 rounded font-bold shadow-lg">🎲 SAN({joinedCharacter.san}%)</button>
               <button onClick={() => rollDice(joinedCharacter.str, "STR", false)} className="bg-red-700 hover:bg-red-600 text-white text-[10px] px-2 py-1.5 rounded font-bold shadow-lg">🎲 STR({joinedCharacter.str})</button>
               <button onClick={() => rollDice(joinedCharacter.dex, "DEX", false)} className="bg-green-700 hover:bg-green-600 text-white text-[10px] px-2 py-1.5 rounded font-bold shadow-lg">🎲 DEX({joinedCharacter.dex})</button>
@@ -254,6 +254,7 @@ export default function GameView({
 
       <div className="bg-slate-800 border border-slate-700 rounded-xl p-3 flex flex-col gap-2 shadow-lg">
         
+        {/* ★ 待機中であることを明示するメッセージ */}
         {isRecruiting && (
           <div className="bg-blue-900/40 border border-blue-500/50 rounded-lg p-2 text-center text-blue-300 text-xs font-bold mb-1">
             📢 現在はプレイヤー準備・待機中です。「▶ ゲーム開始」ボタンを押すまでAI GMは起動しません。
