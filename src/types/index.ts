@@ -1,6 +1,6 @@
 export type ViewState = "login" | "lobby" | "game" | "evaluation" | "admin" | "banned" | "maintenance" | "scenarioEdit" | "mypage";
 
-export type RoomDifficulty = "easy" | "normal" | "hard" | "pro" | "oni";
+export type RoomDifficulty = "beginner" | "easy" | "normal" | "hard" | "pro" | "oni"; // ★ beginner 追加
 export type GameRule = "dnd" | "coc_en" | "coc_jp" | "sw25" | "storytelling";
 
 export type UserProfile = {
@@ -53,6 +53,7 @@ export type Scenario = {
   purchasedTickets?: Record<string, number>;
   isBanned?: boolean;
   playTime?: number;
+  isTrialOk?: boolean; // ★ 追加
 };
 
 export type Scene = {
@@ -81,10 +82,11 @@ export type Room = {
   rule: GameRule;
   is_paused?: boolean;
   afk_users?: string[];
+  is_trial?: boolean; // ★ 追加
 };
 
 export type Message = {
-  sender: "player" | "gm" | "ai_player" | "system"; // ★ "system" を追加
+  sender: "player" | "gm" | "ai_player" | "system";
   text: string;
   type: "system" | "ic" | "ooc" | "image";
   sceneId?: string;

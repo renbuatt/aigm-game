@@ -20,17 +20,23 @@ type Props = {
   setCurrentView: React.Dispatch<React.SetStateAction<ViewState>>;
   createdScenarios: Scenario[];
   deleteScenario: (id: string) => Promise<void>;
-  // ★ rule を追加
   setRoomConfigModal: React.Dispatch<React.SetStateAction<{ scenario: Scenario, charId: string, privacy: 'open'|'secret', message: string, difficulty: RoomDifficulty, rule: GameRule } | null>>;
   fetchAdminData: () => Promise<void>;
+  // ★ 追加：お試しプレイ用の呼び出し
+  startTrialPlay: (scenario: Scenario) => void;
+  availableScenarios: Scenario[];
 };
 
 export default function LobbyView({
   currentUser, handleLogout, setShowMailbox, unreadCount, secretRoomIdSearch, setSecretRoomIdSearch,
   rooms, searchedSecretRoom, setSearchedSecretRoom, executeJoinRoom, availableRooms,
   spectateRoom, setEditingScenario, setCurrentView, createdScenarios, deleteScenario, setRoomConfigModal,
-  fetchAdminData
+  fetchAdminData, startTrialPlay, availableScenarios
 }: Props) {
+  
+  // お試しOKなシナリオを抽出
+  const trialScenarios = availableScenarios.filter(s => s.isTrialOk);
+
   return (
     <div className="flex-1 flex flex-col p-6 max-w-7xl mx-auto w-full min-h-0 overflow-y-auto">
       <header className="mb-6 flex justify-between items-end border-b border-slate-700 pb-4">
@@ -49,6 +55,26 @@ export default function LobbyView({
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         <div className="lg:col-span-2 flex flex-col gap-4">
+          
+          {/* ★ 常時お試しプレイエリアを追加 */}
+          {trialScenarios.length > 0 && (
+            <div className="mb-6">
+              <h2 className="text-xl font-bold text-pink-400 mb-4 flex items-center gap-2">🌟 無料でお試しプレイ（広告あり）</h2>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                {trialScenarios.map(ts => (
+                  <div key={ts.id} className="bg-pink-900/20 border border-pink-500/30 rounded-xl p-4 flex gap-3 hover:border-pink-500 transition-colors">
+                    <img src={ts.imageUrl || NO_IMAGE_SCENARIO} className="w-16 h-16 object-cover rounded" />
+                    <div className="flex-1">
+                      <h3 className="text-sm font-bold text-white truncate">{ts.title}</h3>
+                      <p className="text-[10px] text-pink-300 mb-2 mt-1">導入部分のみ・他プレイヤーはAI</p>
+                      <button onClick={() => startTrialPlay(ts)} className="w-full bg-pink-600 hover:bg-pink-500 text-white text-xs font-bold py-1.5 rounded shadow">すぐにお試し開始</button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
           <div className="flex justify-between items-end">
             <h2 className="text-xl font-bold text-blue-400">🌐 募集中のセッション</h2>
             <div className="flex gap-2">
@@ -57,7 +83,7 @@ export default function LobbyView({
             </div>
           </div>
 
-          <div className="h-[500px] overflow-y-scroll space-y-4 pr-2 border border-slate-700/50 p-2 rounded-lg bg-slate-900/50">
+          <div className="h-[400px] overflow-y-scroll space-y-4 pr-2 border border-slate-700/50 p-2 rounded-lg bg-slate-900/50 custom-scrollbar">
             {searchedSecretRoom && (
               <div className="bg-indigo-900/40 border border-indigo-500/50 rounded-xl p-4 flex gap-4 mb-4 relative">
                 <span className="absolute top-[-10px] left-4 bg-indigo-500 text-white text-[10px] px-2 py-0.5 rounded-full">検索結果</span>
@@ -99,16 +125,21 @@ export default function LobbyView({
                         {isHost && <span className="text-[10px] bg-amber-600 text-white px-2 py-0.5 rounded ml-auto">あなたがホスト</span>}
                         {isHost && room.privacy === 'secret' && <span className="text-[10px] text-slate-400 select-all" title="友達に共有">ID: {room.id}</span>}
                       </h3>
+                      {/* ★ この部屋のシナリオをお試しするボタン */}
+                      {room.scenario && !isHost && (
+                        <button onClick={() => startTrialPlay(room.scenario!)} className="text-[10px] bg-pink-600/20 text-pink-400 border border-pink-500/50 hover:bg-pink-600 hover:text-white px-2 py-1 rounded transition-colors ml-2">
+                          🌟 広告でお試し
+                        </button>
+                      )}
                     </div>
                     <div className="text-xs text-slate-400 mb-2 flex items-center gap-2">
                       <span>ホスト: {room.host_name}</span>
                       <span className="text-amber-400 font-bold ml-2">
                         ⭐ {room.scenario?.ratingCount ? (room.scenario.ratingSum / room.scenario.ratingCount).toFixed(1) : "未評価"}
                       </span>
-                      <span className={`px-1.5 py-0.5 rounded text-white ${room.difficulty === 'easy' ? 'bg-green-600' : room.difficulty === 'normal' ? 'bg-blue-600' : room.difficulty === 'hard' ? 'bg-orange-600' : room.difficulty === 'pro' ? 'bg-red-600' : 'bg-purple-600'}`}>
-                        {room.difficulty === 'easy' ? '🟩 簡単' : room.difficulty === 'normal' ? '🟦 普通' : room.difficulty === 'hard' ? '🟧 難しい' : room.difficulty === 'pro' ? '🟥 プロ' : '🟪 鬼'}
+                      <span className={`px-1.5 py-0.5 rounded text-white ${room.difficulty === 'beginner' ? 'bg-pink-500' : room.difficulty === 'easy' ? 'bg-green-600' : room.difficulty === 'normal' ? 'bg-blue-600' : room.difficulty === 'hard' ? 'bg-orange-600' : room.difficulty === 'pro' ? 'bg-red-600' : 'bg-purple-600'}`}>
+                        {room.difficulty === 'beginner' ? '⬜ 初心者' : room.difficulty === 'easy' ? '🟩 簡単' : room.difficulty === 'normal' ? '🟦 普通' : room.difficulty === 'hard' ? '🟧 難しい' : room.difficulty === 'pro' ? '🟥 プロ' : '🟪 鬼'}
                       </span>
-                      {/* ★ ルールバッジを表示 */}
                       <span className="px-1.5 py-0.5 rounded text-white bg-slate-700 border border-slate-500">
                         {room.rule === 'dnd' ? '🟥 D&D' : room.rule === 'coc_en' ? '🟦 CoC海外版' : room.rule === 'sw25' ? '🟨 SW2.5' : room.rule === 'storytelling' ? '🟪 ストテリ' : '🟩 CoC日本卓'}
                       </span>
@@ -163,7 +194,7 @@ export default function LobbyView({
           <div className="bg-slate-800 border border-slate-700 rounded-xl p-4 flex flex-col shadow-lg border-t-2 border-t-emerald-500">
             <div className="flex justify-between items-center mb-3">
               <h2 className="text-sm font-bold text-emerald-400">📜 作成したシナリオ</h2>
-              <button onClick={() => { setEditingScenario({ id: "", title: "", system: "", tags: "", setting: "", npcList: "", plot: "", imageUrl: "", presetCharacters: [], ratingSum: 0, ratingCount: 0, price: 500, playLimit: 1, giftLimit: 1, playTime: 60 }); setCurrentView("scenarioEdit"); }} className="text-[10px] bg-slate-700 px-2 py-1 rounded hover:bg-slate-600">＋ 新規作成</button>
+              <button onClick={() => { setEditingScenario({ id: "", title: "", system: "", tags: "", setting: "", npcList: "", plot: "", imageUrl: "", presetCharacters: [], ratingSum: 0, ratingCount: 0, price: 500, playLimit: 1, giftLimit: 1, playTime: 60, isTrialOk: false }); setCurrentView("scenarioEdit"); }} className="text-[10px] bg-slate-700 px-2 py-1 rounded hover:bg-slate-600">＋ 新規作成</button>
             </div>
             {createdScenarios.length === 0 ? (
               <p className="text-xs text-slate-400 mt-2 text-center p-2 bg-slate-900 rounded border border-slate-700/50">作成したシナリオはありません。</p>
@@ -175,7 +206,9 @@ export default function LobbyView({
                       <div className="flex items-start gap-3">
                         <img src={s.imageUrl || NO_IMAGE_SCENARIO} className="w-12 h-12 object-cover rounded border border-slate-600" />
                         <div className="flex-1">
-                          <h4 className="text-sm font-bold text-white">{s.title}</h4>
+                          <h4 className="text-sm font-bold text-white flex gap-1 items-center">
+                            {s.title} {s.isTrialOk && <span className="text-[8px] bg-pink-600 text-white px-1 rounded">試</span>}
+                          </h4>
                           <p className="text-[9px] text-emerald-400">目安: {s.playTime || 60}分</p>
                           <div className="flex gap-2 mt-2 items-center">
                             <button onClick={() => { setEditingScenario(s); setCurrentView("scenarioEdit"); }} className="text-[10px] bg-slate-700 px-2 py-1 rounded text-white hover:bg-slate-600">編集</button>

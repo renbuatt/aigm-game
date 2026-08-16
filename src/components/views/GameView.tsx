@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from "react";
 import { ViewState, UserProfile, Room, Character, Scene, Message, ChatTab } from "../../types";
 
-const DEFAULT_AVATAR = "https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&w=150&q=80"; // ★ 追加
+const DEFAULT_AVATAR = "https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&w=150&q=80";
 
 type Props = {
   activeRoom: Room;
@@ -9,15 +9,7 @@ type Props = {
   currentUser: UserProfile;
   joinedCharacter: Character | null;
   leaveGame: () => Promise<void>;
-  setReportTarget: React.Dispatch<React.SetStateAction<{
-    type: 'user' | 'scenario' | 'room';
-    id: string;
-    name: string;
-    roomId?: string;
-    scenarioId?: string;
-    scenarioName?: string;
-    availableUsers?: { id: string, name: string }[];
-  } | null>>;
+  setReportTarget: React.Dispatch<React.SetStateAction<any>>;
   rollDice: (targetValue: number, label: string, is1d100?: boolean) => Promise<void>;
   startGame: () => Promise<void>;
   startSplitting: () => Promise<void>;
@@ -182,7 +174,6 @@ export default function GameView({
                 </button>
               )}
             </div>
-
             <div className="flex gap-3 pt-4 border-t border-slate-700">
               <button onClick={cancelSplitting} className="flex-1 bg-slate-700 hover:bg-slate-600 py-3 rounded text-sm font-bold text-white">キャンセル</button>
               <button onClick={finishSplitting} disabled={isGeneratingSplit} className="flex-1 bg-emerald-600 hover:bg-emerald-500 disabled:bg-slate-600 py-3 rounded text-sm font-bold text-white shadow-lg shadow-emerald-900/50">編成を確定して再開する</button>
@@ -238,9 +229,12 @@ export default function GameView({
           
           <div className="flex flex-col items-end">
             <span className="text-[10px] text-blue-400 font-bold border border-blue-500/50 bg-blue-900/30 px-2 py-0.5 rounded flex items-center gap-1 mb-1">
+              {/* ★ お試しプレイ専用のヘッダー表示 */}
+              {activeRoom.is_trial && <span className="text-[10px] bg-pink-600 text-white px-1.5 py-0.5 rounded animate-pulse">🌟お試し</span>}
               <span>ROOM: {activeRoom.scenario?.title} (約{activeRoom.scenario?.playTime || 60}分)</span>
-              <span className={`px-1.5 py-0.5 rounded text-white ${activeRoom.difficulty === 'easy' ? 'bg-green-600' : activeRoom.difficulty === 'normal' ? 'bg-blue-600' : activeRoom.difficulty === 'hard' ? 'bg-orange-600' : activeRoom.difficulty === 'pro' ? 'bg-red-600' : 'bg-purple-600'}`}>
-                {activeRoom.difficulty === 'easy' ? '🟩 簡単' : activeRoom.difficulty === 'normal' ? '🟦 普通' : activeRoom.difficulty === 'hard' ? '🟧 難しい' : activeRoom.difficulty === 'pro' ? '🟥 プロ' : '🟪 鬼'}
+              
+              <span className={`px-1.5 py-0.5 rounded text-white ${activeRoom.difficulty === 'beginner' ? 'bg-pink-500' : activeRoom.difficulty === 'easy' ? 'bg-green-600' : activeRoom.difficulty === 'normal' ? 'bg-blue-600' : activeRoom.difficulty === 'hard' ? 'bg-orange-600' : activeRoom.difficulty === 'pro' ? 'bg-red-600' : 'bg-purple-600'}`}>
+                {activeRoom.difficulty === 'beginner' ? '⬜ 初心者' : activeRoom.difficulty === 'easy' ? '🟩 簡単' : activeRoom.difficulty === 'normal' ? '🟦 普通' : activeRoom.difficulty === 'hard' ? '🟧 難しい' : activeRoom.difficulty === 'pro' ? '🟥 プロ' : '🟪 鬼'}
               </span>
               <span className="px-1.5 py-0.5 rounded text-white bg-slate-700 border border-slate-500">
                 {rule === 'dnd' ? '🟥 D&D' : rule === 'coc_en' ? '🟦 CoC海外版' : rule === 'sw25' ? '🟨 SW2.5' : rule === 'storytelling' ? '🟪 ストテリ' : '🟩 CoC日本卓'}
@@ -315,10 +309,16 @@ export default function GameView({
                 )}
               </div>
             )}
+            {/* ★ お試し部屋の場合はホストでも手動でのゲーム開始ボタンを押せるようにする（あるいはメッセージで促す） */}
             {isHost && isRecruiting && joinedCharacter && (
               <button onClick={startGame} className="bg-emerald-600 hover:bg-emerald-500 text-white text-[10px] font-bold px-4 py-2 rounded animate-pulse ml-2 shadow-lg shadow-emerald-900/50">▶ ゲーム開始</button>
             )}
-            {isHost && activeRoom.status === "playing" && !isScenarioEnded && (
+            {/* ゲストがお試しに入った時用の開始ボタン */}
+            {!isHost && activeRoom.is_trial && isRecruiting && joinedCharacter && (
+              <button onClick={startGame} className="bg-pink-600 hover:bg-pink-500 text-white text-[10px] font-bold px-4 py-2 rounded animate-pulse ml-2 shadow-lg shadow-pink-900/50">▶ お試し開始</button>
+            )}
+
+            {isHost && activeRoom.status === "playing" && !isScenarioEnded && !activeRoom.is_trial && (
                <>
                  {imageCount < 3 && (
                    <button onClick={() => setShowImagePromptModal(true)} className="bg-purple-700 hover:bg-purple-600 text-white text-[10px] font-bold px-3 py-1.5 rounded shadow-lg ml-2">🖼️ 情景生成</button>
@@ -423,7 +423,7 @@ export default function GameView({
                 評価して退出する
               </button>
             </div>
-          ) : isHost ? (
+          ) : (isHost || activeRoom.is_trial) ? (
             <button onClick={endGame} className="w-full bg-amber-600 hover:bg-amber-500 text-white font-bold py-2 rounded-xl shadow-lg animate-pulse text-sm mb-2">
               🎉 セッション完了！感想戦モードへ移行する
             </button>
