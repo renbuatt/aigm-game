@@ -79,12 +79,12 @@ export type Room = {
   current_summary?: string;
   difficulty: RoomDifficulty;
   rule: GameRule;
-  is_paused?: boolean; // ★ 追加：中断フラグ
-  afk_users?: string[]; // ★ 追加：離席中のユーザーIDリスト
+  is_paused?: boolean;
+  afk_users?: string[];
 };
 
 export type Message = {
-  sender: "player" | "gm" | "ai_player";
+  sender: "player" | "gm" | "ai_player" | "system"; // ★ "system" を追加
   text: string;
   type: "system" | "ic" | "ooc" | "image";
   sceneId?: string;

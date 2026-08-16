@@ -49,6 +49,8 @@ export default function Home() {
   
   const [consultWithAI, setConsultWithAI] = useState<boolean>(true);
 
+  const [splitSuggestions, setSplitSuggestions] = useState<string[]>([]);
+  
   const [proposedTeams, setProposedTeams] = useState<{id: string, action: string, members: string[], leader: string}[]>([]);
   const [isGeneratingSplit, setIsGeneratingSplit] = useState(false);
 
@@ -174,6 +176,11 @@ export default function Home() {
       }
     }
   }, [activeRoom?.scenes, activeRoom?.status, activeRoom?.host_id, currentUser?.id, isSplitMode]);
+
+  const handleTabClick = (tab: ChatTab) => {
+    setChatTab(tab);
+    setUnreadIndicators(prev => ({ ...prev, [tab]: false }));
+  };
 
   const fetchData = async () => {
     const { data: scData } = await supabase.from('scenarios').select('*').order('id', { ascending: false });
