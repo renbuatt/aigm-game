@@ -98,11 +98,18 @@ export default function GameView({
 
   const rule = activeRoom.rule || "coc_jp";
   const isAfk = activeRoom.afk_users?.includes(currentUser.id);
-  const visibility = activeRoom.item_visibility || 'none'; // ★ 追加
+  const visibility = activeRoom.item_visibility || 'none';
 
   return (
     <div className="flex-1 flex flex-col max-w-5xl mx-auto w-full p-4 min-h-0 relative">
       
+      {/* ★ お試しプレイ 又は 観戦モード の場合に表示されるバナー広告 */}
+      {(activeRoom.is_trial || !joinedCharacter) && (
+        <div className="w-full bg-slate-800 border border-slate-700 rounded-lg p-2 mb-3 flex items-center justify-center text-xs text-slate-500 font-bold shadow-sm cursor-pointer hover:bg-slate-700 transition-colors">
+          <span>【スポンサー広告】ここにバナー広告が表示されます</span>
+        </div>
+      )}
+
       {showSummaryModal && (
         <div className="absolute inset-0 bg-black/80 z-50 flex items-center justify-center p-4">
           <div className="bg-slate-800 border border-slate-700 rounded-xl p-6 w-full max-w-2xl shadow-2xl space-y-4 max-h-[85vh] flex flex-col">
@@ -283,7 +290,6 @@ export default function GameView({
           </span>
           <div className="flex flex-wrap items-center gap-1 justify-end">
             
-            {/* ★ インベントリの表示出し分け */}
             {joinedCharacter && visibility !== 'none' && (
                <div className="relative group flex items-center mr-2">
                  <button className="bg-amber-800/80 hover:bg-amber-700 text-amber-100 border border-amber-500/50 text-[10px] px-2 py-1.5 rounded font-bold shadow-lg flex items-center">
@@ -344,7 +350,7 @@ export default function GameView({
                   </>
                 )}
                 {rule === 'storytelling' && (
-                  <button onClick={() => rollDice(0, "行動")} className="bg-fuchsia-700 hover:bg-fuchsia-600 text-white text-[10px] px-4 py-1.5 rounded font-bold shadow-lg">🎲 行動・葛判定 (1d6)</button>
+                  <button onClick={() => rollDice(0, "行動")} className="bg-fuchsia-700 hover:bg-fuchsia-600 text-white text-[10px] px-4 py-1.5 rounded font-bold shadow-lg">🎲 行動・葛藤判定 (1d6)</button>
                 )}
               </div>
             )}
