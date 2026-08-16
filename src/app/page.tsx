@@ -603,7 +603,7 @@ export default function Home() {
 
     await supabase.from('rooms').update({ scenes: newScenes, status: 'playing' }).eq('id', activeRoom.id);
     setActiveRoom({ ...activeRoom, scenes: newScenes, status: 'playing' });
-    await pushMessage(activeRoom.id, { sender: "gm", text: `【システム】チーム分けが完了しました！各チームごとに独立して行動・相談を行ってください。`, type: "system", sceneId: "scene_main", channel: "system" });
+    await pushMessage(activeRoom.id, { sender: "system", text: `【システム】チーム分けが完了しました！各チームごとに独立して行動・相談を行ってください。`, type: "system", sceneId: "scene_main", channel: "system" });
   };
 
   const cancelSplitting = async () => {
@@ -618,7 +618,7 @@ export default function Home() {
     const updatedScenes = activeRoom.scenes.map(s => s.id === myScene.id ? { ...s, isMerged: true } : s);
     await supabase.from('rooms').update({ scenes: updatedScenes }).eq('id', activeRoom.id);
     setActiveRoom({ ...activeRoom, scenes: updatedScenes });
-    await pushMessage(activeRoom.id, { sender: "gm", text: `【システム】${myScene.name}チームはメインに合流するため待機します。全チームが合流するまでお待ちください。`, type: "system", sceneId: myScene.id, channel: "system" });
+    await pushMessage(activeRoom.id, { sender: "system", text: `【システム】${myScene.name}チームはメインに合流するため待機します。全チームが合流するまでお待ちください。`, type: "system", sceneId: myScene.id, channel: "system" });
   };
 
   const executeMergeAll = async () => {
@@ -629,7 +629,7 @@ export default function Home() {
     await supabase.from('rooms').update({ scenes: resetScenes }).eq('id', activeRoom.id);
     setActiveRoom({ ...activeRoom, scenes: resetScenes });
 
-    await pushMessage(activeRoom.id, { sender: "gm", text: `【システム】全チームが合流しました！`, type: "system", sceneId: 'scene_main', channel: "system" });
+    await pushMessage(activeRoom.id, { sender: "system", text: `【システム】全チームが合流しました！`, type: "system", sceneId: 'scene_main', channel: "system" });
     
     const extraUserContext = [
       "【システムコマンド】全チームの別行動が終了し、一箇所に合流しました。",
@@ -707,7 +707,7 @@ export default function Home() {
         return activeRoom.scenario?.presetCharacters.find(c => c.id === cId)?.name;
       }).filter(Boolean).join(", ");
       
-      const afkInstructionLines = [];
+      const afkInstructionLines: string[] = [];
       if (afkNames) {
         afkInstructionLines.push(
           "",
@@ -718,7 +718,7 @@ export default function Home() {
       }
       const afkInstruction = afkInstructionLines.join('\n');
 
-      const inventoryTextLines = [];
+      const inventoryTextLines: string[] = [];
       if (activeRoom.show_items) {
         inventoryTextLines.push(
           "",
@@ -755,8 +755,8 @@ export default function Home() {
           difficultyInstruction = "【難易度：普通（標準GM）】成功と失敗のバランスを取り、敵の強さも標準的にしてください。起承転結が綺麗にまとまる一般的なTRPGの難易度で進行してください。";
       }
 
-      let ruleSpecLines = [];
-      let gmStyleLines = [];
+      let ruleSpecLines: string[] = [];
+      let gmStyleLines: string[] = [];
 
       switch (activeRoom.rule) {
         case 'dnd':
@@ -827,7 +827,7 @@ export default function Home() {
 
       const diceBase = activeRoom.rule === 'dnd' ? '1d20' : activeRoom.rule === 'sw25' ? '2d6' : activeRoom.rule === 'storytelling' ? '1d6' : '1d100';
 
-      let roleInstructionLines = [];
+      let roleInstructionLines: string[] = [];
 
       if (targetTab === "story") {
         roleInstructionLines = [
@@ -968,7 +968,7 @@ export default function Home() {
 
     } catch (err: any) {
       alert(err.message);
-      await pushMessage(activeRoom.id, { sender: "gm", text: `（システムエラー: ${err.message}）`, type: "system", sceneId: myScene?.id, channel: "system" }, false);
+      await pushMessage(activeRoom.id, { sender: "system", text: `（システムエラー: ${err.message}）`, type: "system", sceneId: myScene?.id, channel: "system" }, false);
     } finally {
       setIsLoading(false);
     }
