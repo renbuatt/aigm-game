@@ -1,5 +1,5 @@
 import React from "react";
-import { ViewState, UserProfile, Room, Scenario } from "../../types";
+import { ViewState, UserProfile, Room, Scenario, RoomDifficulty } from "../../types";
 
 const NO_IMAGE_SCENARIO = "https://images.unsplash.com/photo-1614729939124-03290b5609ce?auto=format&fit=crop&w=400&q=80";
 
@@ -20,7 +20,8 @@ type Props = {
   setCurrentView: React.Dispatch<React.SetStateAction<ViewState>>;
   createdScenarios: Scenario[];
   deleteScenario: (id: string) => Promise<void>;
-  setRoomConfigModal: React.Dispatch<React.SetStateAction<{ scenario: Scenario, charId: string, privacy: 'open'|'secret', message: string } | null>>;
+  // ★ difficulty を追加
+  setRoomConfigModal: React.Dispatch<React.SetStateAction<{ scenario: Scenario, charId: string, privacy: 'open'|'secret', message: string, difficulty: RoomDifficulty } | null>>;
   fetchAdminData: () => Promise<void>;
 };
 
@@ -35,8 +36,6 @@ export default function LobbyView({
       <header className="mb-6 flex justify-between items-end border-b border-slate-700 pb-4">
         <div><h1 className="text-3xl font-extrabold text-emerald-400 mb-1">AI GM MORPG Lobby</h1></div>
         <div className="flex items-center gap-4">
-          
-          {/* ★ マイページへ飛ぶ特別なボタン */}
           <button onClick={() => setCurrentView("mypage")} className="bg-amber-600/20 text-amber-400 border border-amber-500/50 hover:bg-amber-600/40 px-3 py-1.5 rounded font-bold text-xs flex items-center gap-1 transition-colors">
             <span className="text-base">👑</span> プレイ書庫 (Premium)
           </button>
@@ -105,6 +104,10 @@ export default function LobbyView({
                       <span>ホスト: {room.host_name}</span>
                       <span className="text-amber-400 font-bold ml-2">
                         ⭐ {room.scenario?.ratingCount ? (room.scenario.ratingSum / room.scenario.ratingCount).toFixed(1) : "未評価"}
+                      </span>
+                      {/* ★ 難易度バッジを表示 */}
+                      <span className={`px-1.5 py-0.5 rounded text-white ${room.difficulty === 'easy' ? 'bg-green-600' : room.difficulty === 'normal' ? 'bg-blue-600' : room.difficulty === 'hard' ? 'bg-orange-600' : room.difficulty === 'pro' ? 'bg-red-600' : 'bg-purple-600'}`}>
+                        {room.difficulty === 'easy' ? '🟩 簡単' : room.difficulty === 'normal' ? '🟦 普通' : room.difficulty === 'hard' ? '🟧 難しい' : room.difficulty === 'pro' ? '🟥 プロ' : '🟪 鬼'}
                       </span>
                     </div>
                     {room.host_message && <p className="text-xs text-slate-300 italic mb-2">「{room.host_message}」</p>}
@@ -178,7 +181,7 @@ export default function LobbyView({
                         </div>
                       </div>
                       {!s.isBanned && (
-                        <button onClick={() => setRoomConfigModal({ scenario: s, charId: "", privacy: "open", message: "" })} className="w-full bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold py-2 rounded mt-2 shadow">
+                        <button onClick={() => setRoomConfigModal({ scenario: s, charId: "", privacy: "open", message: "", difficulty: "normal" })} className="w-full bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold py-2 rounded mt-2 shadow">
                           部屋を立てる
                         </button>
                       )}

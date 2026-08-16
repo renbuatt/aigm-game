@@ -5,7 +5,7 @@ import { supabase } from "../lib/supabase";
 import { generateAIResponse, generateAITextWithPrompt } from "../lib/ai";
 import { 
   ViewState, UserProfile, Notification, BanAppeal, Report, 
-  Character, Scenario, Scene, Room, Message, ChatTab, PlayArchive 
+  Character, Scenario, Scene, Room, Message, ChatTab, PlayArchive, RoomDifficulty // ★ RoomDifficulty を追加
 } from "../types";
 
 import LoginView from "../components/views/LoginView";
@@ -49,9 +49,6 @@ export default function Home() {
   
   const [consultWithAI, setConsultWithAI] = useState<boolean>(true);
 
-  const [splitSuggestions, setSplitSuggestions] = useState<string[]>([]);
-  
-  // ★ AIのチーム提案を受け取るステート
   const [proposedTeams, setProposedTeams] = useState<{id: string, action: string, members: string[], leader: string}[]>([]);
   const [isGeneratingSplit, setIsGeneratingSplit] = useState(false);
 
@@ -83,7 +80,8 @@ export default function Home() {
   const [scenarioAppealTarget, setScenarioAppealTarget] = useState<Scenario | null>(null);
   const [scenarioAppealText, setScenarioAppealText] = useState("");
 
-  const [roomConfigModal, setRoomConfigModal] = useState<{ scenario: Scenario, charId: string, privacy: 'open'|'secret', message: string } | null>(null);
+  // ★ modal に difficulty を追加
+  const [roomConfigModal, setRoomConfigModal] = useState<{ scenario: Scenario, charId: string, privacy: 'open'|'secret', message: string, difficulty: RoomDifficulty } | null>(null);
   const [secretRoomIdSearch, setSecretRoomIdSearch] = useState("");
   const [searchedSecretRoom, setSearchedSecretRoom] = useState<Room | null>(null);
   
@@ -203,7 +201,8 @@ export default function Home() {
         id: r.id, scenario_id: r.scenario_id, scenario: loadedScenarios.find(s => s.id === r.scenario_id),
         host_name: r.host_name, host_id: r.host_id, status: r.status, scenes: r.scenes || [],
         privacy: r.privacy || "open", host_message: r.host_message || "", joined_users: r.joined_users || {},
-        current_summary: r.current_summary || ""
+        current_summary: r.current_summary || "",
+        difficulty: r.difficulty || "normal" // ★ 追加
       })).filter(r => r.scenario) as Room[];
       setRooms(formattedRooms);
     }
@@ -654,6 +653,27 @@ ${logText}`;
       let roleInstruction = "";
       let scenarioPlotText = activeRoom.scenario?.plot || "";
 
+      let difficultyInstruction = "";
+      switch (activeRoom.difficulty) {
+        case "easy":
+          difficultyInstruction = "【難易度：簡単（やさしいGM）】判定が通りやすく、ヒントを多めに出してください。敵は弱めに設定し、物語がスムーズに進む初心者向けの優しい進行を心がけてください。";
+          break;
+        case "normal":
+          difficultyInstruction = "【難易度：普通（標準GM）】成功と失敗のバランスを取り、敵の強さも標準的にしてください。起承転結が綺麗にまとまる一般的なTRPGの難易度で進行してください。";
+          break;
+        case "hard":
+          difficultyInstruction = "【難易度：難しい（厳しめGM）】判定はやや厳しくし、敵を強くしてください。ヒントは減らし、失敗すると状況が悪化して物語が揺れるようにし、探索や戦闘の緊張感を高めてください。";
+          break;
+        case "pro":
+          difficultyInstruction = "【難易度：プロ（本格派GM）】判定はかなり厳しくし、敵が強く戦闘もシビアにしてください。誘導は少なくして自力で進めさせ、場合によってはキャラクターロストの危険も提示する本格的な進行を行ってください。";
+          break;
+        case "oni":
+          difficultyInstruction = "【難易度：鬼（容赦ないGM）】ほぼ失敗前提の厳しい判定にし、敵を非常に強くしてください。ヒントはほぼ無しとし、生存すること自体が困難な「死ぬ覚悟」で挑む容赦のないモードとして進行してください。";
+          break;
+        default:
+          difficultyInstruction = "【難易度：普通（標準GM）】成功と失敗のバランスを取り、敵の強さも標準的にしてください。起承転結が綺麗にまとまる一般的なTRPGの難易度で進行してください。";
+      }
+
       if (targetTab === "story") {
         roleInstruction = `
 【重要：GMの絶対ルール（行動判定とゲーム性の担保）】
@@ -713,6 +733,7 @@ ${currentSummary || "まだセッションは始まったばかりだ。"}
 【AI相棒】\n${aiPlayersText}
 
 【共通の絶対システムルール】
+${difficultyInstruction}
 ダメージ処理や正気度(SAN)チェック等により、PLやNPCのHP・SAN値が減少・変動した場合は、いかなる状況・タブであっても、必ずあなたの出力テキストの【一番最後】に以下のシステムタグを1行で出力してください。
 [STATUS_UPDATE: キャラクター名, HP:新しい値, SAN:新しい値]
 （例：[STATUS_UPDATE: ${joinedCharacter.name}, HP:10, SAN:50]）
@@ -725,7 +746,9 @@ ${roleInstruction}`;
       const splitMatch = aiText.match(/\[SPLIT_PROPOSAL:\s*(.+?)\]/);
       if (splitMatch) {
          const suggestions = splitMatch[1].split(',').map((s: string) => s.trim());
-         setSplitSuggestions(suggestions);
+         // 手動入力のロジックは削除したため、AI提案UIをトリガーするために空配列をセットするだけ
+         setProposedTeams([]); 
+         generateSplitProposal();
       }
 
       const statusRegex = /\[STATUS_UPDATE:\s*(.+?),\s*HP:\s*(\d+),\s*SAN:\s*(\d+)\]/g;
@@ -762,7 +785,7 @@ ${roleInstruction}`;
 
   const executeCreateRoom = async () => {
     if (!currentUser || !roomConfigModal) return;
-    const { scenario, charId, privacy, message } = roomConfigModal;
+    const { scenario, charId, privacy, message, difficulty } = roomConfigModal;
     if (!charId) { alert("キャラクターを選択してください。"); return; }
     
     const isAuthor = scenario.authorId === currentUser.id;
@@ -781,14 +804,15 @@ ${roleInstruction}`;
       scenario_id: scenario.id, host_name: currentUser.handleName, host_id: currentUser.id, 
       status: "recruiting", scenes: initialScenes,
       privacy: privacy, host_message: message, joined_users: { [currentUser.id]: charId },
-      current_summary: ""
+      current_summary: "",
+      difficulty: difficulty
     }).select().single();
     
     if (error) { alert("データベースエラーが発生しました: " + error.message); return; }
     if (data) {
       setRoomConfigModal(null);
       await fetchData();
-      const newRoom: Room = { id: data.id, scenario_id: data.scenario_id, scenario: scenario, host_name: data.host_name, host_id: data.host_id, status: data.status, scenes: data.scenes, privacy: data.privacy, host_message: data.host_message, joined_users: data.joined_users, current_summary: "" };
+      const newRoom: Room = { id: data.id, scenario_id: data.scenario_id, scenario: scenario, host_name: data.host_name, host_id: data.host_id, status: data.status, scenes: data.scenes, privacy: data.privacy, host_message: data.host_message, joined_users: data.joined_users, current_summary: "", difficulty: data.difficulty };
       const hostChar = scenario.presetCharacters.find(c => c.id === charId);
       if (hostChar) {
         await supabase.from('ai_memory').delete().eq('room_id', newRoom.id);
@@ -1407,6 +1431,18 @@ ${promptText}
                 <select value={roomConfigModal.charId} onChange={(e) => setRoomConfigModal({...roomConfigModal, charId: e.target.value})} className="w-full bg-slate-900 border border-slate-700 rounded p-2 text-sm text-white">
                   <option value="" disabled>選択してください</option>
                   {roomConfigModal.scenario.presetCharacters?.map(c => <option key={c.id} value={c.id}>{c.name} ({c.job})</option>)}
+                </select>
+              </div>
+
+              {/* ★ 難易度選択UI */}
+              <div>
+                <label className="text-xs text-slate-400 block mb-1">難易度</label>
+                <select value={roomConfigModal.difficulty} onChange={(e) => setRoomConfigModal({...roomConfigModal, difficulty: e.target.value as any})} className="w-full bg-slate-900 border border-slate-700 rounded p-2 text-sm text-white">
+                  <option value="easy">🟩 簡単（やさしいGM / 判定が通りやすい）</option>
+                  <option value="normal">🟦 普通（標準GM / 一般的なバランス）</option>
+                  <option value="hard">🟧 難しい（厳しめGM / ヒント少なめ）</option>
+                  <option value="pro">🟥 プロ（本格派GM / ロストの危険あり）</option>
+                  <option value="oni">🟪 鬼（容赦ないGM / 死ぬ覚悟で挑むモード）</option>
                 </select>
               </div>
 

@@ -37,7 +37,6 @@ type Props = {
   mergeTeam: () => Promise<void>;
   executeMergeAll: () => Promise<void>;
   generateSceneImage: (promptText: string) => Promise<void>;
-  // ★ チーム分けの自動生成用に追加
   proposedTeams: {id: string, action: string, members: string[], leader: string}[];
   setProposedTeams: React.Dispatch<React.SetStateAction<{id: string, action: string, members: string[], leader: string}[]>>;
   isGeneratingSplit: boolean;
@@ -82,7 +81,6 @@ export default function GameView({
   return (
     <div className="flex-1 flex flex-col max-w-5xl mx-auto w-full p-4 min-h-0 relative">
       
-      {/* ★ リニューアルしたチーム分け編成モーダル */}
       {activeRoom.status === 'splitting' && isHost && (
         <div className="absolute inset-0 bg-black/80 z-50 flex items-center justify-center p-4">
           <div className="bg-slate-800 border border-blue-500/50 rounded-xl p-6 w-full max-w-2xl shadow-2xl space-y-4 max-h-[85vh] flex flex-col">
@@ -162,7 +160,6 @@ export default function GameView({
         </div>
       )}
 
-      {/* チーム分け待機画面（ゲスト用） */}
       {activeRoom.status === 'splitting' && !isHost && (
         <div className="absolute inset-0 bg-black/80 z-40 flex items-center justify-center p-4">
           <div className="bg-slate-800 border border-slate-700 rounded-xl p-6 w-full max-w-md shadow-2xl text-center">
@@ -172,7 +169,6 @@ export default function GameView({
         </div>
       )}
 
-      {/* 情景画像生成モーダル（ホスト専用） */}
       {showImagePromptModal && (
         <div className="absolute inset-0 bg-black/80 z-50 flex items-center justify-center p-4">
           <div className="bg-slate-800 border border-purple-500/50 rounded-xl p-6 w-full max-w-lg shadow-2xl">
@@ -216,8 +212,12 @@ export default function GameView({
           }} className="text-xs bg-slate-900 hover:bg-red-900/50 text-red-400 border border-slate-700 px-3 py-1.5 rounded font-bold">🚨 通報</button>
           
           <div className="flex flex-col ml-4">
-            <span className="text-[10px] text-blue-400 font-bold border border-blue-500/50 bg-blue-900/30 px-2 py-0.5 rounded w-fit mb-1">
-              ROOM: {activeRoom.scenario?.title} (約{activeRoom.scenario?.playTime || 60}分)
+            {/* ★ 難易度バッジをヘッダーに追加 */}
+            <span className="text-[10px] text-blue-400 font-bold border border-blue-500/50 bg-blue-900/30 px-2 py-0.5 rounded w-fit mb-1 flex items-center gap-1">
+              <span>ROOM: {activeRoom.scenario?.title} (約{activeRoom.scenario?.playTime || 60}分)</span>
+              <span className={`px-1.5 py-0.5 rounded text-white ${activeRoom.difficulty === 'easy' ? 'bg-green-600' : activeRoom.difficulty === 'normal' ? 'bg-blue-600' : activeRoom.difficulty === 'hard' ? 'bg-orange-600' : activeRoom.difficulty === 'pro' ? 'bg-red-600' : 'bg-purple-600'}`}>
+                {activeRoom.difficulty === 'easy' ? '🟩 簡単' : activeRoom.difficulty === 'normal' ? '🟦 普通' : activeRoom.difficulty === 'hard' ? '🟧 難しい' : activeRoom.difficulty === 'pro' ? '🟥 プロ' : '🟪 鬼'}
+              </span>
             </span>
             <span className="text-sm font-bold text-white flex items-center gap-2">
               {joinedCharacter ? joinedCharacter.name : "👁️ 観戦者"}

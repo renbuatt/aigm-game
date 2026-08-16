@@ -1,5 +1,7 @@
 export type ViewState = "login" | "lobby" | "game" | "evaluation" | "admin" | "banned" | "maintenance" | "scenarioEdit" | "mypage";
 
+export type RoomDifficulty = "easy" | "normal" | "hard" | "pro" | "oni"; // ★ 追加
+
 export type UserProfile = {
   id: string;
   handleName: string;
@@ -73,7 +75,8 @@ export type Room = {
   privacy: 'open' | 'secret';
   host_message: string;
   joined_users: Record<string, string>;
-  current_summary?: string; // ★ 追加：進行中のあらすじ
+  current_summary?: string;
+  difficulty: RoomDifficulty; // ★ 追加
 };
 
 export type Message = {
