@@ -126,14 +126,8 @@ export default function ScenarioEditView({ editingScenario, setEditingScenario, 
 
             <div className="border-l-4 border-blue-500 pl-4">
               <label className="text-sm text-blue-400 font-bold block mb-1">📜 本編プロット・真相・ギミック解法</label>
-              <p className="text-[10px] text-slate-400 mb-2">AI GMが物語を進行させるための台本（プレイヤーには見えません）。</p>
+              <p className="text-[10px] text-slate-400 mb-2">AI GMが物語を進行させるための台本（プレイヤーには見えません）。エピローグはAIがここから展開を汲み取って自動生成します。</p>
               <textarea value={editingScenario.plot || ""} onChange={e=>updateScenario('plot', e.target.value)} placeholder="【真相】実は依頼人が犯人。2階の書斎にある日記を読むと事実が判明する..." className="w-full h-64 bg-slate-800 border border-blue-900/50 rounded p-3 text-sm" />
-            </div>
-
-            <div className="border-l-4 border-amber-500 pl-4">
-              <label className="text-sm text-amber-400 font-bold block mb-1">🌅 エピローグ (結末)</label>
-              <p className="text-[10px] text-slate-400 mb-2">未入力の場合はAIが物語の結末から自動生成します。</p>
-              <textarea value={editingScenario.epilogue || ""} onChange={e=>updateScenario('epilogue', e.target.value)} placeholder="事件は解決したが、心の奥底に言いようのない不安が残った。探索者たちは日常へと帰っていく..." className="w-full h-32 bg-slate-800 border border-amber-900/50 rounded p-3 text-sm" />
             </div>
           </div>
         )}
