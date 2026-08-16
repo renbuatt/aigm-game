@@ -550,8 +550,10 @@ export default function Home() {
     await callAIGM(extraUserContext, "story");
   };
 
-  const callAIGM = async (extraUserContext?: string, targetTab: ChatTab = "story") => {
-    if (!activeRoom || activeRoom.status !== 'playing' || !joinedCharacter || !myScene) return;
+  // ★ 修正：isStarting(forceStart)フラグを追加し、ゲーム開始の瞬間だけ防壁をすり抜けられるようにしました
+  const callAIGM = async (extraUserContext?: string, targetTab: ChatTab = "story", isStarting: boolean = false) => {
+    // isStartingがtrueのときはstatusチェックをバイパスする
+    if (!isStarting && (!activeRoom || activeRoom.status !== 'playing' || !joinedCharacter || !myScene)) return;
     setIsLoading(true);
     
     try {
@@ -763,7 +765,8 @@ ${roleInstruction}`;
     setActiveRoom(updatedRoom);
     await pushMessage(activeRoom.id, { sender: "gm", text: `【システム】ゲームを開始しました。AI GMを呼び出しています...`, type: "system", sceneId: myScene.id, channel: "system" });
     
-    await callAIGM(`【システムコマンド】セッションが開始されました。プロットに従い、導入部分の情景描写を行い、プレイヤーに行動方針の相談を促してください。`, "story");
+    // ★ 修正：第3引数に true を渡すことで、ステータス変更直後のタイムラグを無視して確実に初回描写を起動させます
+    await callAIGM(`【システムコマンド】セッションが開始されました。プロットに従い、導入部分の情景描写を行い、プレイヤーに行動方針の相談を促してください。`, "story", true);
   };
 
   const endGame = async () => {
@@ -876,56 +879,6 @@ ${roleInstruction}`;
     }
   };
 
-  // ★ セッション中の情景画像生成ロジックを追加
-  const generateSceneImage = async (promptText: string) => {
-    if (!activeRoom || !myScene) return;
-    try {
-      const translationPrompt = `
-以下の日本語の情景描写を、画像生成AI用のカンマ区切りの英語プロンプトに変換してください。
-【絶対条件】
-・文章ではなく、英単語のカンマ区切りで出力してください。
-・不適切な画像が生成されるのを防ぐため、必ず最後に「SFW, fully clothed, masterpiece, high quality」を含めてください。
-
-情景描写：
-${promptText}
-      `;
-
-      let englishPrompt = "";
-      try {
-        englishPrompt = await generateAITextWithPrompt(translationPrompt);
-      } catch (err) {
-        englishPrompt = `${promptText}, SFW, fully clothed, masterpiece, high quality`;
-      }
-
-      const prompt = encodeURIComponent(`${englishPrompt}, TRPG scene, cinematic lighting, dramatic atmosphere`);
-      const seed = Math.floor(Math.random() * 100000);
-      const url = `https://image.pollinations.ai/prompt/${prompt}?nologo=true&seed=${seed}&safe=true`;
-
-      const res = await fetch(url);
-      if (!res.ok) throw new Error("AIサーバーが混雑しています");
-      const blob = await res.blob();
-      
-      const reader = new FileReader();
-      reader.onloadend = async () => {
-        const base64data = reader.result as string;
-        // チャットログに画像メッセージとしてプッシュ
-        await pushMessage(activeRoom.id, {
-          sender: "gm",
-          text: `【ホストが情景画像を生成しました】\n「${promptText}」`,
-          type: "image",
-          imageUrl: base64data,
-          sceneId: myScene.id,
-          channel: "story" // 行動宣言タブに表示
-        });
-      };
-      reader.readAsDataURL(blob);
-
-    } catch (err: any) {
-      alert("画像の生成に失敗しました（AIサーバー混雑エラー等）。\n少し時間をおいて再度お試しください。");
-    }
-  };
-
-  // ★ exportToPDF は引数が増えるため、受け取るように修正
   const exportToPDF = async (type: 'chat' | 'summary' | 'novel', selectedImages?: string[]) => {
     if (!activeRoom) return;
 
@@ -939,7 +892,6 @@ ${promptText}
     const endIndex = messages.findIndex(m => m.text.includes('[SCENARIO_END]'));
     const baseMessages = endIndex !== -1 ? messages.slice(0, endIndex + 1) : messages;
     
-    // システム画像メッセージも除外せず、GMからの情報として処理
     const targetMessages = baseMessages.filter(m => m.channel !== 'gm');
 
     let contentHtml = "";
@@ -973,7 +925,6 @@ ${promptText}
       try {
         const generatedText = await generateAITextWithPrompt(prompt + "\n\n【チャットログ】\n" + logText);
         
-        // ★ 選択された画像があれば小説の上部に挿入
         let imagesHtml = "";
         if (type === 'novel' && selectedImages && selectedImages.length > 0) {
           imagesHtml = `<div style="text-align: center; margin-bottom: 30px;">` + 
@@ -1135,14 +1086,14 @@ ${promptText}
           setDraftLeader={setDraftLeader}
           addTeamDraft={addTeamDraft}
           finishSplitting={finishSplitting}
-          generateSceneImage={generateSceneImage} // ★ 追加
+          generateSceneImage={generateSceneImage}
         />
       )}
 
       {currentView === "evaluation" && activeRoom && (
         <EvaluationView 
           activeRoom={activeRoom}
-          messages={messages} // ★ 追加
+          messages={messages}
           ratingScenario={ratingScenario}
           setRatingScenario={setRatingScenario}
           ratingGM={ratingGM}
@@ -1153,7 +1104,6 @@ ${promptText}
         />
       )}
 
-      {/* 以下、各種モーダル等（省略せずそのまま） */}
       {reportTarget && (
         <div className="fixed inset-0 bg-black/80 z-[60] flex items-center justify-center p-4">
           <div className="bg-slate-800 border border-red-700/50 rounded-xl p-6 w-full max-w-lg shadow-2xl">
