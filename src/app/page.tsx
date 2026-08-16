@@ -49,7 +49,13 @@ export default function Home() {
   
   const [consultWithAI, setConsultWithAI] = useState<boolean>(true);
 
-  // ★ 追加：AIのチーム提案を受け取るステート
+  // ★ 誤って消してしまっていた手動入力用の変数を復活（エラー回避のため）
+  const [splitSuggestions, setSplitSuggestions] = useState<string[]>([]);
+  const [draftAction, setDraftAction] = useState("");
+  const [draftMembers, setDraftMembers] = useState<string[]>([""]);
+  const [draftLeader, setDraftLeader] = useState<string>("");
+
+  // ★ AIのチーム提案を受け取るステート
   const [proposedTeams, setProposedTeams] = useState<{id: string, action: string, members: string[], leader: string}[]>([]);
   const [isGeneratingSplit, setIsGeneratingSplit] = useState(false);
 
@@ -473,9 +479,6 @@ export default function Home() {
   const submitAppeal = async () => { if(!currentUser || !appealText) return; await supabase.from('ban_appeals').insert({ user_id: currentUser.id, reason: "不明", appeal_text: appealText, status: 'appealing' }); alert("調査依頼を送信しました。"); setAppealText(""); };
   const markNotificationAsRead = async (notifId: string) => { await supabase.from('notifications').update({ is_read: true }).eq('id', notifId); setMyNotifications(myNotifications.map(n => n.id === notifId ? { ...n, isRead: true } : n)); };
 
-  // ==========================================
-  // ★ AIによるチーム分けの自動提案機能
-  // ==========================================
   const startSplitting = async () => {
     if (!activeRoom) return;
     await supabase.from('rooms').update({ status: 'splitting' }).eq('id', activeRoom.id);
@@ -1255,13 +1258,20 @@ ${promptText}
           isChatDisabled={isChatDisabled}
           mergeTeam={mergeTeam}
           executeMergeAll={executeMergeAll}
+          draftAction={draftAction}
+          setDraftAction={setDraftAction}
+          draftMembers={draftMembers}
+          setDraftMembers={setDraftMembers}
+          draftLeader={draftLeader}
+          setDraftLeader={setDraftLeader}
+          addTeamDraft={addTeamDraft}
+          finishSplitting={finishSplitting}
+          cancelSplitting={cancelSplitting}
           generateSceneImage={generateSceneImage}
           proposedTeams={proposedTeams}
           setProposedTeams={setProposedTeams}
           isGeneratingSplit={isGeneratingSplit}
           generateSplitProposal={generateSplitProposal}
-          finishSplitting={finishSplitting}
-          cancelSplitting={cancelSplitting}
         />
       )}
 
