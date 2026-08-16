@@ -73,6 +73,7 @@ export type Room = {
   privacy: 'open' | 'secret';
   host_message: string;
   joined_users: Record<string, string>;
+  current_summary?: string; // ★ 追加：進行中のあらすじ
 };
 
 export type Message = {
@@ -116,7 +117,6 @@ export type Report = {
   createdAt: string;
 };
 
-// ★ 新規追加：プレイ書庫用のデータ型
 export type PlayArchive = {
   id: string;
   userId: string;

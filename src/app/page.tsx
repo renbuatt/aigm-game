@@ -220,7 +220,8 @@ export default function Home() {
       formattedRooms = rmData.map((r: any) => ({
         id: r.id, scenario_id: r.scenario_id, scenario: loadedScenarios.find(s => s.id === r.scenario_id),
         host_name: r.host_name, host_id: r.host_id, status: r.status, scenes: r.scenes || [],
-        privacy: r.privacy || "open", host_message: r.host_message || "", joined_users: r.joined_users || {}
+        privacy: r.privacy || "open", host_message: r.host_message || "", joined_users: r.joined_users || {},
+        current_summary: r.current_summary || "" // ★ 追加
       })).filter(r => r.scenario) as Room[];
       setRooms(formattedRooms);
     }
@@ -566,6 +567,7 @@ export default function Home() {
     await callAIGM(extraUserContext, "story");
   };
 
+  // ★ 記憶の自動圧縮ロジックを追加した callAIGM
   const callAIGM = async (extraUserContext?: string, targetTab: ChatTab = "story", isStarting: boolean = false) => {
     if (!activeRoom || !joinedCharacter || !myScene) return;
     if (!isStarting && activeRoom.status !== 'playing') return;
@@ -576,12 +578,54 @@ export default function Home() {
         await supabase.from('ai_memory').insert({ room_id: activeRoom.id, role: 'user', content: extraUserContext });
       }
 
-      const { data: memoryData } = await supabase.from('ai_memory')
+      const { data: memoryDataRaw } = await supabase.from('ai_memory')
         .select('*')
         .eq('room_id', activeRoom.id)
         .order('created_at', { ascending: true });
 
-      const history = (memoryData || []).map(m => ({
+      let currentMemory = memoryDataRaw || [];
+      let currentSummary = activeRoom.current_summary || "";
+
+      // ==========================================
+      // ★ 長編対応: 記憶が30件を超えたら「あらすじ」に圧縮する
+      // ==========================================
+      if (currentMemory.length > 30) {
+        // 直近10件を残し、それより古いログを圧縮対象にする
+        const logsToCompress = currentMemory.slice(0, currentMemory.length - 10);
+        const recentLogs = currentMemory.slice(-10);
+        
+        const logText = logsToCompress.map(m => `${m.role === 'user' ? 'PL' : 'GM'}: ${m.content}`).join('\n');
+        const compressionPrompt = `あなたはTRPGの優秀な記録係です。以下の「現在のあらすじ」と「追加のチャットログ」を統合し、AI GMが今後の展開を処理するための【詳細な最新のあらすじ】を作成してください。
+【絶対条件】
+・重要な出来事、NPCとの会話結果、得たアイテムやヒント、PLの目的は絶対に漏らさないこと。
+・システムやダイスの結果等のメタな情報は省略し、物語の進行を中心にまとめること。
+
+【現在のあらすじ】
+${currentSummary || "なし（最初の要約です）"}
+
+【追加のチャットログ】
+${logText}`;
+        
+        try {
+          currentSummary = await generateAITextWithPrompt(compressionPrompt);
+          
+          // 圧縮したあらすじを部屋のデータに保存
+          await supabase.from('rooms').update({ current_summary: currentSummary }).eq('id', activeRoom.id);
+          setActiveRoom(prev => prev ? { ...prev, current_summary: currentSummary } : null);
+          
+          // 圧縮済みの古い記憶を削除
+          const idsToDelete = logsToCompress.map(m => m.id);
+          if (idsToDelete.length > 0) {
+            await supabase.from('ai_memory').delete().in('id', idsToDelete);
+          }
+          
+          currentMemory = recentLogs; // 以降のAI送信処理は直近10件で行う
+        } catch(e) {
+          console.error("あらすじの圧縮処理に失敗しました", e);
+        }
+      }
+
+      const history = currentMemory.map(m => ({
         role: m.role === 'assistant' ? 'model' : 'user',
         parts: [{ text: m.content }]
       }));
@@ -597,7 +641,6 @@ export default function Home() {
       let roleInstruction = "";
       let scenarioPlotText = activeRoom.scenario?.plot || "";
 
-      // ★ プロンプトにダイスの厳格解釈指示を追加しました
       if (targetTab === "story") {
         roleInstruction = `
 【重要：GMの絶対ルール（行動判定とゲーム性の担保）】
@@ -608,11 +651,12 @@ export default function Home() {
 3. 【行動のヒント禁止】PLに具体的な行動の例や選択肢を絶対に提示しないでください。PL自身に考えさせてください。
 4. 【ダイスの自己処理禁止】GM自身がダイスを振ったり、PLのSAN値やステータスを勝手に推測・仮定してはいけません。必ずプロンプトに記載された【人間PL】の正確な数値を使用し、PLが画面のダイスボタンを振って結果が送信されるのを待機してください。
 5. 【安易な成功・AIの忖度厳禁】PLの行動が論理的に不自然であったり、シナリオの解決条件を正確に満たしていない場合は、絶対に成功させてはいけません。「ただ投げつけただけ」「間違ったアイテムを使った」などの甘いプレイには、容赦なく「効果がなかった」「状況が悪化した」として厳しく処理してください。
-6. 【ゲーム進行の黄金比率と起承転結（最重要）】
-本シナリオの想定プレイ時間は「約${activeRoom.scenario?.playTime || 60}分」です。この時間に見合う濃厚なテキスト量と展開を用意し、以下の比率で進行を管理してください。
-・導入（15〜20%）: 状況の説明と目的の提示。
-・本編（60〜70%）: 探索と試練。※PLの進行が早すぎる場合は、新たな障害や深掘りイベントを追加し、ボリュームを＋30分程度分水増しして物語を引っ張ってください。あっさりと核心に到達させてはいけません。
-・まとめ（15〜20%）: クライマックスからのソフトランディング。唐突にゲームを終わらせず、事後処理やエピローグ、余韻をしっかり描写して物語を着地させてください。
+6. 【ゲーム進行とペーシング（最重要）】
+本シナリオの想定プレイ時間は「約${activeRoom.scenario?.playTime || 60}分」です。この長さに応じて、以下のペーシングで物語を管理してください。
+・ショート〜中編（120分以下）：導入(20%) → 探索と試練(60%) → 結末(20%) の黄金比で進行してください。
+・長編（120分超）：単調な一本道にならないよう「起・承・転・結・(新たな)承・転・結」のように、途中で中ボス戦やフェイクの解決（一度解決したと思わせる）、急展開などを挟む【マルチアクト構造】を採用し、複数の山場を作ってください。
+・共通事項：PLの進行が早すぎる場合は、新たな障害やNPCとの深い対話、深掘りイベントを追加し、指定時間にふさわしいボリュームになるまで物語を引っ張ってください。あっさりと核心に到達させてはいけません。
+・ソフトランディング：唐突にゲームを終わらせず、必ず事後処理やエピローグ、余韻をしっかり描写して物語を着地させてください。
 7. 【エンディングの処理】
 物語が完全に結末（エピローグ）を迎えた場合のみ、最後の情景描写の末尾に必ず [SCENARIO_END] というシステムタグを記述してください。
 
@@ -644,10 +688,15 @@ ${isSplitMode && myScene.id !== 'scene_main' ? `※現在別行動中です。�
 `;
       }
 
+      // ★ システムプロンプトにあらすじを組み込む
       const sysPrompt = `あなたはTRPGの優秀なAIシステムです。
 タイトル: ${activeRoom.scenario?.title}
 世界観: ${activeRoom.scenario?.setting}
 プロット: ${scenarioPlotText}
+
+【これまでのあらすじ】
+${currentSummary || "まだセッションは始まったばかりだ。"}
+
 【人間PL】名前: ${joinedCharacter.name} (${joinedCharacter.genderOrRace || "性別不詳"}) / ステータス: HP:${joinedCharacter.hp} SAN:${joinedCharacter.san}% STR:${joinedCharacter.str} DEX:${joinedCharacter.dex} INT:${joinedCharacter.int} CON:${joinedCharacter.con}
 【AI相棒】\n${aiPlayersText}
 
@@ -719,14 +768,15 @@ ${roleInstruction}`;
     const { data, error } = await supabase.from('rooms').insert({ 
       scenario_id: scenario.id, host_name: currentUser.handleName, host_id: currentUser.id, 
       status: "recruiting", scenes: initialScenes,
-      privacy: privacy, host_message: message, joined_users: { [currentUser.id]: charId }
+      privacy: privacy, host_message: message, joined_users: { [currentUser.id]: charId },
+      current_summary: ""
     }).select().single();
     
     if (error) { alert("データベースエラーが発生しました: " + error.message); return; }
     if (data) {
       setRoomConfigModal(null);
       await fetchData();
-      const newRoom: Room = { id: data.id, scenario_id: data.scenario_id, scenario: scenario, host_name: data.host_name, host_id: data.host_id, status: data.status, scenes: data.scenes, privacy: data.privacy, host_message: data.host_message, joined_users: data.joined_users };
+      const newRoom: Room = { id: data.id, scenario_id: data.scenario_id, scenario: scenario, host_name: data.host_name, host_id: data.host_id, status: data.status, scenes: data.scenes, privacy: data.privacy, host_message: data.host_message, joined_users: data.joined_users, current_summary: "" };
       const hostChar = scenario.presetCharacters.find(c => c.id === charId);
       if (hostChar) {
         await supabase.from('ai_memory').delete().eq('room_id', newRoom.id);
