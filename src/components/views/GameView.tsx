@@ -7,7 +7,15 @@ type Props = {
   currentUser: UserProfile;
   joinedCharacter: Character | null;
   leaveGame: () => Promise<void>;
-  setReportTarget: React.Dispatch<React.SetStateAction<any>>;
+  setReportTarget: React.Dispatch<React.SetStateAction<{
+    type: 'user' | 'scenario' | 'room';
+    id: string;
+    name: string;
+    roomId?: string;
+    scenarioId?: string;
+    scenarioName?: string;
+    availableUsers?: { id: string, name: string }[];
+  } | null>>;
   rollDice: (targetValue: number, label: string, is1d100?: boolean) => Promise<void>;
   startGame: () => Promise<void>;
   startSplitting: () => Promise<void>;
@@ -30,12 +38,11 @@ type Props = {
   executeMergeAll: () => Promise<void>;
   generateSceneImage: (promptText: string) => Promise<void>;
   proposedTeams: {id: string, action: string, members: string[], leader: string}[];
-  setProposedTeams: React.Dispatch<React.SetStateAction<any>>;
+  setProposedTeams: React.Dispatch<React.SetStateAction<{id: string, action: string, members: string[], leader: string}[]>>;
   isGeneratingSplit: boolean;
   generateSplitProposal: () => Promise<void>;
   finishSplitting: () => Promise<void>;
   cancelSplitting: () => Promise<void>;
-  // ★ 追加プロパティ
   togglePauseRoom: () => Promise<void>;
   toggleAFK: (userId: string, forceRemove?: boolean) => Promise<void>;
   triggerAutoAction: () => Promise<void>;
@@ -56,7 +63,7 @@ export default function GameView({
   const [showImagePromptModal, setShowImagePromptModal] = useState(false);
   const [imagePromptText, setImagePromptText] = useState("");
   const [isGeneratingImg, setIsGeneratingImg] = useState(false);
-  const [showSummaryModal, setShowSummaryModal] = useState(false); // ★ あらすじモーダル
+  const [showSummaryModal, setShowSummaryModal] = useState(false);
   
   const chatContainerRef = useRef<HTMLDivElement>(null);
 
@@ -66,19 +73,17 @@ export default function GameView({
     }
   }, [messages, chatTab]);
 
-  // ★ 5分間放置時の自動行動タイマー（ホストのみが監視）
   useEffect(() => {
     if (!isHost || activeRoom.status !== 'playing' || activeRoom.is_paused || isScenarioEnded) return;
     
     const lastMsg = messages[messages.length - 1];
-    // 最後がGMからの問いかけなどの場合、タイマーセット
     if (lastMsg && (lastMsg.sender === 'gm' || lastMsg.sender === 'system')) {
       const timer = setTimeout(() => {
         triggerAutoAction();
-      }, 5 * 60 * 1000); // 5分
+      }, 5 * 60 * 1000);
       return () => clearTimeout(timer);
     }
-  }, [messages, activeRoom.status, activeRoom.is_paused, isHost, isScenarioEnded]);
+  }, [messages, activeRoom.status, activeRoom.is_paused, isHost, isScenarioEnded, triggerAutoAction]);
 
   const handleGenerateImage = async () => {
     if (!imagePromptText.trim() || imageCount >= 3) return;
@@ -95,7 +100,6 @@ export default function GameView({
   return (
     <div className="flex-1 flex flex-col max-w-5xl mx-auto w-full p-4 min-h-0 relative">
       
-      {/* あらすじ確認モーダル */}
       {showSummaryModal && (
         <div className="absolute inset-0 bg-black/80 z-50 flex items-center justify-center p-4">
           <div className="bg-slate-800 border border-slate-700 rounded-xl p-6 w-full max-w-2xl shadow-2xl space-y-4 max-h-[85vh] flex flex-col">
@@ -108,7 +112,6 @@ export default function GameView({
         </div>
       )}
 
-      {/* チーム分け編成モーダル（省略） */}
       {activeRoom.status === 'splitting' && isHost && (
         <div className="absolute inset-0 bg-black/80 z-50 flex items-center justify-center p-4">
           <div className="bg-slate-800 border border-blue-500/50 rounded-xl p-6 w-full max-w-2xl shadow-2xl space-y-4 max-h-[85vh] flex flex-col">
@@ -177,6 +180,7 @@ export default function GameView({
                 </button>
               )}
             </div>
+
             <div className="flex gap-3 pt-4 border-t border-slate-700">
               <button onClick={cancelSplitting} className="flex-1 bg-slate-700 hover:bg-slate-600 py-3 rounded text-sm font-bold text-white">キャンセル</button>
               <button onClick={finishSplitting} disabled={isGeneratingSplit} className="flex-1 bg-emerald-600 hover:bg-emerald-500 disabled:bg-slate-600 py-3 rounded text-sm font-bold text-white shadow-lg shadow-emerald-900/50">編成を確定して再開する</button>
@@ -185,13 +189,43 @@ export default function GameView({
         </div>
       )}
 
-      {/* ヘッダー */}
+      {activeRoom.status === 'splitting' && !isHost && (
+        <div className="absolute inset-0 bg-black/80 z-40 flex items-center justify-center p-4">
+          <div className="bg-slate-800 border border-slate-700 rounded-xl p-6 w-full max-w-md shadow-2xl text-center">
+            <h3 className="text-lg font-bold text-blue-400 mb-2 animate-pulse">ホストがチーム分けを行っています...</h3>
+            <p className="text-xs text-slate-400">AIが最適なチーム構成を考案し、ホストが確認中です。</p>
+          </div>
+        </div>
+      )}
+
+      {showImagePromptModal && (
+        <div className="absolute inset-0 bg-black/80 z-50 flex items-center justify-center p-4">
+          <div className="bg-slate-800 border border-purple-500/50 rounded-xl p-6 w-full max-w-lg shadow-2xl">
+            <h3 className="text-xl font-bold text-purple-400 mb-4">🖼️ 情景画像を生成 (残り {3 - imageCount}回)</h3>
+            <div className="mb-4">
+              <label className="text-xs text-slate-400 block mb-1">現在の状況を説明してください（日本語でOK）</label>
+              <textarea 
+                value={imagePromptText} 
+                onChange={e => setImagePromptText(e.target.value)} 
+                placeholder="例：薄暗い廃病院の廊下。壁には血文字が書かれており、奥から這い寄る影が見える。"
+                className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white h-24"
+              />
+            </div>
+            <div className="flex gap-4">
+              <button onClick={() => setShowImagePromptModal(false)} className="flex-1 bg-slate-700 hover:bg-slate-600 py-3 rounded text-sm font-bold text-white">キャンセル</button>
+              <button onClick={handleGenerateImage} disabled={!imagePromptText.trim() || isGeneratingImg} className="flex-1 bg-purple-600 hover:bg-purple-500 py-3 rounded text-sm font-bold text-white shadow-lg disabled:opacity-50">
+                {isGeneratingImg ? "⏳ 生成中..." : "生成して皆に共有する"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       <header className="bg-slate-800 border border-slate-700 rounded-xl p-3 mb-3 shadow-md flex flex-col gap-2">
         <div className="flex justify-between items-start">
           <div className="flex items-center gap-2">
             <button onClick={leaveGame} className="text-xs bg-slate-700 hover:bg-slate-600 text-white px-3 py-1.5 rounded font-bold shadow">🚪 離脱 / 終了</button>
             
-            {/* ★ 中断ボタンとあらすじボタン */}
             {isHost && activeRoom.status === 'playing' && !isScenarioEnded && (
               <button onClick={togglePauseRoom} className={`text-xs px-3 py-1.5 rounded font-bold shadow transition-colors ${activeRoom.is_paused ? 'bg-amber-600 hover:bg-amber-500 text-white' : 'bg-slate-700 hover:bg-slate-600 text-slate-300'}`}>
                 {activeRoom.is_paused ? "▶️ セッション再開" : "⏸️ 中断(セーブ)"}
@@ -209,7 +243,6 @@ export default function GameView({
             </span>
             
             <div className="flex items-center gap-2 mt-1">
-              {/* 参加メンバー一覧とAFK表示 */}
               <div className="flex gap-1">
                 {Object.entries(activeRoom.joined_users).map(([uid, cid]) => {
                   const c = activeRoom.scenario?.presetCharacters.find(pc => pc.id === cid);
@@ -227,7 +260,6 @@ export default function GameView({
                 })}
               </div>
               
-              {/* AFK切り替えボタン */}
               {!isScenarioEnded && joinedCharacter && (
                 <button onClick={() => toggleAFK(currentUser.id)} className={`text-[10px] px-2 py-1 rounded font-bold border transition-colors ml-2 ${isAfk ? 'bg-red-900/80 border-red-500 text-red-200 shadow-[0_0_8px_rgba(239,68,68,0.5)]' : 'bg-slate-800 border-slate-600 text-slate-400 hover:bg-slate-700'}`}>
                   {isAfk ? "☕ 離席中(解除)" : "☕ 離席(AFK)"}
@@ -297,7 +329,6 @@ export default function GameView({
         </div>
       </header>
 
-      {/* チャット表示エリア */}
       <div ref={chatContainerRef} className="flex-1 overflow-y-scroll space-y-3 p-4 bg-slate-800/80 rounded-xl border border-slate-700 mb-3 min-h-0 custom-scrollbar">
         {activeRoom.is_paused && (
           <div className="sticky top-0 z-10 bg-amber-900/90 text-amber-200 text-xs font-bold text-center py-1 rounded shadow mb-3 border border-amber-500">
@@ -396,6 +427,12 @@ export default function GameView({
               🎉 エンディング到達！ホストの完了操作をお待ちください...
             </div>
           )
+        )}
+
+        {isSplitMode && myScene.isMerged && activeRoom.status === 'playing' && (
+          <div className="bg-indigo-900/50 border border-indigo-500 rounded p-2 text-center text-indigo-300 text-sm font-bold mb-2">
+            ⏳ {myScene.name}チームの行動を終了し、他チームの合流を待っています... (相談チャットのみ使用可能)
+          </div>
         )}
 
         {joinedCharacter ? (
