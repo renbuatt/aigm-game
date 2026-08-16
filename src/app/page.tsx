@@ -178,6 +178,12 @@ export default function Home() {
     }
   }, [activeRoom?.scenes, activeRoom?.status, activeRoom?.host_id, currentUser?.id, isSplitMode]);
 
+  // ★ 消えてしまっていたタブ切り替え関数を復活！
+  const handleTabClick = (tab: ChatTab) => {
+    setChatTab(tab);
+    setUnreadIndicators(prev => ({ ...prev, [tab]: false }));
+  };
+
   const fetchData = async () => {
     const { data: scData } = await supabase.from('scenarios').select('*').order('id', { ascending: false });
     let loadedScenarios: Scenario[] = [];
@@ -1109,241 +1115,6 @@ export default function Home() {
     await callAIGM(context, chatTab);
   };
 
-  const rollDice = async (targetValue: number, label: string, is1d100: boolean = false) => {
-    if(!myScene || !activeRoom || isLoading || !joinedCharacter) return;
-    let res = 0; let isSuccess = false; let msgText = "";
-
-    const rule = activeRoom.rule || "coc_jp";
-
-    if (rule === "dnd") {
-      res = Math.floor(Math.random() * 20) + 1;
-      const modifier = Math.floor((targetValue - 10) / 2) || 0;
-      const total = res + modifier;
-      const dc = 12; 
-      isSuccess = total >= dc;
-      if (res === 20) isSuccess = true;
-      if (res === 1) isSuccess = false;
-      const modStr = modifier >= 0 ? `+${modifier}` : `${modifier}`;
-      msgText = `🎲 ${label}判定 (1d20${modStr}) ➔ 出目: ${res} (計: ${total}) vs DC${dc} 【${isSuccess ? "成功" : "失敗"}】`;
-      if (res === 20) msgText += " ✨クリティカル！";
-      if (res === 1) msgText += " 💀ファンブル！";
-    } else if (rule === "sw25") {
-      const d1 = Math.floor(Math.random() * 6) + 1;
-      const d2 = Math.floor(Math.random() * 6) + 1;
-      res = d1 + d2;
-      const bonus = Math.floor(targetValue / 6) || 0; 
-      const total = res + bonus;
-      const target = 10;
-      isSuccess = total >= target;
-      if (res === 12) isSuccess = true;
-      if (res === 2) isSuccess = false;
-      const bonusStr = bonus >= 0 ? `+${bonus}` : `${bonus}`;
-      msgText = `🎲 ${label}判定 (2d6${bonusStr}) ➔ 出目: ${res}[${d1},${d2}] (計: ${total}) vs 目標${target} 【${isSuccess ? "成功" : "失敗"}】`;
-      if (res === 12) msgText += " ✨クリティカル！";
-      if (res === 2) msgText += " 💀ファンブル！";
-    } else if (rule === "storytelling") {
-      res = Math.floor(Math.random() * 6) + 1;
-      isSuccess = res >= 4;
-      msgText = `🎲 ${label}判定 (1d6) ➔ 出目: ${res} 【${isSuccess ? "成功" : "失敗"}】`;
-      if (res === 6) msgText += " ✨奇跡の転機！";
-    } else {
-      if (is1d100) {
-        res = Math.floor(Math.random() * 100) + 1;
-        isSuccess = res <= targetValue;
-        msgText = `🎲 ${label} (1d100 ≦ ${targetValue}%) ➔ 出目: ${res} 【${isSuccess ? "成功" : "失敗"}】`;
-        if (rule === "coc_en" && res === 1) msgText += " ✨クリティカル！";
-        if (rule === "coc_en" && res >= 96) msgText += " 💀ファンブル！";
-      } else {
-        const d1 = Math.floor(Math.random() * 6) + 1; const d2 = Math.floor(Math.random() * 6) + 1; const d3 = Math.floor(Math.random() * 6) + 1;
-        res = d1 + d2 + d3;
-        isSuccess = res <= targetValue;
-        msgText = `🎲 ${label} (3d6 ≦ ${targetValue}) ➔ 出目: ${res} [${d1},${d2},${d3}] 【${isSuccess ? "成功" : "失敗"}】`;
-      }
-    }
-
-    const isRecruiting = activeRoom.status === 'recruiting';
-    const msgType = (chatTab === "gm" || isRecruiting) ? "ooc" : "ic";
-
-    await pushMessage(activeRoom.id, { sender: "player", text: msgText, type: msgType, sceneId: myScene.id, charName: joinedCharacter.name, channel: chatTab });
-    
-    if (!isRecruiting && activeRoom.status === 'playing') {
-        let promptSuffix = "この結果を踏まえてGMとして情景描写を行ってください。";
-        if (chatTab === "gm") {
-            promptSuffix = "この結果を踏まえて、システム・ルールの裁定やヒントの提示を行ってください。";
-        } else if (chatTab === "consult") {
-            promptSuffix = "この結果を踏まえて、AI相棒としてリアクションを返してください。";
-        }
-        await callAIGM(`【システム判定結果】${joinedCharacter.name}が${label}ロールを行いました。\n結果: ${msgText}\n${promptSuffix}`, chatTab, false);
-    }
-  };
-
-  const generateSceneImage = async (promptText: string) => {
-    if (!activeRoom || !myScene) return;
-    try {
-      const translationPrompt = "以下の日本語の情景描写を、画像生成AI用のカンマ区切りの英語プロンプトに変換してください。\n" +
-        "【絶対条件】\n" +
-        "・文章ではなく、英単語のカンマ区切りで出力してください。\n" +
-        "・不適切な画像が生成されるのを防ぐため、必ず最後に「SFW, fully clothed, masterpiece, high quality」を含めてください。\n\n" +
-        "情景描写：\n" + promptText;
-
-      let englishPrompt = "";
-      try {
-        englishPrompt = await generateAITextWithPrompt(translationPrompt);
-      } catch (err) {
-        englishPrompt = `${promptText}, SFW, fully clothed, masterpiece, high quality`;
-      }
-
-      const prompt = encodeURIComponent(`${englishPrompt}, TRPG scene, cinematic lighting, dramatic atmosphere`);
-      const seed = Math.floor(Math.random() * 100000);
-      const url = `https://image.pollinations.ai/prompt/${prompt}?nologo=true&seed=${seed}&safe=true`;
-
-      const res = await fetch(url);
-      if (!res.ok) throw new Error("AIサーバーが混雑しています");
-      const blob = await res.blob();
-      
-      const reader = new FileReader();
-      reader.onloadend = async () => {
-        const base64data = reader.result as string;
-        await pushMessage(activeRoom.id, {
-          sender: "gm",
-          text: `【ホストが情景画像を生成しました】\n「${promptText}」`,
-          type: "image",
-          imageUrl: base64data,
-          sceneId: myScene.id,
-          channel: "story"
-        });
-      };
-      reader.readAsDataURL(blob);
-
-    } catch (err: any) {
-      alert("画像の生成に失敗しました（AIサーバー混雑エラー等）。\n少し時間をおいて再度お試しください。");
-    }
-  };
-
-  const executeExport = async (title: string, sourceMessages: Message[], type: 'chat' | 'summary' | 'novel', selectedImages?: string[]) => {
-    const printWindow = window.open('', '_blank');
-    if (!printWindow) {
-      alert("ポップアップがブロックされました。ブラウザの設定でポップアップを許可してください。");
-      return;
-    }
-    printWindow.document.write('<div style="padding: 20px; font-family: sans-serif; color: #333;">生成中...しばらくお待ちください。（AI執筆中の場合は十数秒かかることがあります）</div>');
-
-    const targetMessages = sourceMessages.filter(m => m.channel !== 'gm');
-
-    let contentHtml = "";
-
-    if (type === 'chat') {
-      contentHtml = targetMessages.map(m => {
-        if (m.type === 'image' && m.imageUrl) {
-          return `<div style="margin-bottom: 12px; border-bottom: 1px dashed #eee; padding-bottom: 8px;">
-                    <strong style="color: #2c3e50;">AI GM (画像)</strong><br>
-                    <img src="${m.imageUrl}" style="max-width: 300px; border-radius: 8px;" /><br>
-                    <span style="white-space: pre-wrap; color: #34495e;">${m.text}</span>
-                  </div>`;
-        }
-        const senderName = m.charName || (m.sender === "player" ? "プレイヤー" : m.sender === "gm" ? "AI GM" : "システム");
-        const text = m.text.replace(/\[SPLIT_PROPOSAL:.*?\]/, '').replace('[SCENARIO_END]', '').trim();
-        if (!text) return "";
-        return `<div style="margin-bottom: 12px; border-bottom: 1px dashed #eee; padding-bottom: 8px;">
-                  <strong style="color: #2c3e50;">${senderName}</strong><br>
-                  <span style="white-space: pre-wrap; color: #34495e;">${text}</span>
-                </div>`;
-      }).join('');
-    } else {
-      setIsExporting(true);
-      
-      const prompt = type === 'summary' 
-        ? "以下のTRPGセッションのチャットログを読み込み、物語のあらすじ・結末として分かりやすく要約してください。\n※ログには「GMへの行動宣言」と「キャラクター同士の相談・会話」が含まれています。キャラクター同士の相談内容も物語の展開として要約に含めてください。"
-        : "以下のTRPGセッションのチャットログを元に、プロの小説家が書いたような臨場感あふれる【本格的なリプレイ小説】を執筆してください。\n\n【執筆の条件】\n1. 単調な事実の羅列（〜した。〜と言った）を避け、五感（光、音、匂い、温度など）を刺激する情景描写と、キャラクターの深い心理描写を大幅に肉付けしてください。\n2. プレイヤー間の「相談」や「作戦会議」は、キャラクター同士の緊迫感や関係性が伝わる魅力的な会話劇（ダイアログ）として昇華してください。\n3. ダイスロールの成否はシステム的な数値として書くのではなく、「間一髪での回避」「絶望的な見落とし」などのドラマチックな演出に変換してください。\n4. 起承転結のペース配分を意識し、読者を惹きつける一つの完成された短編小説に仕上げてください。";
-      
-      const logText = targetMessages.map(m => `${m.charName || (m.sender === 'gm' ? 'GM' : 'システム')}: ${m.text.replace(/\[SPLIT_PROPOSAL:.*?\]/, '').replace('[SCENARIO_END]', '').trim()}`).join('\n');
-      
-      try {
-        const generatedText = await generateAITextWithPrompt(prompt + "\n\n【チャットログ】\n" + logText);
-        
-        let imagesHtml = "";
-        if (type === 'novel' && selectedImages && selectedImages.length > 0) {
-          imagesHtml = `<div style="text-align: center; margin-bottom: 30px;">` + 
-            selectedImages.map(img => `<img src="${img}" style="max-width: 100%; border-radius: 8px; margin-bottom: 10px; max-height: 400px; object-fit: contain; box-shadow: 0 4px 6px rgba(0,0,0,0.1);" />`).join('') + 
-            `</div>`;
-        }
-
-        contentHtml = imagesHtml + `<div style="white-space: pre-wrap; line-height: 1.8; color: #333; font-size: 14px;">${generatedText}</div>`;
-      } catch(e: any) {
-        alert("エクスポート生成エラー: " + e.message);
-        setIsExporting(false);
-        printWindow.close();
-        return;
-      }
-      setIsExporting(false);
-    }
-
-    printWindow.document.open();
-    printWindow.document.write(`
-      <!DOCTYPE html>
-      <html>
-        <head>
-          <meta charset="utf-8">
-          <title>${title} - ${type === 'chat' ? 'チャットログ' : type === 'summary' ? '要約データ' : 'リプレイ小説'}</title>
-          <style>
-            body { font-family: 'Hiragino Kaku Gothic ProN', 'Meiryo', sans-serif; padding: 40px; color: #333; max-width: 800px; margin: 0 auto; }
-            h1 { font-size: 24px; border-bottom: 2px solid #2c3e50; padding-bottom: 10px; margin-bottom: 30px; color: #2c3e50; }
-            @media print { body { padding: 0; } }
-          </style>
-        </head>
-        <body>
-          <h1>${title} - ${type === 'chat' ? 'チャットログ' : type === 'summary' ? 'あらすじ要約' : 'リプレイ小説'}</h1>
-          ${contentHtml}
-          <script>
-            setTimeout(() => { window.print(); window.close(); }, 500);
-          </script>
-        </body>
-      </html>
-    `);
-    printWindow.document.close();
-  };
-
-  const exportToPDF = async (type: 'chat' | 'summary' | 'novel', selectedImages?: string[]) => {
-    if (!activeRoom) return;
-    const endIndex = messages.findIndex(m => m.text.includes('[SCENARIO_END]'));
-    const baseMessages = endIndex !== -1 ? messages.slice(0, endIndex + 1) : messages;
-    await executeExport(activeRoom.scenario?.title || "名称未設定", baseMessages, type, selectedImages);
-  };
-
-  const saveToArchive = async () => {
-    if (!currentUser || !activeRoom || !joinedCharacter) return;
-    
-    const endIndex = messages.findIndex(m => m.text.includes('[SCENARIO_END]'));
-    const baseMessages = endIndex !== -1 ? messages.slice(0, endIndex + 1) : messages;
-
-    const archiveData = {
-      user_id: currentUser.id,
-      scenario_title: activeRoom.scenario?.title || "不明なシナリオ",
-      scenario_image: activeRoom.scenario?.imageUrl || "",
-      character_name: joinedCharacter.name,
-      chat_logs: baseMessages
-    };
-
-    const { data, error } = await supabase.from('play_archives').insert(archiveData).select().single();
-    if (error) {
-      alert("書庫への保存に失敗しました: " + error.message);
-    } else {
-      alert("マイページ（プレイ書庫）に保存しました！\nロビー画面の「マイページ」から確認できます。");
-      setPlayArchives(prev => [
-        {
-          id: data.id,
-          userId: data.user_id,
-          scenarioTitle: data.scenario_title,
-          scenarioImage: data.scenario_image,
-          characterName: data.character_name,
-          chatLogs: data.chat_logs,
-          createdAt: data.created_at
-        },
-        ...prev
-      ]);
-    }
-  };
-
   const updateInventory = async (newItems: string) => {
     if (!activeRoom || !currentUser) return;
     const newInventories = { ...activeRoom.inventories, [currentUser.id]: newItems };
@@ -1351,9 +1122,10 @@ export default function Home() {
     setActiveRoom({ ...activeRoom, inventories: newInventories });
   };
 
-  const unreadCount = myNotifications.filter(n => !n.isRead).length;
-
-  const isChatDisabled = Boolean(isLoading || (isSplitMode && myScene && myScene.isMerged === true && chatTab !== 'consult'));
+  const handleTabClick = (tab: ChatTab) => {
+    setChatTab(tab);
+    setUnreadIndicators(prev => ({ ...prev, [tab]: false }));
+  };
 
   return (
     <main className="h-screen w-full bg-slate-900 text-slate-100 flex flex-col font-sans overflow-hidden">
