@@ -16,7 +16,8 @@ type Props = {
     scenarioName?: string;
     availableUsers?: { id: string, name: string }[];
   } | null>>;
-  rollDice: (targetValue: number, label: string, is1d100: boolean) => Promise<void>;
+  // ★ rollDice のシグネチャを変更（ルールによって動きが変わるように）
+  rollDice: (targetValue: number, label: string, is1d100?: boolean) => Promise<void>;
   startGame: () => Promise<void>;
   startSplitting: () => Promise<void>;
   isSplitMode: boolean;
@@ -54,13 +55,11 @@ export default function GameView({
 }: Props) {
   const isRecruiting = activeRoom.status === 'recruiting';
   const isHost = currentUser?.id === activeRoom.host_id || currentUser?.handleName === activeRoom.host_name;
-
   const imageCount = messages.filter(m => m.type === 'image').length;
   
   const [showImagePromptModal, setShowImagePromptModal] = useState(false);
   const [imagePromptText, setImagePromptText] = useState("");
   const [isGeneratingImg, setIsGeneratingImg] = useState(false);
-
   const chatContainerRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -77,6 +76,8 @@ export default function GameView({
     setShowImagePromptModal(false);
     setImagePromptText("");
   };
+
+  const rule = activeRoom.rule || "coc_jp";
 
   return (
     <div className="flex-1 flex flex-col max-w-5xl mx-auto w-full p-4 min-h-0 relative">
@@ -212,11 +213,14 @@ export default function GameView({
           }} className="text-xs bg-slate-900 hover:bg-red-900/50 text-red-400 border border-slate-700 px-3 py-1.5 rounded font-bold">🚨 通報</button>
           
           <div className="flex flex-col ml-4">
-            {/* ★ 難易度バッジをヘッダーに追加 */}
             <span className="text-[10px] text-blue-400 font-bold border border-blue-500/50 bg-blue-900/30 px-2 py-0.5 rounded w-fit mb-1 flex items-center gap-1">
               <span>ROOM: {activeRoom.scenario?.title} (約{activeRoom.scenario?.playTime || 60}分)</span>
               <span className={`px-1.5 py-0.5 rounded text-white ${activeRoom.difficulty === 'easy' ? 'bg-green-600' : activeRoom.difficulty === 'normal' ? 'bg-blue-600' : activeRoom.difficulty === 'hard' ? 'bg-orange-600' : activeRoom.difficulty === 'pro' ? 'bg-red-600' : 'bg-purple-600'}`}>
                 {activeRoom.difficulty === 'easy' ? '🟩 簡単' : activeRoom.difficulty === 'normal' ? '🟦 普通' : activeRoom.difficulty === 'hard' ? '🟧 難しい' : activeRoom.difficulty === 'pro' ? '🟥 プロ' : '🟪 鬼'}
+              </span>
+              {/* ★ ルールバッジ */}
+              <span className="px-1.5 py-0.5 rounded text-white bg-slate-700 border border-slate-500">
+                {rule === 'dnd' ? '🟥 D&D' : rule === 'coc_en' ? '🟦 CoC海外版' : rule === 'sw25' ? '🟨 SW2.5' : rule === 'storytelling' ? '🟪 ストテリ' : '🟩 CoC日本卓'}
               </span>
             </span>
             <span className="text-sm font-bold text-white flex items-center gap-2">
@@ -226,18 +230,46 @@ export default function GameView({
           </div>
         </div>
         
-        <div className="flex flex-wrap items-center gap-2 justify-end max-w-md">
+        <div className="flex flex-wrap items-center gap-1 justify-end max-w-md">
           {joinedCharacter && (
-            <>
-              <div className="bg-red-900/80 text-red-200 border border-red-500/50 text-[10px] px-2 py-1.5 rounded font-bold shadow-lg flex items-center gap-1">
+            <div className="flex gap-1 items-center">
+              <div className="bg-red-900/80 text-red-200 border border-red-500/50 text-[10px] px-2 py-1.5 rounded font-bold shadow-lg flex items-center mr-1">
                 ❤️ HP:{joinedCharacter.hp}
               </div>
-              <button onClick={() => rollDice(joinedCharacter.san, "SAN", true)} className="bg-cyan-700 hover:bg-cyan-600 text-white text-[10px] px-2 py-1.5 rounded font-bold shadow-lg">🎲 SAN({joinedCharacter.san}%)</button>
-              <button onClick={() => rollDice(joinedCharacter.str, "STR", false)} className="bg-red-700 hover:bg-red-600 text-white text-[10px] px-2 py-1.5 rounded font-bold shadow-lg">🎲 STR({joinedCharacter.str})</button>
-              <button onClick={() => rollDice(joinedCharacter.dex, "DEX", false)} className="bg-green-700 hover:bg-green-600 text-white text-[10px] px-2 py-1.5 rounded font-bold shadow-lg">🎲 DEX({joinedCharacter.dex})</button>
-              <button onClick={() => rollDice(joinedCharacter.int, "INT", false)} className="bg-purple-700 hover:bg-purple-600 text-white text-[10px] px-2 py-1.5 rounded font-bold shadow-lg">🎲 INT({joinedCharacter.int})</button>
-              <button onClick={() => rollDice(joinedCharacter.con, "CON", false)} className="bg-amber-700 hover:bg-amber-600 text-white text-[10px] px-2 py-1.5 rounded font-bold shadow-lg">🎲 CON({joinedCharacter.con})</button>
-            </>
+              
+              {/* ★ ルールに応じてダイスボタンを出し分け */}
+              {rule === 'dnd' && (
+                <>
+                  <button onClick={() => rollDice(joinedCharacter.str, "STR")} className="bg-red-700 hover:bg-red-600 text-white text-[10px] px-2 py-1.5 rounded font-bold shadow-lg">🎲 STR(1d20)</button>
+                  <button onClick={() => rollDice(joinedCharacter.dex, "DEX")} className="bg-green-700 hover:bg-green-600 text-white text-[10px] px-2 py-1.5 rounded font-bold shadow-lg">🎲 DEX(1d20)</button>
+                  <button onClick={() => rollDice(joinedCharacter.int, "INT")} className="bg-purple-700 hover:bg-purple-600 text-white text-[10px] px-2 py-1.5 rounded font-bold shadow-lg">🎲 INT(1d20)</button>
+                  <button onClick={() => rollDice(joinedCharacter.con, "CON")} className="bg-amber-700 hover:bg-amber-600 text-white text-[10px] px-2 py-1.5 rounded font-bold shadow-lg">🎲 CON(1d20)</button>
+                </>
+              )}
+
+              {(rule === 'coc_en' || rule === 'coc_jp') && (
+                <>
+                  <button onClick={() => rollDice(joinedCharacter.san, "SAN", true)} className="bg-cyan-700 hover:bg-cyan-600 text-white text-[10px] px-2 py-1.5 rounded font-bold shadow-lg">🎲 SAN({joinedCharacter.san}%)</button>
+                  <button onClick={() => rollDice(joinedCharacter.str, "STR", false)} className="bg-red-700 hover:bg-red-600 text-white text-[10px] px-2 py-1.5 rounded font-bold shadow-lg">🎲 STR({joinedCharacter.str})</button>
+                  <button onClick={() => rollDice(joinedCharacter.dex, "DEX", false)} className="bg-green-700 hover:bg-green-600 text-white text-[10px] px-2 py-1.5 rounded font-bold shadow-lg">🎲 DEX({joinedCharacter.dex})</button>
+                  <button onClick={() => rollDice(joinedCharacter.int, "INT", false)} className="bg-purple-700 hover:bg-purple-600 text-white text-[10px] px-2 py-1.5 rounded font-bold shadow-lg">🎲 INT({joinedCharacter.int})</button>
+                  <button onClick={() => rollDice(joinedCharacter.con, "CON", false)} className="bg-amber-700 hover:bg-amber-600 text-white text-[10px] px-2 py-1.5 rounded font-bold shadow-lg">🎲 CON({joinedCharacter.con})</button>
+                </>
+              )}
+
+              {rule === 'sw25' && (
+                <>
+                  <button onClick={() => rollDice(joinedCharacter.str, "STR")} className="bg-red-700 hover:bg-red-600 text-white text-[10px] px-2 py-1.5 rounded font-bold shadow-lg">🎲 STR(2d6)</button>
+                  <button onClick={() => rollDice(joinedCharacter.dex, "DEX")} className="bg-green-700 hover:bg-green-600 text-white text-[10px] px-2 py-1.5 rounded font-bold shadow-lg">🎲 DEX(2d6)</button>
+                  <button onClick={() => rollDice(joinedCharacter.int, "INT")} className="bg-purple-700 hover:bg-purple-600 text-white text-[10px] px-2 py-1.5 rounded font-bold shadow-lg">🎲 INT(2d6)</button>
+                  <button onClick={() => rollDice(joinedCharacter.con, "CON")} className="bg-amber-700 hover:bg-amber-600 text-white text-[10px] px-2 py-1.5 rounded font-bold shadow-lg">🎲 CON(2d6)</button>
+                </>
+              )}
+
+              {rule === 'storytelling' && (
+                <button onClick={() => rollDice(0, "行動")} className="bg-fuchsia-700 hover:bg-fuchsia-600 text-white text-[10px] px-4 py-1.5 rounded font-bold shadow-lg">🎲 行動・葛藤判定 (1d6)</button>
+              )}
+            </div>
           )}
 
           {isHost && isRecruiting && joinedCharacter && (

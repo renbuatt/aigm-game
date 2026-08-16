@@ -5,7 +5,7 @@ import { supabase } from "../lib/supabase";
 import { generateAIResponse, generateAITextWithPrompt } from "../lib/ai";
 import { 
   ViewState, UserProfile, Notification, BanAppeal, Report, 
-  Character, Scenario, Scene, Room, Message, ChatTab, PlayArchive, RoomDifficulty // ★ RoomDifficulty を追加
+  Character, Scenario, Scene, Room, Message, ChatTab, PlayArchive 
 } from "../types";
 
 import LoginView from "../components/views/LoginView";
@@ -49,6 +49,8 @@ export default function Home() {
   
   const [consultWithAI, setConsultWithAI] = useState<boolean>(true);
 
+  const [splitSuggestions, setSplitSuggestions] = useState<string[]>([]);
+  
   const [proposedTeams, setProposedTeams] = useState<{id: string, action: string, members: string[], leader: string}[]>([]);
   const [isGeneratingSplit, setIsGeneratingSplit] = useState(false);
 
@@ -80,8 +82,8 @@ export default function Home() {
   const [scenarioAppealTarget, setScenarioAppealTarget] = useState<Scenario | null>(null);
   const [scenarioAppealText, setScenarioAppealText] = useState("");
 
-  // ★ modal に difficulty を追加
-  const [roomConfigModal, setRoomConfigModal] = useState<{ scenario: Scenario, charId: string, privacy: 'open'|'secret', message: string, difficulty: RoomDifficulty } | null>(null);
+  // ★ rule を追加
+  const [roomConfigModal, setRoomConfigModal] = useState<{ scenario: Scenario, charId: string, privacy: 'open'|'secret', message: string, difficulty: any, rule: any } | null>(null);
   const [secretRoomIdSearch, setSecretRoomIdSearch] = useState("");
   const [searchedSecretRoom, setSearchedSecretRoom] = useState<Room | null>(null);
   
@@ -202,7 +204,8 @@ export default function Home() {
         host_name: r.host_name, host_id: r.host_id, status: r.status, scenes: r.scenes || [],
         privacy: r.privacy || "open", host_message: r.host_message || "", joined_users: r.joined_users || {},
         current_summary: r.current_summary || "",
-        difficulty: r.difficulty || "normal" // ★ 追加
+        difficulty: r.difficulty || "normal",
+        rule: r.rule || "coc_jp" // ★ 追加
       })).filter(r => r.scenario) as Room[];
       setRooms(formattedRooms);
     }
@@ -674,13 +677,62 @@ ${logText}`;
           difficultyInstruction = "【難易度：普通（標準GM）】成功と失敗のバランスを取り、敵の強さも標準的にしてください。起承転結が綺麗にまとまる一般的なTRPGの難易度で進行してください。";
       }
 
+      let ruleSpec = "";
+      let gmStyle = "";
+
+      switch (activeRoom.rule) {
+        case 'dnd':
+          ruleSpec = `【ルール仕様：D&D（ヒロイック・ファンタジー）】
+- 判定：1d20＋能力値修正＋習熟ボーナス ≥ DC。DCは10〜15が中心（成功しやすい）。クリティカル20→派手な奇跡、ファンブル1→コミカルな失敗。
+- 戦闘：アクション映画のように派手。跳躍・斬撃・吹き飛ばし・環境利用。仲間との連携を必ず描写。3〜5ラウンドで決着するテンポ。
+- 描写：英雄的・爽快。勇気・覚悟・仲間の絆。成功時は光や音の演出。失敗しても前向きに進む。`;
+          gmStyle = `【GMの振る舞い：アクション映画の監督型GM】
+テンポ良く派手に爽快に。戦闘は積極的に挟む。プレイヤーを"ヒーロー"として扱い、問題は"解決できる"方向へ誘導する。行き詰まりを避けるためにヒントを出す。戦闘→探索→戦闘→決戦の黄金パターン。HPは死ににくいように調整。`;
+          break;
+        case 'coc_en':
+          ruleSpec = `【ルール仕様：海外クトゥルフ（CoC 7版ベース）】
+- 判定：1d100 ≤ 技能値。成功しにくい。ハード／イクストリーム成功を厳密に扱う。クリティカル01→静かな奇跡、ファンブル96〜100→致命的失敗。
+- 戦闘：危険で短い。一撃で致命傷。銃声・血・暗闇の質感。逃走を常に選択肢として提示。
+- 描写：静かな恐怖。心臓の鼓動・息遣い・暗闇の質感。成功しても安心できない。余韻が不気味。`;
+          gmStyle = `【GMの振る舞い：静かな恐怖を積み上げる語り部型KP】
+静か・淡々・不気味。戦闘は少なく危険。プレイヤーは"脆い人間"として扱う。情報は断片的に。調査→不安→真相→絶望の流れ。成功しても安心させない。技能成功率は厳しめ、SAN減少は物語の恐怖に合わせて。ファンブルは状況悪化。`;
+          break;
+        case 'sw25':
+          ruleSpec = `【ルール仕様：ソードワールド（SW2.5ベース）】
+- 判定：2d6＋ボーナス ≥ 目標値。成功しやすい。クリティカル12→爽快な大成功、ファンブル2→軽い失敗（コメディ寄り）。
+- 戦闘：テンポ重視。パーティ連携。明るい雰囲気。3ラウンド以内で決着。
+- 描写：明るい冒険。掛け合い・笑い。世界の広さや旅の楽しさ。仲間との連携が多い。`;
+          gmStyle = `【GMの振る舞い：陽気な冒険案内人型GM】
+明るい・軽快・楽しい。戦闘はテンポ良く。プレイヤーは"冒険者"として扱う。探索→戦闘→宝物→次の街。掛け合い・笑いを多めに、世界の広さを感じさせる。目標値は成功しやすく、クリティカルは爽快に、ファンブルは軽い失敗に。`;
+          break;
+        case 'storytelling':
+          ruleSpec = `【ルール仕様：ストーリーテリング系】
+- 判定：1d6（4以上成功）。判定は最小限。成功＝物語が前進、失敗＝内面の揺れ。クリティカル6→運命的な転機。
+- 戦闘：演出のみ。ダメージ計算は簡略化。戦闘は象徴的な出来事として扱う。
+- 描写：心情・テーマ・内面。詩的な比喩。余韻が長い。戦闘より"意味"を描く。`;
+          gmStyle = `【GMの振る舞い：文学的な語り手型GM】
+静か・繊細・内省的。戦闘は象徴的。プレイヤーは"物語の主人公"として扱う。心情→選択→葛藤→成長。テーマ性を重視し余韻を長く取る。判定は最小限。`;
+          break;
+        case 'coc_jp':
+        default:
+          ruleSpec = `【ルール仕様：日本クトゥルフ（国内卓傾向）】
+- 判定：基本は1d100 ≤ 技能値。GM裁量で成功率を少し上げる。失敗は物語の転機として扱う。
+- 戦闘：少なめ。ダメージより心情。「守りたい人」「葛藤」を描く。
+- 描写：感情のクライマックス。過去の因縁・関係性。恐怖よりドラマ。NPCとの会話が濃い。`;
+          gmStyle = `【GMの振る舞い：ドラマ脚本家型KP】
+感情・関係性・葛藤を重視。戦闘は少なめ。プレイヤーは"ドラマの主人公"として扱う。会話シーンを多めにし、感情の揺れを描く。恐怖より人間関係の変化を重視。技能成功率は少し甘め、SAN減少はドラマ性に合わせる。失敗は物語の転機として扱う。`;
+          break;
+      }
+
+      const diceBase = activeRoom.rule === 'dnd' ? '1d20' : activeRoom.rule === 'sw25' ? '2d6' : activeRoom.rule === 'storytelling' ? '1d6' : '1d100';
+
       if (targetTab === "story") {
         roleInstruction = `
 【重要：GMの絶対ルール（行動判定とゲーム性の担保）】
 1. PLたちが明確な「行動宣言」を出した時のみ物語を進行させてください。
 2. リスクや不確実性を伴う行動には必ずダイスロールを要求し、結果が出るまで描写を待機してください。
    【ダイス要求の厳守事項】
-   プロット内に「(1d100)」「→1d100」などのダイス指示がある場合は、文脈に合わせて必ずPLにダイス判定（ロール）を要求してください。また「3d50」のようなTRPGの基本ルールから外れた謎のダイス指示があった場合は、すべて「1d100」として解釈・統一して要求してください。
+   本ルールの判定方式（${diceBase}）に従い、文脈に合わせて必ずPLにダイス判定（ロール）を要求してください。プロットやシステムから外れた謎のダイス指示があった場合は、すべて本ルールの基準ダイスとして解釈・統一して要求してください。
 3. 【行動のヒント禁止】PLに具体的な行動の例や選択肢を絶対に提示しないでください。PL自身に考えさせてください。
 4. 【ダイスの自己処理禁止】GM自身がダイスを振ったり、PLのSAN値やステータスを勝手に推測・仮定してはいけません。必ずプロンプトに記載された【人間PL】の正確な数値を使用し、PLが画面のダイスボタンを振って結果が送信されるのを待機してください。
 5. 【安易な成功・AIの忖度厳禁】PLの行動が論理的に不自然であったり、シナリオの解決条件を正確に満たしていない場合は、絶対に成功させてはいけません。「ただ投げつけただけ」「間違ったアイテムを使った」などの甘いプレイには、容赦なく「効果がなかった」「状況が悪化した」として厳しく処理してください。
@@ -732,6 +784,9 @@ ${currentSummary || "まだセッションは始まったばかりだ。"}
 【人間PL】名前: ${joinedCharacter.name} (${joinedCharacter.genderOrRace || "性別不詳"}) / ステータス: HP:${joinedCharacter.hp} SAN:${joinedCharacter.san}% STR:${joinedCharacter.str} DEX:${joinedCharacter.dex} INT:${joinedCharacter.int} CON:${joinedCharacter.con}
 【AI相棒】\n${aiPlayersText}
 
+${ruleSpec}
+${gmStyle}
+
 【共通の絶対システムルール】
 ${difficultyInstruction}
 ダメージ処理や正気度(SAN)チェック等により、PLやNPCのHP・SAN値が減少・変動した場合は、いかなる状況・タブであっても、必ずあなたの出力テキストの【一番最後】に以下のシステムタグを1行で出力してください。
@@ -746,7 +801,6 @@ ${roleInstruction}`;
       const splitMatch = aiText.match(/\[SPLIT_PROPOSAL:\s*(.+?)\]/);
       if (splitMatch) {
          const suggestions = splitMatch[1].split(',').map((s: string) => s.trim());
-         // 手動入力のロジックは削除したため、AI提案UIをトリガーするために空配列をセットするだけ
          setProposedTeams([]); 
          generateSplitProposal();
       }
@@ -785,7 +839,7 @@ ${roleInstruction}`;
 
   const executeCreateRoom = async () => {
     if (!currentUser || !roomConfigModal) return;
-    const { scenario, charId, privacy, message, difficulty } = roomConfigModal;
+    const { scenario, charId, privacy, message, difficulty, rule } = roomConfigModal;
     if (!charId) { alert("キャラクターを選択してください。"); return; }
     
     const isAuthor = scenario.authorId === currentUser.id;
@@ -805,14 +859,15 @@ ${roleInstruction}`;
       status: "recruiting", scenes: initialScenes,
       privacy: privacy, host_message: message, joined_users: { [currentUser.id]: charId },
       current_summary: "",
-      difficulty: difficulty
+      difficulty: difficulty,
+      rule: rule
     }).select().single();
     
     if (error) { alert("データベースエラーが発生しました: " + error.message); return; }
     if (data) {
       setRoomConfigModal(null);
       await fetchData();
-      const newRoom: Room = { id: data.id, scenario_id: data.scenario_id, scenario: scenario, host_name: data.host_name, host_id: data.host_id, status: data.status, scenes: data.scenes, privacy: data.privacy, host_message: data.host_message, joined_users: data.joined_users, current_summary: "", difficulty: data.difficulty };
+      const newRoom: Room = { id: data.id, scenario_id: data.scenario_id, scenario: scenario, host_name: data.host_name, host_id: data.host_id, status: data.status, scenes: data.scenes, privacy: data.privacy, host_message: data.host_message, joined_users: data.joined_users, current_summary: "", difficulty: data.difficulty, rule: data.rule };
       const hostChar = scenario.presetCharacters.find(c => c.id === charId);
       if (hostChar) {
         await supabase.from('ai_memory').delete().eq('room_id', newRoom.id);
@@ -956,19 +1011,58 @@ ${roleInstruction}`;
     await callAIGM(context, chatTab);
   };
 
-  const rollDice = async (targetValue: number, label: string, is1d100: boolean) => {
+  // ★ ダイス計算をルールに応じて分岐させる処理
+  const rollDice = async (targetValue: number, label: string, is1d100: boolean = false) => {
     if(!myScene || !activeRoom || isLoading || !joinedCharacter) return;
     let res = 0; let isSuccess = false; let msgText = "";
 
-    if (is1d100) {
-      res = Math.floor(Math.random() * 100) + 1;
-      isSuccess = res <= targetValue;
-      msgText = `🎲 ${label} (1d100 ≦ ${targetValue}%) ➔ 出目: ${res} 【${isSuccess ? "成功" : "失敗"}】`;
+    const rule = activeRoom.rule || "coc_jp";
+
+    if (rule === "dnd") {
+      res = Math.floor(Math.random() * 20) + 1;
+      const modifier = Math.floor((targetValue - 10) / 2) || 0;
+      const total = res + modifier;
+      const dc = 12; // 簡易DC
+      isSuccess = total >= dc;
+      if (res === 20) isSuccess = true;
+      if (res === 1) isSuccess = false;
+      const modStr = modifier >= 0 ? `+${modifier}` : `${modifier}`;
+      msgText = `🎲 ${label}判定 (1d20${modStr}) ➔ 出目: ${res} (計: ${total}) vs DC${dc} 【${isSuccess ? "成功" : "失敗"}】`;
+      if (res === 20) msgText += " ✨クリティカル！";
+      if (res === 1) msgText += " 💀ファンブル！";
+    } else if (rule === "sw25") {
+      const d1 = Math.floor(Math.random() * 6) + 1;
+      const d2 = Math.floor(Math.random() * 6) + 1;
+      res = d1 + d2;
+      const bonus = Math.floor(targetValue / 6) || 0; // 簡易ボーナス
+      const total = res + bonus;
+      const target = 10;
+      isSuccess = total >= target;
+      if (res === 12) isSuccess = true;
+      if (res === 2) isSuccess = false;
+      const bonusStr = bonus >= 0 ? `+${bonus}` : `${bonus}`;
+      msgText = `🎲 ${label}判定 (2d6${bonusStr}) ➔ 出目: ${res}[${d1},${d2}] (計: ${total}) vs 目標${target} 【${isSuccess ? "成功" : "失敗"}】`;
+      if (res === 12) msgText += " ✨クリティカル！";
+      if (res === 2) msgText += " 💀ファンブル！";
+    } else if (rule === "storytelling") {
+      res = Math.floor(Math.random() * 6) + 1;
+      isSuccess = res >= 4;
+      msgText = `🎲 ${label}判定 (1d6) ➔ 出目: ${res} 【${isSuccess ? "成功" : "失敗"}】`;
+      if (res === 6) msgText += " ✨奇跡の転機！";
     } else {
-      const d1 = Math.floor(Math.random() * 6) + 1; const d2 = Math.floor(Math.random() * 6) + 1; const d3 = Math.floor(Math.random() * 6) + 1;
-      res = d1 + d2 + d3;
-      isSuccess = res <= targetValue;
-      msgText = `🎲 ${label} (3d6 ≦ ${targetValue}) ➔ 出目: ${res} [${d1},${d2},${d3}] 【${isSuccess ? "成功" : "失敗"}】`;
+      // coc_en, coc_jp
+      if (is1d100) {
+        res = Math.floor(Math.random() * 100) + 1;
+        isSuccess = res <= targetValue;
+        msgText = `🎲 ${label} (1d100 ≦ ${targetValue}%) ➔ 出目: ${res} 【${isSuccess ? "成功" : "失敗"}】`;
+        if (rule === "coc_en" && res === 1) msgText += " ✨クリティカル！";
+        if (rule === "coc_en" && res >= 96) msgText += " 💀ファンブル！";
+      } else {
+        const d1 = Math.floor(Math.random() * 6) + 1; const d2 = Math.floor(Math.random() * 6) + 1; const d3 = Math.floor(Math.random() * 6) + 1;
+        res = d1 + d2 + d3;
+        isSuccess = res <= targetValue;
+        msgText = `🎲 ${label} (3d6 ≦ ${targetValue}) ➔ 出目: ${res} [${d1},${d2},${d3}] 【${isSuccess ? "成功" : "失敗"}】`;
+      }
     }
 
     const isRecruiting = activeRoom.status === 'recruiting';
@@ -983,7 +1077,7 @@ ${roleInstruction}`;
         } else if (chatTab === "consult") {
             promptSuffix = "この結果を踏まえて、AI相棒としてリアクションを返してください。";
         }
-        await callAIGM(`【システム判定結果】${joinedCharacter.name}が${label}ロールを行いました。\n結果: ${msgText}\n${promptSuffix}`, chatTab);
+        await callAIGM(`【システム判定結果】${joinedCharacter.name}が${label}ロールを行いました。\n結果: ${msgText}\n${promptSuffix}`, chatTab, false);
     }
   };
 
@@ -1434,7 +1528,18 @@ ${promptText}
                 </select>
               </div>
 
-              {/* ★ 難易度選択UI */}
+              {/* ★ ゲームルールの選択UI */}
+              <div>
+                <label className="text-xs text-slate-400 block mb-1">ゲームルール（システム）</label>
+                <select value={roomConfigModal.rule} onChange={(e) => setRoomConfigModal({...roomConfigModal, rule: e.target.value as any})} className="w-full bg-slate-900 border border-slate-700 rounded p-2 text-sm text-white">
+                  <option value="coc_jp">🟩 日本クトゥルフ風（ドラマ・探索重視 / 1d100）</option>
+                  <option value="coc_en">🟦 海外クトゥルフ風（シビア・ホラー / 1d100）</option>
+                  <option value="dnd">🟥 D&D風（ヒロイック・ファンタジー / 1d20）</option>
+                  <option value="sw25">🟨 ソードワールド風（明るい冒険 / 2d6）</option>
+                  <option value="storytelling">🟪 ストーリーテリング（文学的・演出重視 / 1d6）</option>
+                </select>
+              </div>
+
               <div>
                 <label className="text-xs text-slate-400 block mb-1">難易度</label>
                 <select value={roomConfigModal.difficulty} onChange={(e) => setRoomConfigModal({...roomConfigModal, difficulty: e.target.value as any})} className="w-full bg-slate-900 border border-slate-700 rounded p-2 text-sm text-white">

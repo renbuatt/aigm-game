@@ -1,5 +1,5 @@
 import React from "react";
-import { ViewState, UserProfile, Room, Scenario, RoomDifficulty } from "../../types";
+import { ViewState, UserProfile, Room, Scenario, RoomDifficulty, GameRule } from "../../types";
 
 const NO_IMAGE_SCENARIO = "https://images.unsplash.com/photo-1614729939124-03290b5609ce?auto=format&fit=crop&w=400&q=80";
 
@@ -20,8 +20,8 @@ type Props = {
   setCurrentView: React.Dispatch<React.SetStateAction<ViewState>>;
   createdScenarios: Scenario[];
   deleteScenario: (id: string) => Promise<void>;
-  // ★ difficulty を追加
-  setRoomConfigModal: React.Dispatch<React.SetStateAction<{ scenario: Scenario, charId: string, privacy: 'open'|'secret', message: string, difficulty: RoomDifficulty } | null>>;
+  // ★ rule を追加
+  setRoomConfigModal: React.Dispatch<React.SetStateAction<{ scenario: Scenario, charId: string, privacy: 'open'|'secret', message: string, difficulty: RoomDifficulty, rule: GameRule } | null>>;
   fetchAdminData: () => Promise<void>;
 };
 
@@ -105,9 +105,12 @@ export default function LobbyView({
                       <span className="text-amber-400 font-bold ml-2">
                         ⭐ {room.scenario?.ratingCount ? (room.scenario.ratingSum / room.scenario.ratingCount).toFixed(1) : "未評価"}
                       </span>
-                      {/* ★ 難易度バッジを表示 */}
                       <span className={`px-1.5 py-0.5 rounded text-white ${room.difficulty === 'easy' ? 'bg-green-600' : room.difficulty === 'normal' ? 'bg-blue-600' : room.difficulty === 'hard' ? 'bg-orange-600' : room.difficulty === 'pro' ? 'bg-red-600' : 'bg-purple-600'}`}>
                         {room.difficulty === 'easy' ? '🟩 簡単' : room.difficulty === 'normal' ? '🟦 普通' : room.difficulty === 'hard' ? '🟧 難しい' : room.difficulty === 'pro' ? '🟥 プロ' : '🟪 鬼'}
+                      </span>
+                      {/* ★ ルールバッジを表示 */}
+                      <span className="px-1.5 py-0.5 rounded text-white bg-slate-700 border border-slate-500">
+                        {room.rule === 'dnd' ? '🟥 D&D' : room.rule === 'coc_en' ? '🟦 CoC海外版' : room.rule === 'sw25' ? '🟨 SW2.5' : room.rule === 'storytelling' ? '🟪 ストテリ' : '🟩 CoC日本卓'}
                       </span>
                     </div>
                     {room.host_message && <p className="text-xs text-slate-300 italic mb-2">「{room.host_message}」</p>}
@@ -181,7 +184,7 @@ export default function LobbyView({
                         </div>
                       </div>
                       {!s.isBanned && (
-                        <button onClick={() => setRoomConfigModal({ scenario: s, charId: "", privacy: "open", message: "", difficulty: "normal" })} className="w-full bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold py-2 rounded mt-2 shadow">
+                        <button onClick={() => setRoomConfigModal({ scenario: s, charId: "", privacy: "open", message: "", difficulty: "normal", rule: "coc_jp" })} className="w-full bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold py-2 rounded mt-2 shadow">
                           部屋を立てる
                         </button>
                       )}

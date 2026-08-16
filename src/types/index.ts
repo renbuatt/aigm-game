@@ -1,6 +1,7 @@
 export type ViewState = "login" | "lobby" | "game" | "evaluation" | "admin" | "banned" | "maintenance" | "scenarioEdit" | "mypage";
 
-export type RoomDifficulty = "easy" | "normal" | "hard" | "pro" | "oni"; // ★ 追加
+export type RoomDifficulty = "easy" | "normal" | "hard" | "pro" | "oni";
+export type GameRule = "dnd" | "coc_en" | "coc_jp" | "sw25" | "storytelling"; // ★ ルール追加
 
 export type UserProfile = {
   id: string;
@@ -76,7 +77,8 @@ export type Room = {
   host_message: string;
   joined_users: Record<string, string>;
   current_summary?: string;
-  difficulty: RoomDifficulty; // ★ 追加
+  difficulty: RoomDifficulty;
+  rule: GameRule; // ★ 追加
 };
 
 export type Message = {
