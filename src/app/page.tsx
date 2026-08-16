@@ -5,7 +5,7 @@ import { supabase } from "../lib/supabase";
 import { generateAIResponse, generateAITextWithPrompt } from "../lib/ai";
 import { 
   ViewState, UserProfile, Notification, BanAppeal, Report, 
-  Character, Scenario, Scene, Room, Message, ChatTab, PlayArchive // ★ 追加
+  Character, Scenario, Scene, Room, Message, ChatTab, PlayArchive 
 } from "../types";
 
 import LoginView from "../components/views/LoginView";
@@ -16,7 +16,6 @@ import AdminView from "../components/views/AdminView";
 import ScenarioEditView from "../components/views/ScenarioEditView";
 import LobbyView from "../components/views/LobbyView";
 import GameView from "../components/views/GameView";
-// ★ マイページ用のビューをインポート
 import MyPageView from "../components/views/MyPageView";
 
 const NO_IMAGE_SCENARIO = "https://images.unsplash.com/photo-1614729939124-03290b5609ce?auto=format&fit=crop&w=400&q=80";
@@ -66,7 +65,6 @@ export default function Home() {
   const [myNotifications, setMyNotifications] = useState<Notification[]>([]);
   const [showMailbox, setShowMailbox] = useState(false);
   
-  // ★ 書庫データを格納するステート
   const [playArchives, setPlayArchives] = useState<PlayArchive[]>([]);
 
   const [warningModalUser, setWarningModalUser] = useState<UserProfile | null>(null);
@@ -248,7 +246,6 @@ export default function Home() {
     setCurrentUser(profileData);
     await fetchNotifications(userId);
 
-    // ★ マイページの書庫データも取得する
     const { data: archiveData } = await supabase.from('play_archives').select('*').eq('user_id', userId).order('created_at', { ascending: false });
     if (archiveData) {
       setPlayArchives(archiveData.map((d: any) => ({
@@ -600,11 +597,14 @@ export default function Home() {
       let roleInstruction = "";
       let scenarioPlotText = activeRoom.scenario?.plot || "";
 
+      // ★ プロンプトにダイスの厳格解釈指示を追加しました
       if (targetTab === "story") {
         roleInstruction = `
 【重要：GMの絶対ルール（行動判定とゲーム性の担保）】
 1. PLたちが明確な「行動宣言」を出した時のみ物語を進行させてください。
 2. リスクや不確実性を伴う行動には必ずダイスロールを要求し、結果が出るまで描写を待機してください。
+   【ダイス要求の厳守事項】
+   プロット内に「(1d100)」「→1d100」などのダイス指示がある場合は、文脈に合わせて必ずPLにダイス判定（ロール）を要求してください。また「3d50」のようなTRPGの基本ルールから外れた謎のダイス指示があった場合は、すべて「1d100」として解釈・統一して要求してください。
 3. 【行動のヒント禁止】PLに具体的な行動の例や選択肢を絶対に提示しないでください。PL自身に考えさせてください。
 4. 【ダイスの自己処理禁止】GM自身がダイスを振ったり、PLのSAN値やステータスを勝手に推測・仮定してはいけません。必ずプロンプトに記載された【人間PL】の正確な数値を使用し、PLが画面のダイスボタンを振って結果が送信されるのを待機してください。
 5. 【安易な成功・AIの忖度厳禁】PLの行動が論理的に不自然であったり、シナリオの解決条件を正確に満たしていない場合は、絶対に成功させてはいけません。「ただ投げつけただけ」「間違ったアイテムを使った」などの甘いプレイには、容赦なく「効果がなかった」「状況が悪化した」として厳しく処理してください。
@@ -901,7 +901,6 @@ ${roleInstruction}`;
     }
   };
 
-  // ★ 欠落していた generateSceneImage を追加
   const generateSceneImage = async (promptText: string) => {
     if (!activeRoom || !myScene) return;
     try {
@@ -949,7 +948,6 @@ ${promptText}
     }
   };
 
-  // ★ PDF生成機能の共通化
   const executeExport = async (title: string, sourceMessages: Message[], type: 'chat' | 'summary' | 'novel', selectedImages?: string[]) => {
     const printWindow = window.open('', '_blank');
     if (!printWindow) {
@@ -1033,7 +1031,6 @@ ${promptText}
     printWindow.document.close();
   };
 
-  // ★ リザルト画面用のラッパー
   const exportToPDF = async (type: 'chat' | 'summary' | 'novel', selectedImages?: string[]) => {
     if (!activeRoom) return;
     const endIndex = messages.findIndex(m => m.text.includes('[SCENARIO_END]'));
@@ -1041,7 +1038,6 @@ ${promptText}
     await executeExport(activeRoom.scenario?.title || "名称未設定", baseMessages, type, selectedImages);
   };
 
-  // ★ プレイ書庫に保存する処理
   const saveToArchive = async () => {
     if (!currentUser || !activeRoom || !joinedCharacter) return;
     
@@ -1083,7 +1079,6 @@ ${promptText}
   return (
     <main className="h-screen w-full bg-slate-900 text-slate-100 flex flex-col font-sans overflow-hidden">
       
-      {/* マイページ（プレイ書庫） */}
       {currentView === "mypage" && currentUser && (
         <MyPageView 
           currentUser={currentUser}
@@ -1094,7 +1089,6 @@ ${promptText}
         />
       )}
 
-      {/* 画面群 */}
       {currentView === "admin" && currentUser?.isAdmin && (
         <AdminView 
           isMaintenance={isMaintenance}
@@ -1221,11 +1215,10 @@ ${promptText}
           submitEvaluation={submitEvaluation}
           exportToPDF={exportToPDF}
           isExporting={isExporting}
-          saveToArchive={saveToArchive} // ★ 追加
+          saveToArchive={saveToArchive} 
         />
       )}
 
-      {/* 以下省略なしでそのまま（各種モーダル） */}
       {reportTarget && (
         <div className="fixed inset-0 bg-black/80 z-[60] flex items-center justify-center p-4">
           <div className="bg-slate-800 border border-red-700/50 rounded-xl p-6 w-full max-w-lg shadow-2xl">

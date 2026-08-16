@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import { ViewState, UserProfile, Room, Character, Scene, Message, ChatTab } from "../../types";
 
 type Props = {
@@ -57,12 +57,21 @@ export default function GameView({
   const isRecruiting = activeRoom.status === 'recruiting';
   const isHost = currentUser?.id === activeRoom.host_id || currentUser?.handleName === activeRoom.host_name;
 
-  // 生成された画像の数をカウント (1セッション3回まで)
   const imageCount = messages.filter(m => m.type === 'image').length;
   
   const [showImagePromptModal, setShowImagePromptModal] = useState(false);
   const [imagePromptText, setImagePromptText] = useState("");
   const [isGeneratingImg, setIsGeneratingImg] = useState(false);
+
+  // ★ チャットコンテナの参照（自動スクロール用）
+  const chatContainerRef = useRef<HTMLDivElement>(null);
+
+  // ★ メッセージが追加された時、またはタブが切り替わった時に一番下まで自動スクロールする
+  useEffect(() => {
+    if (chatContainerRef.current) {
+      chatContainerRef.current.scrollTop = chatContainerRef.current.scrollHeight;
+    }
+  }, [messages, chatTab]);
 
   const handleGenerateImage = async () => {
     if (!imagePromptText.trim() || imageCount >= 3) return;
@@ -76,7 +85,6 @@ export default function GameView({
   return (
     <div className="flex-1 flex flex-col max-w-5xl mx-auto w-full p-4 min-h-0 relative">
       
-      {/* チーム分け設定モーダル（ホスト専用） */}
       {activeRoom.status === 'splitting' && isHost && (
         <div className="absolute inset-0 bg-black/80 z-50 flex items-center justify-center p-4">
           <div className="bg-slate-800 border border-blue-500/50 rounded-xl p-6 w-full max-w-lg shadow-2xl space-y-4">
@@ -123,7 +131,6 @@ export default function GameView({
         </div>
       )}
 
-      {/* チーム分け待機画面（ゲスト用） */}
       {activeRoom.status === 'splitting' && !isHost && (
         <div className="absolute inset-0 bg-black/80 z-40 flex items-center justify-center p-4">
           <div className="bg-slate-800 border border-slate-700 rounded-xl p-6 w-full max-w-md shadow-2xl text-center">
@@ -142,7 +149,6 @@ export default function GameView({
         </div>
       )}
 
-      {/* 情景画像生成モーダル（ホスト専用） */}
       {showImagePromptModal && (
         <div className="absolute inset-0 bg-black/80 z-50 flex items-center justify-center p-4">
           <div className="bg-slate-800 border border-purple-500/50 rounded-xl p-6 w-full max-w-lg shadow-2xl">
@@ -199,6 +205,10 @@ export default function GameView({
         <div className="flex flex-wrap items-center gap-2 justify-end max-w-md">
           {joinedCharacter && (
             <>
+              {/* ★ HP表示を追加 */}
+              <div className="bg-red-900/80 text-red-200 border border-red-500/50 text-[10px] px-2 py-1.5 rounded font-bold shadow-lg flex items-center gap-1">
+                ❤️ HP:{joinedCharacter.hp}
+              </div>
               <button onClick={() => rollDice(joinedCharacter.san, "SAN", true)} className="bg-cyan-700 hover:bg-cyan-600 text-white text-[10px] px-2 py-1.5 rounded font-bold shadow-lg">🎲 SAN({joinedCharacter.san}%)</button>
               <button onClick={() => rollDice(joinedCharacter.str, "STR", false)} className="bg-red-700 hover:bg-red-600 text-white text-[10px] px-2 py-1.5 rounded font-bold shadow-lg">🎲 STR({joinedCharacter.str})</button>
               <button onClick={() => rollDice(joinedCharacter.dex, "DEX", false)} className="bg-green-700 hover:bg-green-600 text-white text-[10px] px-2 py-1.5 rounded font-bold shadow-lg">🎲 DEX({joinedCharacter.dex})</button>
@@ -211,7 +221,6 @@ export default function GameView({
             <button onClick={startGame} className="bg-emerald-600 hover:bg-emerald-500 text-white text-[10px] font-bold px-4 py-2 rounded animate-pulse ml-2 shadow-lg shadow-emerald-900/50">▶ ゲーム開始</button>
           )}
 
-          {/* ★ ここのボタンが消えていたので復活させました！ */}
           {isHost && activeRoom.status === "playing" && !isScenarioEnded && (
              <>
                {imageCount < 3 && (
@@ -227,7 +236,8 @@ export default function GameView({
         </div>
       </header>
 
-      <div className="flex-1 overflow-y-scroll space-y-3 p-4 bg-slate-800/80 rounded-xl border border-slate-700 mb-3 min-h-0">
+      {/* ★ chatContainerRef を付与して自動スクロールできるように対応 */}
+      <div ref={chatContainerRef} className="flex-1 overflow-y-scroll space-y-3 p-4 bg-slate-800/80 rounded-xl border border-slate-700 mb-3 min-h-0 custom-scrollbar">
         {messages.filter((msg: Message) => {
           if (msg.type === "system" || msg.type === "image") return true;
           if (!isSplitMode) return msg.channel === chatTab;
