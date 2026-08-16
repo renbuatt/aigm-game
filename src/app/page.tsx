@@ -178,11 +178,6 @@ export default function Home() {
     }
   }, [activeRoom?.scenes, activeRoom?.status, activeRoom?.host_id, currentUser?.id, isSplitMode]);
 
-  const handleTabClick = (tab: ChatTab) => {
-    setChatTab(tab);
-    setUnreadIndicators(prev => ({ ...prev, [tab]: false }));
-  };
-
   const fetchData = async () => {
     const { data: scData } = await supabase.from('scenarios').select('*').order('id', { ascending: false });
     let loadedScenarios: Scenario[] = [];
@@ -354,9 +349,12 @@ export default function Home() {
 
   const triggerAutoAction = async () => {
     if (!activeRoom || activeRoom.is_paused || activeRoom.status !== 'playing' || isScenarioEnded) return;
-    const extraUserContext = `【システムコマンド：タイムアウト自動行動】
-最後の行動から5分間、PLからの入力がありませんでした。
-物語を停滞させないため、現在AFKではないキャラクター（およびAI相棒）の行動をAI GMが自動で決定・描写し、事態を強制的に前進させてください。必要であればダイスロール結果もAI自身が捏造して構いません。`;
+    const extraUserContext = [
+      "【システムコマンド：タイムアウト自動行動】",
+      "最後の行動から5分間、PLからの入力がありませんでした。",
+      "物語の進行を促すため、現在AFKではないキャラクター（およびAI相棒）の行動をAI GMが自動で決定・描写し、事態を強制的に前進させてください。",
+      "必要であればダイスロール結果もAI自身が捏造して構いません。"
+    ].join('\n');
     await callAIGM(extraUserContext, "story");
   };
 
@@ -544,16 +542,18 @@ export default function Home() {
       const recentLogs = memoryData?.reverse().map(m => `${m.role === 'user' ? 'PL' : 'GM'}: ${m.content}`).join('\n') || "";
       const chars = activeRoom.scenario?.presetCharacters.filter(c => Object.values(activeRoom.joined_users || {}).includes(c.id)).map(c => `{"id": "${c.id}", "name": "${c.name}"}`).join(", ") || "";
 
-      const prompt = `あなたはTRPGのシステムAIです。以下の「現在参加しているキャラクター」と「直近のチャットログ」を分析し、物語の展開上、最も自然な【チーム分け（2つ以上のグループへの分割）の構成案】を作成してください。
-【参加キャラクター】
-[${chars}]
-
-【直近のログ】
-${recentLogs}
-
-【出力形式（絶対遵守）】
-必ず以下のJSONフォーマットのみを出力してください。余計な文章やマークダウン記号は一切含めないでください。
-{"teams": [{"action": "目的A（例：2階を探索する）", "members": ["キャラID1", "キャラID2"]}, {"action": "目的B", "members": ["キャラID3"]}]}`;
+      const prompt = [
+        "あなたはTRPGのシステムAIです。以下の「現在参加しているキャラクター」と「直近のチャットログ」を分析し、物語の展開上、最も自然な【チーム分け（2つ以上のグループへの分割）の構成案】を作成してください。",
+        "【参加キャラクター】",
+        chars,
+        "",
+        "【直近のログ】",
+        recentLogs,
+        "",
+        "【出力形式（絶対遵守）】",
+        "必ず以下のJSONフォーマットのみを出力してください。余計な文章やマークダウン記号は一切含めないでください。",
+        '{"teams": [{"action": "目的A（例：2階を探索する）", "members": ["キャラID1", "キャラID2"]}, {"action": "目的B", "members": ["キャラID3"]}]}'
+      ].join('\n');
       
       const aiResponse = await generateAITextWithPrompt(prompt);
       const jsonStr = aiResponse.replace(/```json/g, "").replace(/```/g, "").trim();
@@ -631,7 +631,10 @@ ${recentLogs}
 
     await pushMessage(activeRoom.id, { sender: "gm", text: `【システム】全チームが合流しました！`, type: "system", sceneId: 'scene_main', channel: "system" });
     
-    const extraUserContext = `【システムコマンド】全チームの別行動が終了し、一箇所に合流しました。これまでの各チームの報告を踏まえ、合流時の情景描写と今後の展開を提示してください。`;
+    const extraUserContext = [
+      "【システムコマンド】全チームの別行動が終了し、一箇所に合流しました。",
+      "これまでの各チームの報告を踏まえ、合流時の情景描写と今後の展開を提示してください。"
+    ].join('\n');
     await callAIGM(extraUserContext, "story");
   };
 
@@ -658,16 +661,18 @@ ${recentLogs}
         const recentLogs = currentMemory.slice(-10);
         
         const logText = logsToCompress.map(m => `${m.role === 'user' ? 'PL' : 'GM'}: ${m.content}`).join('\n');
-        const compressionPrompt = `あなたはTRPGの優秀な記録係です。以下の「現在のあらすじ」と「追加のチャットログ」を統合し、AI GMが今後の展開を処理するための【詳細な最新のあらすじ】を作成してください。
-【絶対条件】
-・重要な出来事、NPCとの会話結果、得たアイテムやヒント、PLの目的は絶対に漏らさないこと。
-・システムやダイスの結果等のメタな情報は省略し、物語の進行を中心にまとめること。
-
-【現在のあらすじ】
-${currentSummary || "なし（最初の要約です）"}
-
-【追加のチャットログ】
-${logText}`;
+        const compressionPrompt = [
+          "あなたはTRPGの優秀な記録係です。以下の「現在のあらすじ」と「追加のチャットログ」を統合し、AI GMが今後の展開を処理するための【詳細な最新のあらすじ】を作成してください。",
+          "【絶対条件】",
+          "・重要な出来事、NPCとの会話結果、得たアイテムやヒント、PLの目的は絶対に漏らさないこと。",
+          "・システムやダイスの結果等のメタな情報は省略し、物語の進行を中心にまとめること。",
+          "",
+          "【現在のあらすじ】",
+          currentSummary || "なし（最初の要約です）",
+          "",
+          "【追加のチャットログ】",
+          logText
+        ].join('\n');
         
         try {
           currentSummary = await generateAITextWithPrompt(compressionPrompt);
@@ -701,11 +706,29 @@ ${logText}`;
         const cId = activeRoom.joined_users?.[uid];
         return activeRoom.scenario?.presetCharacters.find(c => c.id === cId)?.name;
       }).filter(Boolean).join(", ");
-      const afkInstruction = afkNames ? `\n【AFK（離席中）のプレイヤー】\n${afkNames}\n※このプレイヤーは現在離席中なので、行動を促したり意見を求めたりしないでください。` : "";
+      
+      const afkInstructionLines = [];
+      if (afkNames) {
+        afkInstructionLines.push(
+          "",
+          "【AFK（離席中）のプレイヤー】",
+          afkNames,
+          "※このプレイヤーは現在離席中なので、行動を促したり意見を求めたりしないでください。"
+        );
+      }
+      const afkInstruction = afkInstructionLines.join('\n');
 
-      const inventoryText = activeRoom.show_items ? `\n【所持アイテム】\n${activeRoom.inventories?.[joinedCharacter.id] || "特になし"}\n` : "";
+      const inventoryTextLines = [];
+      if (activeRoom.show_items) {
+        inventoryTextLines.push(
+          "",
+          "【所持アイテム】",
+          activeRoom.inventories?.[joinedCharacter.id] || "特になし",
+          ""
+        );
+      }
+      const inventoryText = inventoryTextLines.join('\n');
 
-      let roleInstruction = "";
       let scenarioPlotText = activeRoom.scenario?.plot || "";
 
       let difficultyInstruction = "";
@@ -732,131 +755,183 @@ ${logText}`;
           difficultyInstruction = "【難易度：普通（標準GM）】成功と失敗のバランスを取り、敵の強さも標準的にしてください。起承転結が綺麗にまとまる一般的なTRPGの難易度で進行してください。";
       }
 
-      let ruleSpec = "";
-      let gmStyle = "";
+      let ruleSpecLines = [];
+      let gmStyleLines = [];
 
       switch (activeRoom.rule) {
         case 'dnd':
-          ruleSpec = `【ルール仕様：D&D（ヒロイック・ファンタジー）】
-- 判定：1d20＋能力値修正＋習熟ボーナス ≥ DC。DCは10〜15が中心（成功しやすい）。クリティカル20→派手な奇跡、ファンブル1→コミカルな失敗。
-- 戦闘：アクション映画のように派手。跳躍・斬撃・吹き飛ばし・環境利用。仲間との連携を必ず描写。3〜5ラウンドで決着するテンポ。
-- 描写：英雄的・爽快。勇気・覚悟・仲間の絆。成功時は光や音の演出。失敗しても前向きに進む。`;
-          gmStyle = `【GMの振る舞い：アクション映画の監督型GM】
-テンポ良く派手に爽快に。戦闘は積極的に挟む。プレイヤーをヒーローとして扱い、問題は解決できる方向へ誘導する。行き詰まりを避けるためにヒントを出す。戦闘→探索→戦闘→決戦の黄金パターン。HPは死ににくいように調整。`;
+          ruleSpecLines = [
+            "【ルール仕様：D&D（ヒロイック・ファンタジー）】",
+            "- 判定：1d20＋能力値修正＋習熟ボーナス ≥ DC。DCは10〜15が中心（成功しやすい）。クリティカル20→派手な奇跡、ファンブル1→コミカルな失敗。",
+            "- 戦闘：アクション映画のように派手。跳躍・斬撃・吹き飛ばし・環境利用。仲間との連携を必ず描写。3〜5ラウンドで決着するテンポ。",
+            "- 描写：英雄的・爽快。勇気・覚悟・仲間の絆。成功時は光や音の演出。失敗しても前向きに進む。"
+          ];
+          gmStyleLines = [
+            "【GMの振る舞い：アクション映画の監督型GM】",
+            "テンポ良く派手に爽快に。戦闘は積極的に挟む。プレイヤーをヒーローとして扱い、問題は解決できる方向へ誘導する。行き詰まりを避けるためにヒントを出す。戦闘→探索→戦闘→決戦の黄金パターン。HPは死ににくいように調整。"
+          ];
           break;
         case 'coc_en':
-          ruleSpec = `【ルール仕様：海外クトゥルフ（CoC 7版ベース）】
-- 判定：1d100 ≤ 技能値。成功しにくい。ハード／イクストリーム成功を厳密に扱う。クリティカル01→静かな奇跡、ファンブル96〜100→致命的失敗。
-- 戦闘：危険で短い。一撃で致命傷。銃声・血・暗闇の質感。逃走を常に選択肢として提示。
-- 描写：静かな恐怖。心臓の鼓動・息遣い・暗闇の質感。成功しても安心できない。余韻が不気味。`;
-          gmStyle = `【GMの振る舞い：静かな恐怖を積み上げる語り部型KP】
-静か・淡々・不気味。戦闘は少なく危険。プレイヤーは脆い人間として扱う。情報は断片的に。調査→不安→真相→絶望の流れ。成功しても安心させない。技能成功率は厳しめ、SAN減少は物語の恐怖に合わせて。ファンブルは状況悪化。`;
+          ruleSpecLines = [
+            "【ルール仕様：海外クトゥルフ（CoC 7版ベース）】",
+            "- 判定：1d100 ≤ 技能値。成功しにくい。ハード／イクストリーム成功を厳密に扱う。クリティカル01→静かな奇跡、ファンブル96〜100→致命的失敗。",
+            "- 戦闘：危険で短い。一撃で致命傷。銃声・血・暗闇の質感。逃走を常に選択肢として提示。",
+            "- 描写：静かな恐怖。心臓の鼓動・息遣い・暗闇の質感。成功しても安心できない。余韻が不気味。"
+          ];
+          gmStyleLines = [
+            "【GMの振る舞い：静かな恐怖を積み上げる語り部型KP】",
+            "静か・淡々・不気味。戦闘は少なく危険。プレイヤーは脆い人間として扱う。情報は断片的に。調査→不安→真相→絶望の流れ。成功しても安心させない。技能成功率は厳しめ、SAN減少は物語の恐怖に合わせて。ファンブルは状況悪化。"
+          ];
           break;
         case 'sw25':
-          ruleSpec = `【ルール仕様：ソードワールド（SW2.5ベース）】
-- 判定：2d6＋ボーナス ≥ 目標値。成功しやすい。クリティカル12→爽快な大成功、ファンブル2→軽い失敗（コメディ寄り）。
-- 戦闘：テンポ重視。パーティ連携。明るい雰囲気。3ラウンド以内で決着。
-- 描写：明るい冒険。掛け合い・笑い。世界の広さや旅の楽しさ。仲間との連携が多い。`;
-          gmStyle = `【GMの振る舞い：陽気な冒険案内人型GM】
-明るい・軽快・楽しい。戦闘はテンポ良く。プレイヤーは冒険者として扱う。探索→戦闘→宝物→次の街。掛け合い・笑いを多めに、世界の広さを感じさせる。目標値は成功しやすく、クリティカルは爽快に、ファンブルは軽い失敗に。`;
+          ruleSpecLines = [
+            "【ルール仕様：ソードワールド（SW2.5ベース）】",
+            "- 判定：2d6＋ボーナス ≥ 目標値。成功しやすい。クリティカル12→爽快な大成功、ファンブル2→軽い失敗（コメディ寄り）。",
+            "- 戦闘：テンポ重視。パーティ連携。明るい雰囲気。3ラウンド以内で決着。",
+            "- 描写：明るい冒険。掛け合い・笑い。世界の広さや旅の楽しさ。仲間との連携が多い。"
+          ];
+          gmStyleLines = [
+            "【GMの振る舞い：陽気な冒険案内人型GM】",
+            "明るい・軽快・楽しい。戦闘はテンポ良く。プレイヤーは冒険者として扱う。探索→戦闘→宝物→次の街。掛け合い・笑いを多めに、世界の広さを感じさせる。目標値は成功しやすく、クリティカルは爽快に、ファンブルは軽い失敗に。"
+          ];
           break;
         case 'storytelling':
-          ruleSpec = `【ルール仕様：ストーリーテリング系】
-- 判定：1d6（4以上成功）。判定は最小限。成功＝物語が前進、失敗＝内面の揺れ。クリティカル6→運命的な転機。
-- 戦闘：演出のみ。ダメージ計算は簡略化。戦闘は象徴的な出来事として扱う。
-- 描写：心情・テーマ・内面。詩的な比喩。余韻が長い。戦闘より意味を描く。`;
-          gmStyle = `【GMの振る舞い：文学的な語り手型GM】
-静か・繊細・内省的。戦闘は象徴的。プレイヤーは物語の主人公として扱う。心情→選択→葛藤→成長。テーマ性を重視し余韻を長く取る。判定は最小限。`;
+          ruleSpecLines = [
+            "【ルール仕様：ストーリーテリング系】",
+            "- 判定：1d6（4以上成功）。判定は最小限。成功＝物語が前進、失敗＝内面の揺れ。クリティカル6→運命的な転機。",
+            "- 戦闘：演出のみ。ダメージ計算は簡略化。戦闘は象徴的な出来事として扱う。",
+            "- 描写：心情・テーマ・内面。詩的な比喩。余韻が長い。戦闘より意味を描く。"
+          ];
+          gmStyleLines = [
+            "【GMの振る舞い：文学的な語り手型GM】",
+            "静か・繊細・内省的。戦闘は象徴的。プレイヤーは物語の主人公として扱う。心情→選択→葛藤→成長。テーマ性を重視し余韻を長く取る。判定は最小限。"
+          ];
           break;
         case 'coc_jp':
         default:
-          ruleSpec = `【ルール仕様：日本クトゥルフ（国内卓傾向）】
-- 判定：基本は1d100 ≤ 技能値。GM裁量で成功率を少し上げる。失敗は物語の転機として扱う。
-- 戦闘：少なめ。ダメージより心情。守りたい人・葛藤を描く。
-- 描写：感情のクライマックス。過去の因縁・関係性。恐怖よりドラマ。NPCとの会話が濃い。`;
-          gmStyle = `【GMの振る舞い：ドラマ脚本家型KP】
-感情・関係性・葛藤を重視。戦闘は少なめ。プレイヤーはドラマの主人公として扱う。会話シーンを多めにし、感情の揺れを描く。恐怖より人間関係の変化を重視。技能成功率は少し甘め、SAN減少はドラマ性に合わせる。失敗は物語の転機として扱う。`;
+          ruleSpecLines = [
+            "【ルール仕様：日本クトゥルフ（国内卓傾向）】",
+            "- 判定：基本は1d100 ≤ 技能値。GM裁量で成功率を少し上げる。失敗は物語の転機として扱う。",
+            "- 戦闘：少なめ。ダメージより心情。守りたい人・葛藤を描く。",
+            "- 描写：感情のクライマックス。過去の因縁・関係性。恐怖よりドラマ。NPCとの会話が濃い。"
+          ];
+          gmStyleLines = [
+            "【GMの振る舞い：ドラマ脚本家型KP】",
+            "感情・関係性・葛藤を重視。戦闘は少なめ。プレイヤーはドラマの主人公として扱う。会話シーンを多めにし、感情の揺れを描く。恐怖より人間関係の変化を重視。技能成功率は少し甘め、SAN減少はドラマ性に合わせる。失敗は物語の転機として扱う。"
+          ];
           break;
       }
 
+      const ruleSpec = ruleSpecLines.join('\n');
+      const gmStyle = gmStyleLines.join('\n');
+
       const diceBase = activeRoom.rule === 'dnd' ? '1d20' : activeRoom.rule === 'sw25' ? '2d6' : activeRoom.rule === 'storytelling' ? '1d6' : '1d100';
 
-      if (targetTab === "story") {
-        roleInstruction = `【重要：GMの絶対ルール（行動判定とゲーム性の担保）】
-1. PLたちが明確な「行動宣言」を出した時のみ物語を進行させてください。
-2. リスクや不確実性を伴う行動には必ずダイスロールを要求し、結果が出るまで描写を待機してください。
-   【ダイス要求の厳守事項】
-   本ルールの判定方式（${diceBase}）に従い、文脈に合わせて必ずPLにダイス判定（ロール）を要求してください。プロットやシステムから外れた謎のダイス指示があった場合は、すべて本ルールの基準ダイスとして解釈・統一して要求してください。
-3. 【行動のヒント禁止】PLに具体的な行動の例や選択肢を絶対に提示しないでください。PL自身に考えさせてください。（※難易度初心者の場合は除く）
-4. 【アイテムの所持制限】キャラクターの職業や事前の探索で論理的に入手していない都合の良いアイテム（例：ライター、武器、特殊な鍵、爆薬など）をPLが急に使用しようとした場合、四次元ポケットのようには扱わず、「〇〇は持っていません」と即座に却下・失敗扱いにしてください。
-5. 【ダイスの自己処理禁止】GM自身がダイスを振ったり、PLのSAN値やステータスを勝手に推測・仮定してはいけません。必ずプロンプトに記載された【人間PL】の正確な数値を使用し、PLが画面のダイスボタンを振って結果が送信されるのを待機してください。
-6. 【行動の促進とパス回し（ターン制と待機）】
-戦闘時に限らず、通常の探索や会話の場面であっても、1人のプレイヤーの行動やダイスだけで勝手に時間を進めたり、場面を切り替えたりしないでください。
-誰かが行動した後は、描写を一旦保留し、必ず「〇〇さんはそう動きました。では、△△さん（他の人間PL）はどうしますか？」と個別に名前を挙げて行動や意見を積極的に促してください。
-パーティー内で意見や行動が分かれる可能性を常に考慮し、全員の行動が出揃うまで結果の処理や情景の進行を待機してください。
-※この「どうしますか？」と行動を促す際、AI相棒は勝手に行動を宣言しなくて構いません（人間のPLたちの意思決定を最優先してください）。
-7. 【AI相棒の自律ダイスロール】
-全員行動の際、AI相棒のターンになったら、あなたが自律的にAI相棒の行動を宣言してください。
-判定が必要な場合は、あなた自身が結果をシミュレートし、出力内に必ず「🎲 [AI相棒の名前]の〇〇判定 ➔ 出目: X 【成功/失敗】」という形式で結果を明記して描写に組み込んでください。
-8. 【安易な成功・AIの忖度厳禁】PLの行動が論理的に不自然であったり、シナリオの解決条件を正確に満たしていない場合は、絶対に成功させてはいけません。「ただ投げつけただけ」「間違ったアイテムを使った」などの甘いプレイには、容赦なく「効果がなかった」「状況が悪化した」として厳しく処理してください。（※難易度初心者の場合は除く）
-9. 【ゲーム進行とペーシング（最重要）】
-本シナリオの想定プレイ時間は「約${activeRoom.scenario?.playTime || 60}分」です。この長さに応じて、以下のペーシングで物語を管理してください。
-・ショート〜中編（120分以下）：導入(20%) → 探索と試練(60%) → 結末(20%) の黄金比で進行してください。
-・長編（120分超）：単調な一本道にならないよう「起・承・転・結・(新たな)承・転・結」のように、途中で中ボス戦やフェイクの解決（一度解決したと思わせる）、急展開などを挟む【マルチアクト構造】を採用し、複数の山場を作ってください。
-・共通事項：PLの進行が早すぎる場合は、新たな障害やNPCとの深い対話、深掘りイベントを追加し、指定時間にふさわしいボリュームになるまで物語を引っ張ってください。あっさりと核心に到達させてはいけません。
-10. 【エピローグとエンディング（最重要）】
-目的を達成したからといって、いきなり [SCENARIO_END] を出力してゲームを終わらせないでください。
-目的達成後は必ず「【エピローグ】」と明記し、事後処理や仲間・NPCとの最後の会話、PLがどう過ごすかを行動宣言させるフェーズに入ってください。
-PLがエピローグでの行動を十分に終え、物語が完全に着地したと判断できたターンの最後にのみ [SCENARIO_END] を出力してください。
+      let roleInstructionLines = [];
 
-${activeRoom.is_trial ? `【お試しプレイ専用指示】
-このセッションは10分程度で終わる「導入のみ」のお試し版です。絶対に物語の核心や真相のネタバレをしないでください。最初の事件が起きた直後や、探索の入り口に立ったところで「本編に続く…」と煽りを入れて [SCENARIO_END] を出力してください。\n\n` : ""}
-${isSplitMode && myScene.id !== 'scene_main' ? `【チーム分割中の対応】現在、プレイヤー達は二手以上に分かれて行動しています。この発言は【${myScene.name}】チーム（メンバー: ${myScene.memberIds.map(id => activeRoom.scenario?.presetCharacters.find(c=>c.id===id)?.name).join(', ')}）のものです。
-あなたは他チームの状況を一切考慮せず、このチームが現在いる場所の描写のみを行ってください。別のチームを勝手に合流させないでください。` : `【ターンの概念と別行動の提案】
-1ターンは「行動の宣言」から「ダイスの判定」までとします。特定の誰かと一緒に行動したい場合はPLにそう宣言させてください。
-PLたちの意見がまとまらない場合や、探索箇所が複数ある場合は、GMから積極的に「では、〇〇チームと△△チームに分かれて行動しますか？」と別行動（チーム分け）を提案し、出力の最後に必ず "[SPLIT_PROPOSAL: 行動案A, 行動案B]" のシステムタグを出力してください。`}
-${afkInstruction}`;
+      if (targetTab === "story") {
+        roleInstructionLines = [
+          "【重要：GMの絶対ルール（行動判定とゲーム性の担保）】",
+          "1. PLたちが明確な「行動宣言」を出した時のみ物語を進行させてください。",
+          "2. リスクや不確実性を伴う行動には必ずダイスロールを要求し、結果が出るまで描写を待機してください。",
+          "   【ダイス要求の厳守事項】",
+          `   本ルールの判定方式（${diceBase}）に従い、文脈に合わせて必ずPLにダイス判定（ロール）を要求してください。プロットやシステムから外れた謎のダイス指示があった場合は、すべて本ルールの基準ダイスとして解釈・統一して要求してください。`,
+          "3. 【行動のヒント禁止】PLに具体的な行動の例や選択肢を絶対に提示しないでください。PL自身に考えさせてください。（※難易度初心者の場合は除く）",
+          "4. 【アイテムの所持制限】キャラクターの職業や事前の探索で論理的に入手していない都合の良いアイテム（例：ライター、武器、特殊な鍵、爆薬など）をPLが急に使用しようとした場合、四次元ポケットのようには扱わず、「〇〇は持っていません」と即座に却下・失敗扱いにしてください。",
+          "5. 【ダイスの自己処理禁止】GM自身がダイスを振ったり、PLのSAN値やステータスを勝手に推測・仮定してはいけません。必ずプロンプトに記載された【人間PL】の正確な数値を使用し、PLが画面のダイスボタンを振って結果が送信されるのを待機してください。",
+          "6. 【行動の促進とパス回し（ターン制と待機）】",
+          "戦闘時に限らず、通常の探索や会話の場面であっても、1人のプレイヤーの行動やダイスだけで勝手に時間を進めたり、場面を切り替えたりしないでください。",
+          "誰かが行動した後は、描写を一旦保留し、必ず「〇〇さんはそう動きました。では、△△さん（他の人間PL）はどうしますか？」と個別に名前を挙げて行動や意見を積極的に促してください。",
+          "パーティー内で意見や行動が分かれる可能性を常に考慮し、全員の行動が出揃うまで結果の処理や情景の進行を待機してください。",
+          "※この「どうしますか？」と行動を促す際、AI相棒は勝手に行動を宣言しなくて構いません（人間のPLたちの意思決定を最優先してください）。",
+          "7. 【AI相棒の自律ダイスロール】",
+          "全員行動の際、AI相棒のターンになったら、あなたが自律的にAI相棒の行動を宣言してください。",
+          "判定が必要な場合は、あなた自身が結果をシミュレートし、出力内に必ず「🎲 [AI相棒の名前]の〇〇判定 ➔ 出目: X 【成功/失敗】」という形式で結果を明記して描写に組み込んでください。",
+          "8. 【安易な成功・AIの忖度厳禁】PLの行動が論理的に不自然であったり、シナリオの解決条件を正確に満たしていない場合は、絶対に成功させてはいけません。「ただ投げつけただけ」「間違ったアイテムを使った」などの甘いプレイには、容赦なく「効果がなかった」「状況が悪化した」として厳しく処理してください。（※難易度初心者の場合は除く）",
+          "9. 【ゲーム進行とペーシング（最重要）】",
+          `本シナリオの想定プレイ時間は「約${activeRoom.scenario?.playTime || 60}分」です。この長さに応じて、以下のペーシングで物語を管理してください。`,
+          "・ショート〜中編（120分以下）：導入(20%) → 探索と試練(60%) → 結末(20%) の黄金比で進行してください。",
+          "・長編（120分超）：単調な一本道にならないよう「起・承・転・結・(新たな)承・転・結」のように、途中で中ボス戦やフェイクの解決（一度解決したと思わせる）、急展開などを挟む【マルチアクト構造】を採用し、複数の山場を作ってください。",
+          "・共通事項：PLの進行が早すぎる場合は、新たな障害やNPCとの深い対話、深掘りイベントを追加し、指定時間にふさわしいボリュームになるまで物語を引っ張ってください。あっさりと核心に到達させてはいけません。",
+          "10. 【エピローグとエンディング（最重要）】",
+          "目的を達成したからといって、いきなり [SCENARIO_END] を出力してゲームを終わらせないでください。",
+          "目的達成後は必ず「【エピローグ】」と明記し、事後処理や仲間・NPCとの最後の会話、PLがどう過ごすかを行動宣言させるフェーズに入ってください。",
+          "PLがエピローグでの行動を十分に終え、物語が完全に着地したと判断できたターンの最後にのみ [SCENARIO_END] を出力してください。",
+          ""
+        ];
+
+        if (activeRoom.is_trial) {
+          roleInstructionLines.push(
+            "【お試しプレイ専用指示】",
+            "このセッションは10分程度で終わる「導入のみ」のお試し版です。絶対に物語の核心や真相のネタバレをしないでください。最初の事件が起きた直後や、探索の入り口に立ったところで「本編に続く…」と煽りを入れて [SCENARIO_END] を出力してください。",
+            ""
+          );
+        }
+
+        if (isSplitMode && myScene.id !== 'scene_main') {
+          roleInstructionLines.push(
+            "【チーム分割中の対応】現在、プレイヤー達は二手以上に分かれて行動しています。この発言は【" + myScene.name + "】チーム（メンバー: " + myScene.memberIds.map(id => activeRoom.scenario?.presetCharacters.find(c=>c.id===id)?.name).join(', ') + "）のものです。",
+            "あなたは他チームの状況を一切考慮せず、このチームが現在いる場所の描写のみを行ってください。別のチームを勝手に合流させないでください。"
+          );
+        } else {
+          roleInstructionLines.push(
+            "【ターンの概念と別行動の提案】",
+            "1ターンは「行動の宣言」から「ダイスの判定」までとします。特定の誰かと一緒に行動したい場合はPLにそう宣言させてください。",
+            "PLたちの意見がまとまらない場合や、探索箇所が複数ある場合は、GMから積極的に「では、〇〇チームと△△チームに分かれて行動しますか？」と別行動（チーム分け）を提案し、出力の最後に必ず \"[SPLIT_PROPOSAL: 行動案A, 行動案B]\" のシステムタグを出力してください。"
+          );
+        }
+
+        roleInstructionLines.push(afkInstruction);
+
       } else if (targetTab === "consult") {
         scenarioPlotText = "【機密情報のため非公開（あなたはプレイヤーキャラクターなのでシナリオの真相や隠されたギミック、今後の展開を知りません。これまでのチャット履歴から推測して話してください）】";
-        roleInstruction = `【重要：AIプレイヤーとしての振る舞い（絶対厳守ルール）】
-1. 現在は「プレイヤー間の相談時間」です。あなたはGMやナレーターではなく、AI相棒（${aiPlayersList.map(c=>c.name).join(", ")}）の立場で人間PLに返答してください。
-2. 【メタ知識の禁止】あなたはシナリオの真相、ギミックの解法、敵の弱点などを一切知りません。「〇〇にあるはずだ！」「これをすればいいんだ！」といった進行のネタバレや、GM視点での誘導を絶対に行わないでください。
-3. 【描写・進行の禁止】情景描写を行ったり、「〜はどうしますか？行動を宣言してください」といったGMのようなゲーム進行・問いかけは絶対に行わないでください。純粋なキャラクターとしての会話（セリフとわずかな動作）のみを出力してください。
-4. 【恐怖と人間味】現在の状況に対して、あなたのキャラクター設定（性格）に基づいた自然なリアクション（怯える、焦る、励ます、悩むなど）を人間らしく返してください。
-${isSplitMode && myScene.id !== 'scene_main' ? `※現在別行動中です。同じチームにいるAI相棒だけが返答してください。` : ''}`;
+        roleInstructionLines = [
+          "【重要：AIプレイヤーとしての振る舞い（絶対厳守ルール）】",
+          `1. 現在は「プレイヤー間の相談時間」です。あなたはGMやナレーターではなく、AI相棒（${aiPlayersList.map(c=>c.name).join(", ")}）の立場で人間PLに返答してください。`,
+          "2. 【メタ知識の禁止】あなたはシナリオの真相、ギミックの解法、敵の弱点などを一切知りません。「〇〇にあるはずだ！」「これをすればいいんだ！」といった進行のネタバレや、GM視点での誘導を絶対に行わないでください。",
+          "3. 【描写・進行の禁止】情景描写を行ったり、「〜はどうしますか？行動を宣言してください」といったGMのようなゲーム進行・問いかけは絶対に行わないでください。純粋なキャラクターとしての会話（セリフとわずかな動作）のみを出力してください。",
+          "4. 【恐怖と人間味】現在の状況に対して、あなたのキャラクター設定（性格）に基づいた自然なリアクション（怯える、焦る、励ます、悩むなど）を人間らしく返してください。",
+          (isSplitMode && myScene.id !== 'scene_main' ? "※現在別行動中です。同じチームにいるAI相棒だけが返答してください。" : "")
+        ];
       } else if (targetTab === "gm") {
-        roleInstruction = `【重要：GMへのメタ質問対応（絶対厳守ルール）】
-1. 現在は「GMへの質問・ルール確認」の時間です。物語は進めず、ルールの裁定やシステム的な回答のみを行ってください。
-2. 【ネタバレの絶対禁止（最重要）】あなたはシナリオのプロットを知っていますが、プレイヤーに「正しいクリア手順」「どこに何があるか」「隠された設定」を自ら絶対に明かさないでください。「〇〇すればクリアできます」のような誘導はTRPGを台無しにします。
-3. 質問（例：「ドアは壊せますか？」）には、「システム上可能か不可能か」「ダイス判定が必要か」のみを簡潔に答え、頼まれていないアドバイスやプロットの解説は一切行わないでください。
-4. 【ヒントの要求について】もしPLが「ヒント」を明確に要求した場合、無条件で教えずに「ヒントを得るにはSAN値を1d3減少させる必要があります。よろしければ【行動宣言】タブでSANダイスを振って宣言してください」と代償を提示してください。
-※警告：AI自身が代わりにダイスを振って数値を減らすことは絶対に禁止します！必ずPL自身に振らせてください。`;
+        roleInstructionLines = [
+          "【重要：GMへのメタ質問対応（絶対厳守ルール）】",
+          "1. 現在は「GMへの質問・ルール確認」の時間です。物語は進めず、ルールの裁定やシステム的な回答のみを行ってください。",
+          "2. 【ネタバレの絶対禁止（最重要）】あなたはシナリオのプロットを知っていますが、プレイヤーに「正しいクリア手順」「どこに何があるか」「隠された設定」を自ら絶対に明かさないでください。「〇〇すればクリアできます」のような誘導はTRPGを台無しにします。",
+          "3. 質問（例：「ドアは壊せますか？」）には、「システム上可能か不可能か」「ダイス判定が必要か」のみを簡潔に答え、頼まれていないアドバイスやプロットの解説は一切行わないでください。",
+          "4. 【ヒントの要求について】もしPLが「ヒント」を明確に要求した場合、無条件で教えずに「ヒントを得るにはSAN値を1d3減少させる必要があります。よろしければ【行動宣言】タブでSANダイスを振って宣言してください」と代償を提示してください。",
+          "※警告：AI自身が代わりにダイスを振って数値を減らすことは絶対に禁止します！必ずPL自身に振らせてください。"
+        ];
       }
 
-      const sysPrompt = `あなたはTRPGの優秀なAIシステムです。
-タイトル: ${activeRoom.scenario?.title}
-世界観: ${activeRoom.scenario?.setting}
-プロット: ${scenarioPlotText}
+      const roleInstruction = roleInstructionLines.join('\n');
 
-【これまでのあらすじ】
-${currentSummary || "まだセッションは始まったばかりだ。"}
-
-【人間PL】名前: ${joinedCharacter.name} (${joinedCharacter.genderOrRace || "性別不詳"}) / ステータス: HP:${joinedCharacter.hp} SAN:${joinedCharacter.san}% STR:${joinedCharacter.str} DEX:${joinedCharacter.dex} INT:${joinedCharacter.int} CON:${joinedCharacter.con}
-${inventoryText}
-【AI相棒】
-${aiPlayersText}
-
-${ruleSpec}
-${gmStyle}
-
-【共通の絶対システムルール】
-${difficultyInstruction}
-ダメージ処理や正気度(SAN)チェック等により、PLやNPCのHP・SAN値が減少・変動した場合は、いかなる状況・タブであっても、必ずあなたの出力テキストの【一番最後】に以下のシステムタグを1行で出力してください。
-[STATUS_UPDATE: キャラクター名, HP:新しい値, SAN:新しい値]
-（例：[STATUS_UPDATE: ${joinedCharacter.name}, HP:10, SAN:50]）
-※このタグが出力されないと画面のボタンの数値が連動しません。必ず出力してください。
-
-${roleInstruction}`;
+      const sysPrompt = [
+        "あなたはTRPGの優秀なAIシステムです。",
+        `タイトル: ${activeRoom.scenario?.title}`,
+        `世界観: ${activeRoom.scenario?.setting}`,
+        `プロット: ${scenarioPlotText}`,
+        "",
+        "【これまでのあらすじ】",
+        currentSummary || "まだセッションは始まったばかりだ。",
+        "",
+        `【人間PL】名前: ${joinedCharacter.name} (${joinedCharacter.genderOrRace || "性別不詳"}) / ステータス: HP:${joinedCharacter.hp} SAN:${joinedCharacter.san}% STR:${joinedCharacter.str} DEX:${joinedCharacter.dex} INT:${joinedCharacter.int} CON:${joinedCharacter.con}`,
+        inventoryText,
+        "【AI相棒】",
+        aiPlayersText,
+        "",
+        ruleSpec,
+        gmStyle,
+        "",
+        "【共通の絶対システムルール】",
+        difficultyInstruction,
+        "ダメージ処理や正気度(SAN)チェック等により、PLやNPCのHP・SAN値が減少・変動した場合は、いかなる状況・タブであっても、必ずあなたの出力テキストの【一番最後】に以下のシステムタグを1行で出力してください。",
+        "[STATUS_UPDATE: キャラクター名, HP:新しい値, SAN:新しい値]",
+        `（例：[STATUS_UPDATE: ${joinedCharacter.name}, HP:10, SAN:50]）`,
+        "※このタグが出力されないと画面のボタンの数値が連動しません。必ず出力してください。",
+        "",
+        roleInstruction
+      ].join('\n');
 
       const aiText = await generateAIResponse(sysPrompt, history);
 
@@ -942,7 +1017,7 @@ ${roleInstruction}`;
       await supabase.from('ai_memory').delete().eq('room_id', newRoom.id);
       setActiveRoom(newRoom); setJoinedCharacter(hostChar);
       setMessages([]); 
-      await pushMessage(newRoom.id, { sender: "gm", text: `【入室完了】プレイヤー全員の準備が整うまでお待ちください。\n【案内】シークレット設定の場合、画面左上の「共有ID」をコピーして友人に伝えてください。`, type: "system", sceneId: newRoom.scenes?.[0]?.id, channel: "system" });
+      await pushMessage(newRoom.id, { sender: "system", text: `【入室完了】プレイヤー全員の準備が整うまでお待ちください。\n【案内】シークレット設定の場合、画面左上の「共有ID」をコピーして友人に伝えてください。`, type: "system", sceneId: newRoom.scenes?.[0]?.id, channel: "system" });
       setCurrentView("game");
     }
   };
@@ -1013,7 +1088,7 @@ ${roleInstruction}`;
     const updatedRoom = { ...room, joined_users: newUsers, inventories: newInventories };
     setActiveRoom(updatedRoom); setJoinedCharacter(char);
     await loadChatLogs(room.id);
-    await pushMessage(room.id, { sender: "gm", text: `【入室完了】${char.name}として参加しました！ホストの開始をお待ちください。`, type: "system", sceneId: room.scenes?.[0]?.id, channel: "system" });
+    await pushMessage(room.id, { sender: "system", text: `【入室完了】${char.name}として参加しました！ホストの開始をお待ちください。`, type: "system", sceneId: room.scenes?.[0]?.id, channel: "system" });
     setCurrentView("game");
   };
 
@@ -1021,7 +1096,7 @@ ${roleInstruction}`;
     setActiveRoom(room);
     setJoinedCharacter(null); 
     await loadChatLogs(room.id);
-    await pushMessage(room.id, { sender: "gm", text: `【観戦モード】部屋に入室しました。チャットやダイスは使用できません。`, type: "system", sceneId: room.scenes?.[0]?.id, channel: "system" }, false);
+    await pushMessage(room.id, { sender: "system", text: `【観戦モード】部屋に入室しました。チャットやダイスは使用できません。`, type: "system", sceneId: room.scenes?.[0]?.id, channel: "system" }, false);
     setCurrentView("game");
   };
 
@@ -1045,7 +1120,7 @@ ${roleInstruction}`;
     await supabase.from('rooms').update({ status: 'playing', is_paused: false }).eq('id', activeRoom.id);
     const updatedRoom: Room = { ...activeRoom, status: 'playing', is_paused: false };
     setActiveRoom(updatedRoom);
-    await pushMessage(activeRoom.id, { sender: "gm", text: `【システム】ゲームを開始しました。AI GMを呼び出しています...`, type: "system", sceneId: myScene.id, channel: "system" });
+    await pushMessage(activeRoom.id, { sender: "system", text: `【システム】ゲームを開始しました。AI GMを呼び出しています...`, type: "system", sceneId: myScene.id, channel: "system" });
     
     await callAIGM(`【システムコマンド】セッションが開始されました。プロットに従い、導入部分の情景描写を行い、プレイヤーに行動方針の相談を促してください。`, "story", true);
   };
@@ -1055,7 +1130,7 @@ ${roleInstruction}`;
     if (currentUser?.id === activeRoom.host_id || activeRoom.is_trial) {
       await supabase.from('rooms').update({ status: 'finished' }).eq('id', activeRoom.id);
       setActiveRoom({...activeRoom, status: 'finished'});
-      await pushMessage(activeRoom.id, { sender: "gm", text: `【システム】セッションが完了しました！\nこれより「感想戦モード」になります（AIは停止し、プレイヤー間のチャットのみ可能です）。お疲れ様でした！`, type: "system", sceneId: myScene?.id, channel: "system" });
+      await pushMessage(activeRoom.id, { sender: "system", text: `【システム】セッションが完了しました！\nこれより「感想戦モード」になります（AIは停止し、プレイヤー間のチャットのみ可能です）。お疲れ様でした！`, type: "system", sceneId: myScene?.id, channel: "system" });
     }
   };
 
@@ -1200,13 +1275,15 @@ ${roleInstruction}`;
   const generateSceneImage = async (promptText: string) => {
     if (!activeRoom || !myScene) return;
     try {
-      const translationPrompt = `以下の日本語の情景描写を、画像生成AI用のカンマ区切りの英語プロンプトに変換してください。
-【絶対条件】
-・文章ではなく、英単語のカンマ区切りで出力してください。
-・不適切な画像が生成されるのを防ぐため、必ず最後に「SFW, fully clothed, masterpiece, high quality」を含めてください。
-
-情景描写：
-${promptText}`;
+      const translationPrompt = [
+        "以下の日本語の情景描写を、画像生成AI用のカンマ区切りの英語プロンプトに変換してください。",
+        "【絶対条件】",
+        "・文章ではなく、英単語のカンマ区切りで出力してください。",
+        "・不適切な画像が生成されるのを防ぐため、必ず最後に「SFW, fully clothed, masterpiece, high quality」を含めてください。",
+        "",
+        "情景描写：",
+        promptText
+      ].join('\n');
 
       let englishPrompt = "";
       try {
@@ -1275,8 +1352,19 @@ ${promptText}`;
       setIsExporting(true);
       
       const prompt = type === 'summary' 
-        ? `以下のTRPGセッションのチャットログを読み込み、物語のあらすじ・結末として分かりやすく要約してください。\n※ログには「GMへの行動宣言」と「キャラクター同士の相談・会話」が含まれています。キャラクター同士の相談内容も物語の展開として要約に含めてください。`
-        : `以下のTRPGセッションのチャットログを元に、プロの小説家が書いたような臨場感あふれる【本格的なリプレイ小説】を執筆してください。\n\n【執筆の条件】\n1. 単調な事実の羅列（〜した。〜と言った）を避け、五感（光、音、匂い、温度など）を刺激する情景描写と、キャラクターの深い心理描写を大幅に肉付けしてください。\n2. プレイヤー間の「相談」や「作戦会議」は、キャラクター同士の緊迫感や関係性が伝わる魅力的な会話劇（ダイアログ）として昇華してください。\n3. ダイスロールの成否はシステム的な数値として書くのではなく、「間一髪での回避」「絶望的な見落とし」などのドラマチックな演出に変換してください。\n4. 起承転結のペース配分を意識し、読者を惹きつける一つの完成された短編小説に仕上げてください。`;
+        ? [
+            "以下のTRPGセッションのチャットログを読み込み、物語のあらすじ・結末として分かりやすく要約してください。",
+            "※ログには「GMへの行動宣言」と「キャラクター同士の相談・会話」が含まれています。キャラクター同士の相談内容も物語の展開として要約に含めてください。"
+          ].join('\n')
+        : [
+            "以下のTRPGセッションのチャットログを元に、プロの小説家が書いたような臨場感あふれる【本格的なリプレイ小説】を執筆してください。",
+            "",
+            "【執筆の条件】",
+            "1. 単調な事実の羅列（〜した。〜と言った）を避け、五感（光、音、匂い、温度など）を刺激する情景描写と、キャラクターの深い心理描写を大幅に肉付けしてください。",
+            "2. プレイヤー間の「相談」や「作戦会議」は、キャラクター同士の緊迫感や関係性が伝わる魅力的な会話劇（ダイアログ）として昇華してください。",
+            "3. ダイスロールの成否はシステム的な数値として書くのではなく、「間一髪での回避」「絶望的な見落とし」などのドラマチックな演出に変換してください。",
+            "4. 起承転結のペース配分を意識し、読者を惹きつける一つの完成された短編小説に仕上げてください。"
+          ].join('\n');
       
       const logText = targetMessages.map(m => `${m.charName || (m.sender === 'gm' ? 'GM' : 'システム')}: ${m.text.replace(/\[SPLIT_PROPOSAL:.*?\]/, '').replace('[SCENARIO_END]', '').trim()}`).join('\n');
       
@@ -1373,14 +1461,14 @@ ${promptText}`;
     setActiveRoom({ ...activeRoom, inventories: newInventories });
   };
 
-  const unreadCount = myNotifications.filter(n => !n.isRead).length;
-
-  const isChatDisabled = Boolean(isLoading || (isSplitMode && myScene && myScene.isMerged === true && chatTab !== 'consult'));
-
   const handleTabClick = (tab: ChatTab) => {
     setChatTab(tab);
     setUnreadIndicators(prev => ({ ...prev, [tab]: false }));
   };
+
+  const unreadCount = myNotifications.filter(n => !n.isRead).length;
+
+  const isChatDisabled = Boolean(isLoading || (isSplitMode && myScene && myScene.isMerged === true && chatTab !== 'consult'));
 
   return (
     <main className="h-screen w-full bg-slate-900 text-slate-100 flex flex-col font-sans overflow-hidden">
@@ -1529,7 +1617,6 @@ ${promptText}`;
         />
       )}
 
-      {/* ★ 広告視聴モーダル（モック） */}
       {adModal.isOpen && (
         <div className="fixed inset-0 bg-black/90 z-[80] flex items-center justify-center p-4">
           <div className="bg-slate-800 border border-pink-500/50 rounded-xl p-8 w-full max-w-sm shadow-2xl text-center space-y-6">
