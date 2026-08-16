@@ -111,7 +111,6 @@ export default function ScenarioEditView({
                 onClick={() => {
                   const char = editingScenario.presetCharacters[editingCharIndex!];
                   if (!char.name) { alert("先に「名前」を入力してください！"); return; }
-                  // ★ 性別・種族情報をプロンプトに組み込む
                   const promptStr = `${char.name}, ${char.genderOrRace ? char.genderOrRace + ', ' : ''}${char.job || ""}, ${char.personality || ""}`.slice(0, 150);
                   generateImageWithAI(promptStr, true);
                 }}
@@ -212,9 +211,10 @@ export default function ScenarioEditView({
                     placeholder="https://..." 
                   />
                 </div>
+                {/* ★ プレビューを見切れないように修正 */}
                 {editingScenario.imageUrl && (
-                  <div className="mt-2">
-                    <img src={editingScenario.imageUrl} alt="パッケージプレビュー" className="w-full h-32 object-cover rounded-xl border border-slate-500" />
+                  <div className="mt-2 flex justify-center bg-slate-950 rounded-xl border border-slate-500 overflow-hidden">
+                    <img src={editingScenario.imageUrl} alt="パッケージプレビュー" className="w-full h-auto max-h-64 object-contain" />
                   </div>
                 )}
               </div>
@@ -263,7 +263,6 @@ export default function ScenarioEditView({
                         <div className="w-10 h-10 rounded-full bg-slate-700 flex items-center justify-center text-[10px] text-slate-400 border border-slate-600 font-bold">No Img</div>
                       )}
                       <div>
-                        {/* ★ 一覧表示部分にも性別を反映 */}
                         <p className="text-sm font-bold text-white">{char.name} <span className="text-xs font-normal text-slate-300">({char.job || "職業未設定"} / {char.genderOrRace || "性別未設定"})</span></p>
                         <p className="text-[10px] text-slate-400">HP:{char.hp} | SAN:{char.san}% | STR:{char.str} DEX:{char.dex} INT:{char.int}</p>
                       </div>
