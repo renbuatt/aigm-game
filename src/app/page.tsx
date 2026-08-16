@@ -550,10 +550,9 @@ export default function Home() {
     await callAIGM(extraUserContext, "story");
   };
 
-  // ★ 修正：isStarting かどうかにかかわらず、オブジェクトが存在するかは必ずチェックする
+  // ★ 進行管理の黄金比率とソフトランディングをプロンプトに強力に組み込む
   const callAIGM = async (extraUserContext?: string, targetTab: ChatTab = "story", isStarting: boolean = false) => {
     if (!activeRoom || !joinedCharacter || !myScene) return;
-    // 開始時（isStarting=true）以外は、ステータスがplayingでないと処理をスキップする
     if (!isStarting && activeRoom.status !== 'playing') return;
     setIsLoading(true);
     
@@ -591,8 +590,13 @@ export default function Home() {
 3. 【行動のヒント禁止】PLに具体的な行動の例や選択肢を絶対に提示しないでください。PL自身に考えさせてください。
 4. 【ダイスの自己処理禁止】GM自身がダイスを振ったり、PLのSAN値やステータスを勝手に推測・仮定してはいけません。必ずプロンプトに記載された【人間PL】の正確な数値を使用し、PLが画面のダイスボタンを振って結果が送信されるのを待機してください。
 5. 【安易な成功・AIの忖度厳禁】PLの行動が論理的に不自然であったり、シナリオの解決条件を正確に満たしていない場合は、絶対に成功させてはいけません。「ただ投げつけただけ」「間違ったアイテムを使った」などの甘いプレイには、容赦なく「効果がなかった」「状況が悪化した」として厳しく処理してください。
-6. 【ゲーム性の重視】想定プレイ時間（約${activeRoom.scenario?.playTime || 60}分）を目安に、論理的整合性と緊迫感のある試練を優先してください。
-7. 【エンディングの処理】物語が結末を迎えた場合、最後の情景描写の末尾に必ず [SCENARIO_END] というシステムタグを記述してください。
+6. 【ゲーム進行の黄金比率と起承転結（最重要）】
+本シナリオの想定プレイ時間は「約${activeRoom.scenario?.playTime || 60}分」です。この時間に見合う濃厚なテキスト量と展開を用意し、以下の比率で進行を管理してください。
+・導入（15〜20%）: 状況の説明と目的の提示。
+・本編（60〜70%）: 探索と試練。※PLの進行が早すぎる場合は、新たな障害や深掘りイベントを追加し、ボリュームを＋30分程度分水増しして物語を引っ張ってください。あっさりと核心に到達させてはいけません。
+・まとめ（15〜20%）: クライマックスからのソフトランディング。唐突にゲームを終わらせず、事後処理やエピローグ、余韻をしっかり描写して物語を着地させてください。
+7. 【エンディングの処理】
+物語が完全に結末（エピローグ）を迎えた場合のみ、最後の情景描写の末尾に必ず [SCENARIO_END] というシステムタグを記述してください。
 
 ${isSplitMode && myScene.id !== 'scene_main' ? `
 【チーム分割中の対応】現在、プレイヤー達は二手以上に分かれて行動しています。この発言は【${myScene.name}】チーム（メンバー: ${myScene.memberIds.map(id => activeRoom.scenario?.presetCharacters.find(c=>c.id===id)?.name).join(', ')}）のものです。
@@ -879,7 +883,6 @@ ${roleInstruction}`;
     }
   };
 
-  // ★ 追加：以前のチャットログにも表示させるために忘れていた generateSceneImage 
   const generateSceneImage = async (promptText: string) => {
     if (!activeRoom || !myScene) return;
     try {
