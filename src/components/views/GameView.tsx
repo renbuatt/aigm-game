@@ -49,7 +49,8 @@ type Props = {
   toggleAFK: (userId: string, forceRemove?: boolean) => Promise<void>;
   triggerAutoAction: () => Promise<void>;
   updateInventory: (newItems: string) => Promise<void>;
-  openRoomConfigModal?: (scenario: Scenario) => void; // ★ 追加
+  openRoomConfigModal?: (scenario: Scenario) => void; 
+  aiPlayersList: Character[]; // ★ AIプレイヤーリストも受け取る
 };
 
 export default function GameView({
@@ -58,7 +59,7 @@ export default function GameView({
   setCurrentView, endGame, input, setInput, handleSend, handleTabClick, unreadIndicators,
   consultWithAI, setConsultWithAI, isChatDisabled, mergeTeam, executeMergeAll, generateSceneImage,
   proposedTeams, setProposedTeams, isGeneratingSplit, generateSplitProposal, finishSplitting, cancelSplitting,
-  togglePauseRoom, toggleAFK, triggerAutoAction, updateInventory, openRoomConfigModal
+  togglePauseRoom, toggleAFK, triggerAutoAction, updateInventory, openRoomConfigModal, aiPlayersList
 }: Props) {
   const isRecruiting = activeRoom.status === 'recruiting';
   const isHost = currentUser?.id === activeRoom.host_id || currentUser?.handleName === activeRoom.host_name;
@@ -280,17 +281,22 @@ export default function GameView({
             {isSplitMode && myScene.id !== 'scene_main' && <span className="text-[10px] bg-indigo-600 px-2 py-0.5 rounded-full">{myScene.name} 班</span>}
           </span>
           <div className="flex flex-wrap items-center gap-1 justify-end">
+            
+            {/* ★ 読み取り専用のインベントリ一覧表示に変更 */}
             {joinedCharacter && activeRoom.show_items && (
                <div className="relative group flex items-center mr-2">
                  <button className="bg-amber-800/80 hover:bg-amber-700 text-amber-100 border border-amber-500/50 text-[10px] px-2 py-1.5 rounded font-bold shadow-lg flex items-center">🎒 所持品</button>
-                 <div className="absolute top-full right-0 mt-1 w-64 bg-slate-800 border border-slate-600 rounded p-2 hidden group-hover:block z-50 shadow-2xl">
-                    <label className="text-[10px] text-slate-400 mb-1 block">アイテムの確認・メモ</label>
-                    <textarea
-                      value={activeRoom.inventories?.[currentUser.id] || ""}
-                      onChange={(e) => updateInventory(e.target.value)}
-                      className="w-full h-32 bg-slate-900 text-white text-xs p-2 rounded border border-slate-700 custom-scrollbar"
-                      placeholder="スマートフォン、財布、懐中電灯..."
-                    />
+                 <div className="absolute top-full right-0 mt-1 w-64 bg-slate-800 border border-slate-600 rounded p-3 hidden group-hover:block z-50 shadow-2xl">
+                    <label className="text-xs text-amber-400 mb-2 block font-bold border-b border-slate-700 pb-1">パーティーの所持アイテム</label>
+                    <div className="max-h-48 overflow-y-auto custom-scrollbar space-y-2">
+                      {activeRoom.scenario?.presetCharacters.filter(c => Object.values(activeRoom.joined_users).includes(c.id) || aiPlayersList.find(a=>a.id===c.id)).map(c => (
+                        <div key={c.id} className="text-xs">
+                          <span className="text-blue-300 font-bold">{c.name}</span>
+                          <p className="text-slate-300 ml-1 leading-tight">{activeRoom.inventories?.[c.id] || c.items || "特になし"}</p>
+                        </div>
+                      ))}
+                    </div>
+                    <p className="text-[9px] text-slate-500 mt-2 pt-1 border-t border-slate-700">※アイテムの増減はAI GMが自動で判断・管理します。</p>
                  </div>
                </div>
             )}

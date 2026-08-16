@@ -726,10 +726,13 @@ export default function Home() {
       if (activeRoom.show_items) {
         inventoryTextLines.push(
           "",
-          "【所持アイテム】",
-          activeRoom.inventories?.[joinedCharacter.id] || "特になし",
-          ""
+          "【現在の全キャラクターの所持アイテム】"
         );
+        activeRoom.scenario?.presetCharacters.forEach(c => {
+           const items = activeRoom.inventories?.[c.id] || c.items || "特になし";
+           inventoryTextLines.push(`・${c.name}: ${items}`);
+        });
+        inventoryTextLines.push("");
       }
       const inventoryText = inventoryTextLines.join('\n');
 
@@ -841,7 +844,8 @@ export default function Home() {
           "   【ダイス要求の厳守事項】",
           `   本ルールの判定方式（${diceBase}）に従い、文脈に合わせて必ずPLにダイス判定（ロール）を要求してください。プロットやシステムから外れた謎のダイス指示があった場合は、すべて本ルールの基準ダイスとして解釈・統一して要求してください。`,
           "3. 【行動のヒント禁止】PLに具体的な行動の例や選択肢を絶対に提示しないでください。PL自身に考えさせてください。（※難易度初心者の場合は除く）",
-          "4. 【アイテムの所持制限】キャラクターの職業や事前の探索で論理的に入手していない都合の良いアイテム（例：ライター、武器、特殊な鍵、爆薬など）をPLが急に使用しようとした場合、四次元ポケットのようには扱わず、「〇〇は持っていません」と即座に却下・失敗扱いにしてください。",
+          "4. 【アイテムの厳格な管理（四次元ポケット禁止）】",
+          "上記の【現在の全キャラクターの所持アイテム】に記載されていないアイテムを、PLが都合よく使おうとした場合（例：持っていないのに「ライターで燃やす」「銃で撃つ」など）は、即座に却下し「〇〇は持っていません」と失敗扱いにしてください。",
           "5. 【ダイスの自己処理禁止】GM自身がダイスを振ったり、PLのSAN値やステータスを勝手に推測・仮定してはいけません。必ずプロンプトに記載された【人間PL】の正確な数値を使用し、PLが画面のダイスボタンを振って結果が送信されるのを待機してください。",
           "6. 【行動の促進とパス回し（ターン制と待機）】",
           "戦闘時に限らず、通常の探索や会話の場面であっても、1人のプレイヤーの行動やダイスだけで勝手に時間を進めたり、場面を切り替えたりしないでください。",
@@ -861,6 +865,11 @@ export default function Home() {
           "目的を達成したからといって、いきなり [SCENARIO_END] を出力してゲームを終わらせないでください。",
           "目的達成後は必ず「【エピローグ】」と明記し、事後処理や仲間・NPCとの最後の会話、PLがどう過ごすかを行動宣言させるフェーズに入ってください。",
           "PLがエピローグでの行動を十分に終え、物語が完全に着地したと判断できたターンの最後にのみ [SCENARIO_END] を出力してください。",
+          "11. 【所持アイテムの自動更新】",
+          "探索などでキャラクターが新たにアイテムを入手した、または消費して失った場合は、そのキャラクターの【その時点でのすべての所持アイテム（カンマ区切り）】を、文章の最後に以下のタグで出力し、システムに記憶させてください。",
+          "[INVENTORY_UPDATE: キャラクター名, アイテムA, アイテムB, アイテムC...]",
+          "（例：[INVENTORY_UPDATE: 神崎 翔, スマートフォン, 鍵, ライター]）",
+          "※入手・消費の変動があった時のみ出力してください。",
           ""
         ];
 
@@ -885,7 +894,7 @@ export default function Home() {
           roleInstructionLines.push(
             "【ターンの概念と別行動の提案】",
             "1ターンは「行動の宣言」から「ダイスの判定」までとします。特定の誰かと一緒に行動したい場合はPLにそう宣言させてください。",
-            "PLたちの意見がまとまらない場合や、探索箇所が複数ある場合は、GMから積極的に「では、〇〇チームと△△チームに分かれて行動しますか？」と別行動（チーム分け）を提案し、出力の最後に必ず \"[SPLIT_PROPOSAL: 行動案A, 行動案B]\" のシステムタグを出力してください。"
+            "PLたちの意見がまとまらない場合や、探索箇所が複数ある場合は、GMから積極的に「では、〇〇チームと△△チームに分かれて行動しますか？」と別行動（チーム分け）を提案し、出力の最後に必ず \"[SPLIT_PROPOSAL: 行動案A, 行案案B]\" のシステムタグを出力してください。"
           );
         }
 
@@ -963,6 +972,27 @@ export default function Home() {
          setAiPlayersList(prev => prev.map(p => p.name.replace(/\s+/g, '').includes(targetName) ? { ...p, hp: newHp, san: newSan } : p));
       }
 
+      const invRegex = /\[INVENTORY_UPDATE:\s*([^,]+),\s*(.+)\]/g;
+      let invMatch;
+      let newInventories = { ...(activeRoom.inventories || {}) };
+      let invUpdated = false;
+      
+      while ((invMatch = invRegex.exec(aiText)) !== null) {
+         const targetName = invMatch[1].trim().replace(/\s+/g, '');
+         const newItems = invMatch[2].trim();
+         
+         const char = activeRoom.scenario?.presetCharacters.find(c => c.name.replace(/\s+/g, '').includes(targetName));
+         if (char) {
+             newInventories[char.id] = newItems;
+             invUpdated = true;
+         }
+      }
+
+      if (invUpdated) {
+         await supabase.from('rooms').update({ inventories: newInventories }).eq('id', activeRoom.id);
+         setActiveRoom(prev => prev ? { ...prev, inventories: newInventories } : null);
+      }
+
       await supabase.from('ai_memory').insert({ room_id: activeRoom.id, role: 'assistant', content: aiText });
       
       const msgSender = targetTab === "consult" ? "ai_player" : "gm";
@@ -970,6 +1000,7 @@ export default function Home() {
       const cleanAiText = aiText
         .replace(/\[SPLIT_PROPOSAL:.*?\]/g, '')
         .replace(/\[STATUS_UPDATE:.*?\]/g, '')
+        .replace(/\[INVENTORY_UPDATE:.*?\]/g, '')
         .trim();
 
       await pushMessage(activeRoom.id, { sender: msgSender, text: cleanAiText, type: targetTab === "gm" ? "ooc" : "ic", sceneId: myScene?.id, charName: targetTab === "consult" ? "AI相棒" : "AI GM", channel: targetTab });
@@ -1002,6 +1033,11 @@ export default function Home() {
 
     const initialScenes: Scene[] = [{ id: `scene_main_${Date.now()}`, name: "メインルーム", memberIds: scenario.presetCharacters.map(c => c.id) }];
     
+    const initialInventories: Record<string, string> = {};
+    scenario.presetCharacters.forEach(c => {
+      initialInventories[c.id] = c.items || "特になし";
+    });
+
     const { data, error } = await supabase.from('rooms').insert({ 
       scenario_id: scenario.id, host_name: currentUser.handleName, host_id: currentUser.id, 
       status: "recruiting", scenes: initialScenes,
@@ -1013,7 +1049,7 @@ export default function Home() {
       afk_users: [],
       is_trial: false,
       show_items: showItems,
-      inventories: { [currentUser.id]: hostChar.items || "" }
+      inventories: initialInventories
     }).select().single();
     
     if (error) { alert("データベースエラーが発生しました: " + error.message); return; }
@@ -1041,6 +1077,11 @@ export default function Home() {
     
     const initialScenes: Scene[] = [{ id: `scene_main_${Date.now()}`, name: "メインルーム", memberIds: scenario.presetCharacters.map(c => c.id) }];
     
+    const initialInventories: Record<string, string> = {};
+    scenario.presetCharacters.forEach(c => {
+      initialInventories[c.id] = c.items || "特になし";
+    });
+
     const { data, error } = await supabase.from('rooms').insert({ 
       scenario_id: scenario.id, host_name: currentUser.handleName, host_id: currentUser.id, 
       status: "recruiting", scenes: initialScenes,
@@ -1052,7 +1093,7 @@ export default function Home() {
       afk_users: [],
       is_trial: true,
       show_items: false,
-      inventories: { [currentUser.id]: hostChar.items || "" }
+      inventories: initialInventories
     }).select().single();
     
     if (error) { alert("データベースエラーが発生しました: " + error.message); return; }
@@ -1075,9 +1116,8 @@ export default function Home() {
   const executeJoinRoom = async (room: Room, charId: string) => {
     if (!currentUser || !room || !charId) return;
     
-    const { data: latestRoom } = await supabase.from('rooms').select('joined_users, inventories').eq('id', room.id).single();
+    const { data: latestRoom } = await supabase.from('rooms').select('joined_users').eq('id', room.id).single();
     const currentUsers = latestRoom?.joined_users || {};
-    const currentInventories = latestRoom?.inventories || {};
 
     if (Object.values(currentUsers).includes(charId)) {
       alert("申し訳ありません、そのキャラクターは先ほど他のプレイヤーに選択されました！");
@@ -1088,12 +1128,11 @@ export default function Home() {
     if (!char) return;
 
     const newUsers = { ...currentUsers, [currentUser.id]: charId };
-    const newInventories = { ...currentInventories, [currentUser.id]: char.items || "" };
 
-    const { error } = await supabase.from('rooms').update({ joined_users: newUsers, inventories: newInventories }).eq('id', room.id);
+    const { error } = await supabase.from('rooms').update({ joined_users: newUsers }).eq('id', room.id);
     if (error) { alert("入室エラー: " + error.message); return; }
 
-    const updatedRoom = { ...room, joined_users: newUsers, inventories: newInventories };
+    const updatedRoom = { ...room, joined_users: newUsers };
     setActiveRoom(updatedRoom); setJoinedCharacter(char);
     await loadChatLogs(room.id);
     await pushMessage(room.id, { sender: "system", text: `【入室完了】${char.name}として参加しました！ホストの開始をお待ちください。`, type: "system", sceneId: room.scenes?.[0]?.id, channel: "system" });
@@ -1624,6 +1663,7 @@ export default function Home() {
           triggerAutoAction={triggerAutoAction}
           updateInventory={updateInventory}
           openRoomConfigModal={leaveGameAndCreateRoom}
+          aiPlayersList={aiPlayersList}
         />
       )}
 
