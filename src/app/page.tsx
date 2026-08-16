@@ -550,10 +550,11 @@ export default function Home() {
     await callAIGM(extraUserContext, "story");
   };
 
-  // ★ 修正：isStarting(forceStart)フラグを追加し、ゲーム開始の瞬間だけ防壁をすり抜けられるようにしました
+  // ★ 修正：isStarting かどうかにかかわらず、オブジェクトが存在するかは必ずチェックする
   const callAIGM = async (extraUserContext?: string, targetTab: ChatTab = "story", isStarting: boolean = false) => {
-    // isStartingがtrueのときはstatusチェックをバイパスする
-    if (!isStarting && (!activeRoom || activeRoom.status !== 'playing' || !joinedCharacter || !myScene)) return;
+    if (!activeRoom || !joinedCharacter || !myScene) return;
+    // 開始時（isStarting=true）以外は、ステータスがplayingでないと処理をスキップする
+    if (!isStarting && activeRoom.status !== 'playing') return;
     setIsLoading(true);
     
     try {
@@ -765,7 +766,6 @@ ${roleInstruction}`;
     setActiveRoom(updatedRoom);
     await pushMessage(activeRoom.id, { sender: "gm", text: `【システム】ゲームを開始しました。AI GMを呼び出しています...`, type: "system", sceneId: myScene.id, channel: "system" });
     
-    // ★ 修正：第3引数に true を渡すことで、ステータス変更直後のタイムラグを無視して確実に初回描写を起動させます
     await callAIGM(`【システムコマンド】セッションが開始されました。プロットに従い、導入部分の情景描写を行い、プレイヤーに行動方針の相談を促してください。`, "story", true);
   };
 
@@ -876,6 +876,54 @@ ${roleInstruction}`;
             promptSuffix = "この結果を踏まえて、AI相棒としてリアクションを返してください。";
         }
         await callAIGM(`【システム判定結果】${joinedCharacter.name}が${label}ロールを行いました。\n結果: ${msgText}\n${promptSuffix}`, chatTab);
+    }
+  };
+
+  // ★ 追加：以前のチャットログにも表示させるために忘れていた generateSceneImage 
+  const generateSceneImage = async (promptText: string) => {
+    if (!activeRoom || !myScene) return;
+    try {
+      const translationPrompt = `
+以下の日本語の情景描写を、画像生成AI用のカンマ区切りの英語プロンプトに変換してください。
+【絶対条件】
+・文章ではなく、英単語のカンマ区切りで出力してください。
+・不適切な画像が生成されるのを防ぐため、必ず最後に「SFW, fully clothed, masterpiece, high quality」を含めてください。
+
+情景描写：
+${promptText}
+      `;
+
+      let englishPrompt = "";
+      try {
+        englishPrompt = await generateAITextWithPrompt(translationPrompt);
+      } catch (err) {
+        englishPrompt = `${promptText}, SFW, fully clothed, masterpiece, high quality`;
+      }
+
+      const prompt = encodeURIComponent(`${englishPrompt}, TRPG scene, cinematic lighting, dramatic atmosphere`);
+      const seed = Math.floor(Math.random() * 100000);
+      const url = `https://image.pollinations.ai/prompt/${prompt}?nologo=true&seed=${seed}&safe=true`;
+
+      const res = await fetch(url);
+      if (!res.ok) throw new Error("AIサーバーが混雑しています");
+      const blob = await res.blob();
+      
+      const reader = new FileReader();
+      reader.onloadend = async () => {
+        const base64data = reader.result as string;
+        await pushMessage(activeRoom.id, {
+          sender: "gm",
+          text: `【ホストが情景画像を生成しました】\n「${promptText}」`,
+          type: "image",
+          imageUrl: base64data,
+          sceneId: myScene.id,
+          channel: "story"
+        });
+      };
+      reader.readAsDataURL(blob);
+
+    } catch (err: any) {
+      alert("画像の生成に失敗しました（AIサーバー混雑エラー等）。\n少し時間をおいて再度お試しください。");
     }
   };
 
