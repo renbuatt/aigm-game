@@ -49,8 +49,6 @@ export default function Home() {
   
   const [consultWithAI, setConsultWithAI] = useState<boolean>(true);
 
-  const [splitSuggestions, setSplitSuggestions] = useState<string[]>([]);
-  
   const [proposedTeams, setProposedTeams] = useState<{id: string, action: string, members: string[], leader: string}[]>([]);
   const [isGeneratingSplit, setIsGeneratingSplit] = useState(false);
 
@@ -177,11 +175,6 @@ export default function Home() {
     }
   }, [activeRoom?.scenes, activeRoom?.status, activeRoom?.host_id, currentUser?.id, isSplitMode]);
 
-  const handleTabClick = (tab: ChatTab) => {
-    setChatTab(tab);
-    setUnreadIndicators(prev => ({ ...prev, [tab]: false }));
-  };
-
   const fetchData = async () => {
     const { data: scData } = await supabase.from('scenarios').select('*').order('id', { ascending: false });
     let loadedScenarios: Scenario[] = [];
@@ -204,7 +197,9 @@ export default function Home() {
         privacy: r.privacy || "open", host_message: r.host_message || "", joined_users: r.joined_users || {},
         current_summary: r.current_summary || "",
         difficulty: r.difficulty || "normal",
-        rule: r.rule || "coc_jp"
+        rule: r.rule || "coc_jp",
+        is_paused: r.is_paused || false,
+        afk_users: r.afk_users || []
       })).filter(r => r.scenario) as Room[];
       setRooms(formattedRooms);
     }
@@ -310,10 +305,49 @@ export default function Home() {
 
   const handleLogout = async () => { await supabase.auth.signOut(); setCurrentUser(null); setCurrentView("login"); setActiveRoom(null); setJoinedCharacter(null); };
   
-  const saveProfile = async () => {
-    if (!editProfileData || !currentUser) return;
-    const { error } = await supabase.from('profiles').upsert({ id: currentUser.id, handle_name: editProfileData.handleName, avatarUrl: editProfileData.avatarUrl, bio: editProfileData.bio, discord_id: editProfileData.discordId });
-    if (!error) { setCurrentUser(editProfileData); setIsEditingProfile(false); }
+  // ★ 中断・再開ロジック
+  const togglePauseRoom = async () => {
+    if (!activeRoom) return;
+    const newStatus = !activeRoom.is_paused;
+    await supabase.from('rooms').update({ is_paused: newStatus }).eq('id', activeRoom.id);
+    setActiveRoom({ ...activeRoom, is_paused: newStatus });
+    await pushMessage(activeRoom.id, { 
+      sender: "system", 
+      text: newStatus ? "【システム】セッションを中断（セーブ）しました。再開するまでAI GMは停止します。" : "【システム】セッションを再開しました！", 
+      type: "system", 
+      channel: "system" 
+    });
+  };
+
+  // ★ AFKロジック
+  const toggleAFK = async (userId: string, forceRemove: boolean = false) => {
+    if (!activeRoom) return;
+    let newAfk = [...(activeRoom.afk_users || [])];
+    if (forceRemove) {
+      newAfk = newAfk.filter(id => id !== userId);
+    } else {
+      if (newAfk.includes(userId)) {
+        newAfk = newAfk.filter(id => id !== userId);
+      } else {
+        newAfk.push(userId);
+      }
+    }
+    await supabase.from('rooms').update({ afk_users: newAfk }).eq('id', activeRoom.id);
+    setActiveRoom({ ...activeRoom, afk_users: newAfk });
+    
+    // システムメッセージを出して周囲に知らせる
+    const cId = activeRoom.joined_users?.[userId];
+    const charName = activeRoom.scenario?.presetCharacters.find(c => c.id === cId)?.name || "プレイヤー";
+    const msg = forceRemove ? `【システム】${charName}が復帰しました。` : (newAfk.includes(userId) ? `【システム】${charName}が離席（AFK）しました。` : `【システム】${charName}が復帰しました。`);
+    await pushMessage(activeRoom.id, { sender: "system", text: msg, type: "system", channel: "system" }, false); // ログに残さなくて良い程度
+  };
+
+  // ★ 5分放置時の自動アクション（GameViewのタイマーから呼ばれる）
+  const triggerAutoAction = async () => {
+    if (!activeRoom || activeRoom.is_paused || activeRoom.status !== 'playing' || isScenarioEnded) return;
+    const extraUserContext = `【システムコマンド：タイムアウト自動行動】
+最後の行動から5分間、PLからの入力がありませんでした。物語を停滞させないため、現在AFKではないキャラクター（およびAI相棒）の行動をAI GMが自動で決定・描写し、事態を強制的に前進させてください。必要であればダイスロール結果もAI自身が捏造して構いません。`;
+    await callAIGM(extraUserContext, "story");
   };
 
   const deleteScenario = async (id: string) => {
@@ -652,6 +686,13 @@ ${logText}`;
         ? aiPlayersList.map(c => `・${c.name} (${c.genderOrRace || "性別不詳"} / ${c.job}) | HP:${c.hp} SAN:${c.san}% STR:${c.str} DEX:${c.dex} INT:${c.int} CON:${c.con}\n  設定: ${c.personality}`).join("\n\n")
         : "なし（ソロプレイ）";
 
+      // ★ AFKのプレイヤー名を抽出し、AIに教える
+      const afkNames = (activeRoom.afk_users || []).map(uid => {
+        const cId = activeRoom.joined_users?.[uid];
+        return activeRoom.scenario?.presetCharacters.find(c => c.id === cId)?.name;
+      }).filter(Boolean).join(", ");
+      const afkInstruction = afkNames ? `\n【AFK（離席中）のプレイヤー】\n${afkNames}\n※このプレイヤーは現在離席中なので、行動を促したり意見を求めたりしないでください。` : "";
+
       let roleInstruction = "";
       let scenarioPlotText = activeRoom.scenario?.plot || "";
 
@@ -725,6 +766,7 @@ ${logText}`;
 
       const diceBase = activeRoom.rule === 'dnd' ? '1d20' : activeRoom.rule === 'sw25' ? '2d6' : activeRoom.rule === 'storytelling' ? '1d6' : '1d100';
 
+      // ★ ターンの概念とパス回し、AIの自律ダイスを強力に指示
       if (targetTab === "story") {
         roleInstruction = `
 【重要：GMの絶対ルール（行動判定とゲーム性の担保）】
@@ -739,22 +781,28 @@ ${logText}`;
 誰かが行動した後は、描写を一旦保留し、必ず「〇〇さんはそう動きました。では、△△さん（他の人間PL）はどうしますか？」と個別に名前を挙げて行動や意見を積極的に促してください。
 パーティー内で意見や行動が分かれる可能性を常に考慮し、全員の行動が出揃うまで結果の処理や情景の進行を待機してください。
 ※この「どうしますか？」と行動を促す際、AI相棒は勝手に行動を宣言しなくて構いません（人間のPLたちの意思決定を最優先してください）。
-6. 【安易な成功・AIの忖度厳禁】PLの行動が論理的に不自然であったり、シナリオの解決条件を正確に満たしていない場合は、絶対に成功させてはいけません。「ただ投げつけただけ」「間違ったアイテムを使った」などの甘いプレイには、容赦なく「効果がなかった」「状況が悪化した」として厳しく処理してください。
-7. 【ゲーム進行とペーシング（最重要）】
+6. 【AI相棒の自律ダイスロール】
+全員行動の際、AI相棒のターンになったら、あなたが自律的にAI相棒の行動を宣言してください。
+判定が必要な場合は、あなた自身が結果をシミュレートし、出力内に必ず「🎲 [AI相棒の名前]の〇〇判定 ➔ 出目: X 【成功/失敗】」という形式で結果を明記して描写に組み込んでください。
+7. 【安易な成功・AIの忖度厳禁】PLの行動が論理的に不自然であったり、シナリオの解決条件を正確に満たしていない場合は、絶対に成功させてはいけません。「ただ投げつけただけ」「間違ったアイテムを使った」などの甘いプレイには、容赦なく「効果がなかった」「状況が悪化した」として厳しく処理してください。
+8. 【ゲーム進行とペーシング（最重要）】
 本シナリオの想定プレイ時間は「約${activeRoom.scenario?.playTime || 60}分」です。この長さに応じて、以下のペーシングで物語を管理してください。
 ・ショート〜中編（120分以下）：導入(20%) → 探索と試練(60%) → 結末(20%) の黄金比で進行してください。
 ・長編（120分超）：単調な一本道にならないよう「起・承・転・結・(新たな)承・転・結」のように、途中で中ボス戦やフェイクの解決（一度解決したと思わせる）、急展開などを挟む【マルチアクト構造】を採用し、複数の山場を作ってください。
 ・共通事項：PLの進行が早すぎる場合は、新たな障害やNPCとの深い対話、深掘りイベントを追加し、指定時間にふさわしいボリュームになるまで物語を引っ張ってください。あっさりと核心に到達させてはいけません。
 ・ソフトランディング：唐突にゲームを終わらせず、必ず事後処理やエピローグ、余韻をしっかり描写して物語を着地させてください。
-8. 【エンディングの処理】
+9. 【エンディングの処理】
 物語が完全に結末（エピローグ）を迎えた場合のみ、最後の情景描写の末尾に必ず [SCENARIO_END] というシステムタグを記述してください。
 
 ${isSplitMode && myScene.id !== 'scene_main' ? `
 【チーム分割中の対応】現在、プレイヤー達は二手以上に分かれて行動しています。この発言は【${myScene.name}】チーム（メンバー: ${myScene.memberIds.map(id => activeRoom.scenario?.presetCharacters.find(c=>c.id===id)?.name).join(', ')}）のものです。
 あなたは他チームの状況を一切考慮せず、このチームが現在いる場所の描写のみを行ってください。別のチームを勝手に合流させないでください。
 ` : `
-【チーム分けの提案】もし物語の展開上、PLたちが二手以上に分かれて行動すべき状況になった場合、GMとして分割を提案し、出力の最後に必ず "[SPLIT_PROPOSAL: 行動案A, 行動案B, 行動案C]" のようなシステムタグを含めてください。
+【ターンの概念と別行動の提案】
+1ターンは「行動の宣言」から「ダイスの判定」までとします。特定の誰かと一緒に行動したい場合はPLにそう宣言させてください。
+PLたちの意見がまとまらない場合や、探索箇所が複数ある場合は、GMから積極的に「では、〇〇チームと△△チームに分かれて行動しますか？」と別行動（チーム分け）を提案し、出力の最後に必ず "[SPLIT_PROPOSAL: 行動案A, 行動案B]" のシステムタグを出力してください。
 `}
+${afkInstruction}
 `;
       } else if (targetTab === "consult") {
         scenarioPlotText = "【機密情報のため非公開（あなたはプレイヤーキャラクターなのでシナリオの真相や隠されたギミック、今後の展開を知りません。これまでのチャット履歴から推測して話してください）】";
@@ -864,14 +912,16 @@ ${roleInstruction}`;
       privacy: privacy, host_message: message, joined_users: { [currentUser.id]: charId },
       current_summary: "",
       difficulty: difficulty,
-      rule: rule
+      rule: rule,
+      is_paused: false,
+      afk_users: []
     }).select().single();
     
     if (error) { alert("データベースエラーが発生しました: " + error.message); return; }
     if (data) {
       setRoomConfigModal(null);
       await fetchData();
-      const newRoom: Room = { id: data.id, scenario_id: data.scenario_id, scenario: scenario, host_name: data.host_name, host_id: data.host_id, status: data.status, scenes: data.scenes, privacy: data.privacy, host_message: data.host_message, joined_users: data.joined_users, current_summary: "", difficulty: data.difficulty, rule: data.rule };
+      const newRoom: Room = { id: data.id, scenario_id: data.scenario_id, scenario: scenario, host_name: data.host_name, host_id: data.host_id, status: data.status, scenes: data.scenes, privacy: data.privacy, host_message: data.host_message, joined_users: data.joined_users, current_summary: "", difficulty: data.difficulty, rule: data.rule, is_paused: false, afk_users: [] };
       const hostChar = scenario.presetCharacters.find(c => c.id === charId);
       if (hostChar) {
         await supabase.from('ai_memory').delete().eq('room_id', newRoom.id);
@@ -928,8 +978,8 @@ ${roleInstruction}`;
     }
     setAiPlayersList(aiChars);
 
-    await supabase.from('rooms').update({ status: 'playing' }).eq('id', activeRoom.id);
-    const updatedRoom: Room = { ...activeRoom, status: 'playing' };
+    await supabase.from('rooms').update({ status: 'playing', is_paused: false }).eq('id', activeRoom.id);
+    const updatedRoom: Room = { ...activeRoom, status: 'playing', is_paused: false };
     setActiveRoom(updatedRoom);
     await pushMessage(activeRoom.id, { sender: "gm", text: `【システム】ゲームを開始しました。AI GMを呼び出しています...`, type: "system", sceneId: myScene.id, channel: "system" });
     
@@ -943,6 +993,50 @@ ${roleInstruction}`;
       setActiveRoom({...activeRoom, status: 'finished'});
       await pushMessage(activeRoom.id, { sender: "gm", text: `【システム】セッションが完了しました！\nこれより「感想戦モード」になります（AIは停止し、プレイヤー間のチャットのみ可能です）。お疲れ様でした！`, type: "system", sceneId: myScene?.id, channel: "system" });
     }
+  };
+
+  // ★ 中断/再開の切り替え
+  const togglePauseRoom = async () => {
+    if (!activeRoom) return;
+    const newStatus = !activeRoom.is_paused;
+    await supabase.from('rooms').update({ is_paused: newStatus }).eq('id', activeRoom.id);
+    setActiveRoom({ ...activeRoom, is_paused: newStatus });
+    await pushMessage(activeRoom.id, { 
+      sender: "system", 
+      text: newStatus ? "【システム】セッションを中断（セーブ）しました。再開するまでAI GMは停止し、タイマーは進みません。" : "【システム】セッションを再開しました！", 
+      type: "system", 
+      channel: "system" 
+    });
+  };
+
+  // ★ AFKの切り替え
+  const toggleAFK = async (userId: string, forceRemove: boolean = false) => {
+    if (!activeRoom) return;
+    let newAfk = [...(activeRoom.afk_users || [])];
+    if (forceRemove) {
+      newAfk = newAfk.filter(id => id !== userId);
+    } else {
+      if (newAfk.includes(userId)) {
+        newAfk = newAfk.filter(id => id !== userId);
+      } else {
+        newAfk.push(userId);
+      }
+    }
+    await supabase.from('rooms').update({ afk_users: newAfk }).eq('id', activeRoom.id);
+    setActiveRoom({ ...activeRoom, afk_users: newAfk });
+    
+    const cId = activeRoom.joined_users?.[userId];
+    const charName = activeRoom.scenario?.presetCharacters.find(c => c.id === cId)?.name || "プレイヤー";
+    const msg = forceRemove ? `【システム】${charName}が復帰しました。` : (newAfk.includes(userId) ? `【システム】${charName}が離席（AFK）しました。` : `【システム】${charName}が復帰しました。`);
+    await pushMessage(activeRoom.id, { sender: "system", text: msg, type: "system", channel: "system" }, false); 
+  };
+
+  // ★ 5分放置時の自動アクション
+  const triggerAutoAction = async () => {
+    if (!activeRoom || activeRoom.is_paused || activeRoom.status !== 'playing' || isScenarioEnded) return;
+    const extraUserContext = `【システムコマンド：タイムアウト自動行動】
+最後の行動から5分間、PLからの入力がありませんでした。物語を停滞させないため、現在AFKではないキャラクター（およびAI相棒）の行動をAI GMが自動で決定・描写し、事態を強制的に前進させてください。必要であればダイスロール結果もAI自身が捏造して構いません。`;
+    await callAIGM(extraUserContext, "story");
   };
 
   const leaveGame = async () => {
@@ -972,7 +1066,7 @@ ${roleInstruction}`;
     }
 
     if (remainingPlayers === 0) {
-      const confirmLeave = confirm("【警告】\n他に人間プレイヤーがいないため、退出すると部屋は完全に閉じられ、現在のセッションに二度と復帰できなくなります。\n本当によろしいですか？");
+      const confirmLeave = confirm("【警告】\n他に人間プレイヤーがいないため、退出すると部屋は完全に閉じられ、現在のセッションに二度と復帰できなくなります。\n（あとで遊ぶ場合は、退出せずに「⏸️中断（セーブ）」を使用してください）\n本当によろしいですか？");
       if (confirmLeave) {
         await supabase.from('rooms').update({ status: 'finished' }).eq('id', activeRoom.id);
         setCurrentView("lobby"); setActiveRoom(null); setJoinedCharacter(null); setAiPlayersList([]); setMessages([]); await fetchData(); 
@@ -1381,6 +1475,9 @@ ${promptText}
           generateSplitProposal={generateSplitProposal}
           finishSplitting={finishSplitting}
           cancelSplitting={cancelSplitting}
+          togglePauseRoom={togglePauseRoom}
+          toggleAFK={toggleAFK}
+          triggerAutoAction={triggerAutoAction}
         />
       )}
 

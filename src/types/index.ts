@@ -1,7 +1,7 @@
 export type ViewState = "login" | "lobby" | "game" | "evaluation" | "admin" | "banned" | "maintenance" | "scenarioEdit" | "mypage";
 
 export type RoomDifficulty = "easy" | "normal" | "hard" | "pro" | "oni";
-export type GameRule = "dnd" | "coc_en" | "coc_jp" | "sw25" | "storytelling"; // ★ ルール追加
+export type GameRule = "dnd" | "coc_en" | "coc_jp" | "sw25" | "storytelling";
 
 export type UserProfile = {
   id: string;
@@ -78,7 +78,9 @@ export type Room = {
   joined_users: Record<string, string>;
   current_summary?: string;
   difficulty: RoomDifficulty;
-  rule: GameRule; // ★ 追加
+  rule: GameRule;
+  is_paused?: boolean; // ★ 追加：中断フラグ
+  afk_users?: string[]; // ★ 追加：離席中のユーザーIDリスト
 };
 
 export type Message = {
