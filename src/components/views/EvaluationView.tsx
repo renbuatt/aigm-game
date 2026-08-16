@@ -11,15 +11,15 @@ type Props = {
   submitEvaluation: () => Promise<void>;
   exportToPDF: (type: 'chat' | 'summary' | 'novel', selectedImages?: string[]) => Promise<void>;
   isExporting: boolean;
+  saveToArchive: () => Promise<void>; // ★ 追加
 };
 
 export default function EvaluationView({
-  activeRoom, messages, ratingScenario, setRatingScenario, ratingGM, setRatingGM, submitEvaluation, exportToPDF, isExporting
+  activeRoom, messages, ratingScenario, setRatingScenario, ratingGM, setRatingGM, submitEvaluation, exportToPDF, isExporting, saveToArchive
 }: Props) {
   const [showNovelModal, setShowNovelModal] = useState(false);
   const [selectedImages, setSelectedImages] = useState<string[]>([]);
 
-  // 選択可能な画像（パッケージ、キャラクター、セッション中に生成した情景）を集める
   const availableImages: string[] = [];
   if (activeRoom.scenario?.imageUrl) availableImages.push(activeRoom.scenario.imageUrl);
   activeRoom.scenario?.presetCharacters.forEach(c => { if(c.imageUrl) availableImages.push(c.imageUrl); });
@@ -68,7 +68,13 @@ export default function EvaluationView({
         <button onClick={submitEvaluation} className="w-full bg-amber-600 hover:bg-amber-500 text-white font-bold py-3 rounded-lg shadow-lg transition-transform active:scale-95 text-lg">評価を送信してロビーに戻る</button>
 
         <div className="border-t border-slate-700 pt-6 mt-6">
-          <h3 className="text-sm font-bold text-slate-400 mb-3">💾 記録を残す (PDF出力・保存)</h3>
+          <div className="flex justify-between items-center mb-3">
+            <h3 className="text-sm font-bold text-slate-400">💾 記録を残す (PDF出力・書庫保存)</h3>
+            {/* ★ マイページ保存用ボタン */}
+            <button onClick={saveToArchive} className="text-xs bg-amber-600/20 text-amber-400 border border-amber-500/50 hover:bg-amber-600/40 px-3 py-1.5 rounded font-bold transition-colors">
+              👑 書庫に保存 (Premium)
+            </button>
+          </div>
           <div className="flex flex-col sm:flex-row gap-3">
             <button onClick={() => exportToPDF('chat')} className="flex-1 bg-slate-700 hover:bg-slate-600 text-white py-2 rounded shadow text-xs font-bold transition-colors">💬 チャットログ</button>
             <button onClick={() => exportToPDF('summary')} disabled={isExporting} className="flex-1 bg-blue-700 hover:bg-blue-600 disabled:bg-slate-700 text-white py-2 rounded shadow text-xs font-bold transition-colors">{isExporting ? '⏳ 生成中...' : '📝 あらすじ要約'}</button>

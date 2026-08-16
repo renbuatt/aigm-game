@@ -1,4 +1,4 @@
-export type ViewState = "login" | "lobby" | "game" | "evaluation" | "admin" | "banned" | "maintenance" | "scenarioEdit";
+export type ViewState = "login" | "lobby" | "game" | "evaluation" | "admin" | "banned" | "maintenance" | "scenarioEdit" | "mypage";
 
 export type UserProfile = {
   id: string;
@@ -78,11 +78,11 @@ export type Room = {
 export type Message = {
   sender: "player" | "gm" | "ai_player";
   text: string;
-  type: "system" | "ic" | "ooc" | "image"; // ★ "image" 追加
+  type: "system" | "ic" | "ooc" | "image";
   sceneId?: string;
   charName?: string;
   channel?: string;
-  imageUrl?: string; // ★ 生成されたBase64画像を格納
+  imageUrl?: string;
 };
 
 export type ChatTab = "story" | "consult" | "gm";
@@ -113,5 +113,16 @@ export type Report = {
   roomId?: string;
   reason: string;
   status: 'pending' | 'resolved' | 'rejected';
+  createdAt: string;
+};
+
+// ★ 新規追加：プレイ書庫用のデータ型
+export type PlayArchive = {
+  id: string;
+  userId: string;
+  scenarioTitle: string;
+  scenarioImage: string;
+  characterName: string;
+  chatLogs: Message[];
   createdAt: string;
 };

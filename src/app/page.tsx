@@ -5,7 +5,7 @@ import { supabase } from "../lib/supabase";
 import { generateAIResponse, generateAITextWithPrompt } from "../lib/ai";
 import { 
   ViewState, UserProfile, Notification, BanAppeal, Report, 
-  Character, Scenario, Scene, Room, Message, ChatTab 
+  Character, Scenario, Scene, Room, Message, ChatTab, PlayArchive // ★ 追加
 } from "../types";
 
 import LoginView from "../components/views/LoginView";
@@ -16,6 +16,8 @@ import AdminView from "../components/views/AdminView";
 import ScenarioEditView from "../components/views/ScenarioEditView";
 import LobbyView from "../components/views/LobbyView";
 import GameView from "../components/views/GameView";
+// ★ マイページ用のビューをインポート
+import MyPageView from "../components/views/MyPageView";
 
 const NO_IMAGE_SCENARIO = "https://images.unsplash.com/photo-1614729939124-03290b5609ce?auto=format&fit=crop&w=400&q=80";
 const DEFAULT_AVATAR = "https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&w=150&q=80";
@@ -64,6 +66,9 @@ export default function Home() {
   const [myNotifications, setMyNotifications] = useState<Notification[]>([]);
   const [showMailbox, setShowMailbox] = useState(false);
   
+  // ★ 書庫データを格納するステート
+  const [playArchives, setPlayArchives] = useState<PlayArchive[]>([]);
+
   const [warningModalUser, setWarningModalUser] = useState<UserProfile | null>(null);
   const [warningTitle, setWarningTitle] = useState("");
   const [warningText, setWarningText] = useState("");
@@ -242,6 +247,20 @@ export default function Home() {
     }
     setCurrentUser(profileData);
     await fetchNotifications(userId);
+
+    // ★ マイページの書庫データも取得する
+    const { data: archiveData } = await supabase.from('play_archives').select('*').eq('user_id', userId).order('created_at', { ascending: false });
+    if (archiveData) {
+      setPlayArchives(archiveData.map((d: any) => ({
+        id: d.id,
+        userId: d.user_id,
+        scenarioTitle: d.scenario_title,
+        scenarioImage: d.scenario_image,
+        characterName: d.character_name,
+        chatLogs: d.chat_logs,
+        createdAt: d.created_at
+      })));
+    }
 
     if (!profileData.isBanned && (!currentMaintenance || profileData.isAdmin || profileData.isTester)) {
       const activeMyRoom = roomsData.find(r => (r.status === 'playing' || r.status === 'splitting' || r.status === 'recruiting') && r.joined_users && r.joined_users[userId]);
@@ -550,7 +569,6 @@ export default function Home() {
     await callAIGM(extraUserContext, "story");
   };
 
-  // ★ 進行管理の黄金比率とソフトランディングをプロンプトに強力に組み込む
   const callAIGM = async (extraUserContext?: string, targetTab: ChatTab = "story", isStarting: boolean = false) => {
     if (!activeRoom || !joinedCharacter || !myScene) return;
     if (!isStarting && activeRoom.status !== 'playing') return;
@@ -883,6 +901,7 @@ ${roleInstruction}`;
     }
   };
 
+  // ★ 欠落していた generateSceneImage を追加
   const generateSceneImage = async (promptText: string) => {
     if (!activeRoom || !myScene) return;
     try {
@@ -930,9 +949,8 @@ ${promptText}
     }
   };
 
-  const exportToPDF = async (type: 'chat' | 'summary' | 'novel', selectedImages?: string[]) => {
-    if (!activeRoom) return;
-
+  // ★ PDF生成機能の共通化
+  const executeExport = async (title: string, sourceMessages: Message[], type: 'chat' | 'summary' | 'novel', selectedImages?: string[]) => {
     const printWindow = window.open('', '_blank');
     if (!printWindow) {
       alert("ポップアップがブロックされました。ブラウザの設定でポップアップを許可してください。");
@@ -940,10 +958,7 @@ ${promptText}
     }
     printWindow.document.write('<div style="padding: 20px; font-family: sans-serif; color: #333;">生成中...しばらくお待ちください。（AI執筆中の場合は十数秒かかることがあります）</div>');
 
-    const endIndex = messages.findIndex(m => m.text.includes('[SCENARIO_END]'));
-    const baseMessages = endIndex !== -1 ? messages.slice(0, endIndex + 1) : messages;
-    
-    const targetMessages = baseMessages.filter(m => m.channel !== 'gm');
+    const targetMessages = sourceMessages.filter(m => m.channel !== 'gm');
 
     let contentHtml = "";
 
@@ -999,7 +1014,7 @@ ${promptText}
       <html>
         <head>
           <meta charset="utf-8">
-          <title>${activeRoom.scenario?.title} - ${type === 'chat' ? 'チャットログ' : type === 'summary' ? '要約データ' : 'リプレイ小説'}</title>
+          <title>${title} - ${type === 'chat' ? 'チャットログ' : type === 'summary' ? '要約データ' : 'リプレイ小説'}</title>
           <style>
             body { font-family: 'Hiragino Kaku Gothic ProN', 'Meiryo', sans-serif; padding: 40px; color: #333; max-width: 800px; margin: 0 auto; }
             h1 { font-size: 24px; border-bottom: 2px solid #2c3e50; padding-bottom: 10px; margin-bottom: 30px; color: #2c3e50; }
@@ -1007,7 +1022,7 @@ ${promptText}
           </style>
         </head>
         <body>
-          <h1>${activeRoom.scenario?.title} - ${type === 'chat' ? 'チャットログ' : type === 'summary' ? 'あらすじ要約' : 'リプレイ小説'}</h1>
+          <h1>${title} - ${type === 'chat' ? 'チャットログ' : type === 'summary' ? 'あらすじ要約' : 'リプレイ小説'}</h1>
           ${contentHtml}
           <script>
             setTimeout(() => { window.print(); window.close(); }, 500);
@@ -1018,6 +1033,49 @@ ${promptText}
     printWindow.document.close();
   };
 
+  // ★ リザルト画面用のラッパー
+  const exportToPDF = async (type: 'chat' | 'summary' | 'novel', selectedImages?: string[]) => {
+    if (!activeRoom) return;
+    const endIndex = messages.findIndex(m => m.text.includes('[SCENARIO_END]'));
+    const baseMessages = endIndex !== -1 ? messages.slice(0, endIndex + 1) : messages;
+    await executeExport(activeRoom.scenario?.title || "名称未設定", baseMessages, type, selectedImages);
+  };
+
+  // ★ プレイ書庫に保存する処理
+  const saveToArchive = async () => {
+    if (!currentUser || !activeRoom || !joinedCharacter) return;
+    
+    const endIndex = messages.findIndex(m => m.text.includes('[SCENARIO_END]'));
+    const baseMessages = endIndex !== -1 ? messages.slice(0, endIndex + 1) : messages;
+
+    const archiveData = {
+      user_id: currentUser.id,
+      scenario_title: activeRoom.scenario?.title || "不明なシナリオ",
+      scenario_image: activeRoom.scenario?.imageUrl || "",
+      character_name: joinedCharacter.name,
+      chat_logs: baseMessages
+    };
+
+    const { data, error } = await supabase.from('play_archives').insert(archiveData).select().single();
+    if (error) {
+      alert("書庫への保存に失敗しました: " + error.message);
+    } else {
+      alert("マイページ（プレイ書庫）に保存しました！\nロビー画面の「マイページ」から確認できます。");
+      setPlayArchives(prev => [
+        {
+          id: data.id,
+          userId: data.user_id,
+          scenarioTitle: data.scenario_title,
+          scenarioImage: data.scenario_image,
+          characterName: data.character_name,
+          chatLogs: data.chat_logs,
+          createdAt: data.created_at
+        },
+        ...prev
+      ]);
+    }
+  };
+
   const unreadCount = myNotifications.filter(n => !n.isRead).length;
 
   const isChatDisabled = Boolean(isLoading || (isSplitMode && myScene && myScene.isMerged === true && chatTab !== 'consult'));
@@ -1025,6 +1083,17 @@ ${promptText}
   return (
     <main className="h-screen w-full bg-slate-900 text-slate-100 flex flex-col font-sans overflow-hidden">
       
+      {/* マイページ（プレイ書庫） */}
+      {currentView === "mypage" && currentUser && (
+        <MyPageView 
+          currentUser={currentUser}
+          playArchives={playArchives}
+          setCurrentView={setCurrentView}
+          executeExport={executeExport}
+          isExporting={isExporting}
+        />
+      )}
+
       {/* 画面群 */}
       {currentView === "admin" && currentUser?.isAdmin && (
         <AdminView 
@@ -1152,9 +1221,11 @@ ${promptText}
           submitEvaluation={submitEvaluation}
           exportToPDF={exportToPDF}
           isExporting={isExporting}
+          saveToArchive={saveToArchive} // ★ 追加
         />
       )}
 
+      {/* 以下省略なしでそのまま（各種モーダル） */}
       {reportTarget && (
         <div className="fixed inset-0 bg-black/80 z-[60] flex items-center justify-center p-4">
           <div className="bg-slate-800 border border-red-700/50 rounded-xl p-6 w-full max-w-lg shadow-2xl">
