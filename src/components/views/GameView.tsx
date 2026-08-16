@@ -40,6 +40,7 @@ type Props = {
   togglePauseRoom: () => Promise<void>;
   toggleAFK: (userId: string, forceRemove?: boolean) => Promise<void>;
   triggerAutoAction: () => Promise<void>;
+  updateInventory: (newItems: string) => Promise<void>; // ★ 追加
 };
 
 export default function GameView({
@@ -48,7 +49,7 @@ export default function GameView({
   setCurrentView, endGame, input, setInput, handleSend, handleTabClick, unreadIndicators,
   consultWithAI, setConsultWithAI, isChatDisabled, mergeTeam, executeMergeAll, generateSceneImage,
   proposedTeams, setProposedTeams, isGeneratingSplit, generateSplitProposal, finishSplitting, cancelSplitting,
-  togglePauseRoom, toggleAFK, triggerAutoAction
+  togglePauseRoom, toggleAFK, triggerAutoAction, updateInventory
 }: Props) {
   const isRecruiting = activeRoom.status === 'recruiting';
   const isHost = currentUser?.id === activeRoom.host_id || currentUser?.handleName === activeRoom.host_name;
@@ -69,12 +70,9 @@ export default function GameView({
 
   useEffect(() => {
     if (!isHost || activeRoom.status !== 'playing' || activeRoom.is_paused || isScenarioEnded) return;
-    
     const lastMsg = messages[messages.length - 1];
     if (lastMsg && (lastMsg.sender === 'gm' || lastMsg.sender === 'system')) {
-      const timer = setTimeout(() => {
-        triggerAutoAction();
-      }, 5 * 60 * 1000);
+      const timer = setTimeout(() => { triggerAutoAction(); }, 5 * 60 * 1000);
       return () => clearTimeout(timer);
     }
   }, [messages, activeRoom.status, activeRoom.is_paused, isHost, isScenarioEnded, triggerAutoAction]);
@@ -106,6 +104,7 @@ export default function GameView({
         </div>
       )}
 
+      {/* チーム分けモーダル類省略 (既存と同じ) */}
       {activeRoom.status === 'splitting' && isHost && (
         <div className="absolute inset-0 bg-black/80 z-50 flex items-center justify-center p-4">
           <div className="bg-slate-800 border border-blue-500/50 rounded-xl p-6 w-full max-w-2xl shadow-2xl space-y-4 max-h-[85vh] flex flex-col">
@@ -167,7 +166,6 @@ export default function GameView({
                   </div>
                 </div>
               ))}
-              
               {!isGeneratingSplit && (
                 <button onClick={() => setProposedTeams([...proposedTeams, { id: `team_${Date.now()}`, action: "", members: [], leader: "" }])} className="w-full bg-slate-800 border-2 border-dashed border-slate-600 text-slate-400 hover:text-white hover:border-slate-500 py-3 rounded-lg text-sm font-bold transition-colors">
                   ＋ 手動でチームを追加する
@@ -229,7 +227,6 @@ export default function GameView({
           
           <div className="flex flex-col items-end">
             <span className="text-[10px] text-blue-400 font-bold border border-blue-500/50 bg-blue-900/30 px-2 py-0.5 rounded flex items-center gap-1 mb-1">
-              {/* ★ お試しプレイ専用のヘッダー表示 */}
               {activeRoom.is_trial && <span className="text-[10px] bg-pink-600 text-white px-1.5 py-0.5 rounded animate-pulse">🌟お試し</span>}
               <span>ROOM: {activeRoom.scenario?.title} (約{activeRoom.scenario?.playTime || 60}分)</span>
               
@@ -274,6 +271,22 @@ export default function GameView({
             {isSplitMode && myScene.id !== 'scene_main' && <span className="text-[10px] bg-indigo-600 px-2 py-0.5 rounded-full">{myScene.name} 班</span>}
           </span>
           <div className="flex flex-wrap items-center gap-1 justify-end">
+            {/* ★ 所持品のポップオーバー表示（表示設定がONの場合のみ） */}
+            {joinedCharacter && activeRoom.show_items && (
+               <div className="relative group flex items-center mr-2">
+                 <button className="bg-amber-800/80 hover:bg-amber-700 text-amber-100 border border-amber-500/50 text-[10px] px-2 py-1.5 rounded font-bold shadow-lg flex items-center">🎒 所持品</button>
+                 <div className="absolute top-full right-0 mt-1 w-64 bg-slate-800 border border-slate-600 rounded p-2 hidden group-hover:block z-50 shadow-2xl">
+                    <label className="text-[10px] text-slate-400 mb-1 block">アイテムの確認・メモ</label>
+                    <textarea
+                      value={activeRoom.inventories?.[currentUser.id] || ""}
+                      onChange={(e) => updateInventory(e.target.value)}
+                      className="w-full h-32 bg-slate-900 text-white text-xs p-2 rounded border border-slate-700 custom-scrollbar"
+                      placeholder="スマートフォン、財布、懐中電灯..."
+                    />
+                 </div>
+               </div>
+            )}
+
             {joinedCharacter && (
               <div className="flex gap-1 items-center">
                 <div className="bg-red-900/80 text-red-200 border border-red-500/50 text-[10px] px-2 py-1.5 rounded font-bold shadow-lg flex items-center mr-1">
@@ -309,11 +322,9 @@ export default function GameView({
                 )}
               </div>
             )}
-            {/* ★ お試し部屋の場合はホストでも手動でのゲーム開始ボタンを押せるようにする（あるいはメッセージで促す） */}
             {isHost && isRecruiting && joinedCharacter && (
               <button onClick={startGame} className="bg-emerald-600 hover:bg-emerald-500 text-white text-[10px] font-bold px-4 py-2 rounded animate-pulse ml-2 shadow-lg shadow-emerald-900/50">▶ ゲーム開始</button>
             )}
-            {/* ゲストがお試しに入った時用の開始ボタン */}
             {!isHost && activeRoom.is_trial && isRecruiting && joinedCharacter && (
               <button onClick={startGame} className="bg-pink-600 hover:bg-pink-500 text-white text-[10px] font-bold px-4 py-2 rounded animate-pulse ml-2 shadow-lg shadow-pink-900/50">▶ お試し開始</button>
             )}
