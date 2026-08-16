@@ -49,7 +49,6 @@ export default function Home() {
   
   const [consultWithAI, setConsultWithAI] = useState<boolean>(true);
 
-  const [splitSuggestions, setSplitSuggestions] = useState<string[]>([]);
   const [proposedTeams, setProposedTeams] = useState<{id: string, action: string, members: string[], leader: string}[]>([]);
   const [isGeneratingSplit, setIsGeneratingSplit] = useState(false);
 
@@ -378,11 +377,16 @@ export default function Home() {
       is_playable_by_others: editingScenario.isPlayableByOthers || false,
       is_trial_ok: editingScenario.isTrialOk || false 
     };
+
     if (editingScenario.id && !editingScenario.id.startsWith('s')) {
-      await supabase.from('scenarios').update(dbData).eq('id', editingScenario.id);
+      const { error } = await supabase.from('scenarios').update(dbData).eq('id', editingScenario.id);
+      if (error) { alert("保存に失敗しました: " + error.message); return; }
     } else {
-      await supabase.from('scenarios').insert(dbData);
+      const { error } = await supabase.from('scenarios').insert(dbData);
+      if (error) { alert("作成に失敗しました: " + error.message); return; }
     }
+    
+    alert("シナリオを保存しました！");
     await fetchData();
     setCurrentView("lobby");
   };
@@ -862,8 +866,11 @@ export default function Home() {
 
         if (activeRoom.is_trial) {
           roleInstructionLines.push(
-            "【お試しプレイ専用指示】",
-            "このセッションは10分程度で終わる「導入のみ」のお試し版です。絶対に物語の核心や真相のネタバレをしないでください。最初の事件が起きた直後や、探索の入り口に立ったところで「本編に続く…」と煽りを入れて [SCENARIO_END] を出力してください。",
+            "【お試しプレイ専用指示（絶対厳守ルール）】",
+            "このセッションは「導入部分のみ」を体験してもらうためのお試し版（約10分程度）です。以下のルールを絶対に守ってください。",
+            "1. 【ネタバレの完全禁止】物語の核心、敵の正体、ギミックの真相などのネタバレは一切行わないでください。",
+            "2. 【クリフハンガーでの強制終了】導入部分が少し進行し、「最初の事件が起きた！」「謎の扉が開き、奥から何かが現れた！」など、一番物語が面白く盛り上がってきた絶頂のタイミングを見計らって、プレイヤーの行動を待たずにバッサリと物語を強制終了させてください。",
+            "3. 終了の際は、情景描写の直後に「――この先は製品版でお楽しみください！」と期待を煽る文言を入れ、ターンの最後に必ず [SCENARIO_END] を出力してゲームを終わらせてください。",
             ""
           );
         }
@@ -1617,6 +1624,7 @@ export default function Home() {
         />
       )}
 
+      {/* ★ 広告視聴モーダル（モック） */}
       {adModal.isOpen && (
         <div className="fixed inset-0 bg-black/90 z-[80] flex items-center justify-center p-4">
           <div className="bg-slate-800 border border-pink-500/50 rounded-xl p-8 w-full max-w-sm shadow-2xl text-center space-y-6">

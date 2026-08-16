@@ -50,20 +50,21 @@ export default function ScenarioEditView({ editingScenario, setEditingScenario, 
       <div className="flex-1 overflow-y-auto pr-2 custom-scrollbar space-y-4">
         {activeTab === 'basic' && (
           <div className="space-y-4">
-            <div><label className="text-xs text-slate-400 block mb-1">タイトル <span className="text-red-400">*</span></label><input type="text" value={editingScenario.title} onChange={e=>updateScenario('title', e.target.value)} className="w-full bg-slate-800 border border-slate-700 rounded p-2 text-sm" /></div>
-            <div><label className="text-xs text-slate-400 block mb-1">パッケージ画像URL</label><input type="text" value={editingScenario.imageUrl} onChange={e=>updateScenario('imageUrl', e.target.value)} placeholder="https://..." className="w-full bg-slate-800 border border-slate-700 rounded p-2 text-sm" /></div>
+            <div><label className="text-xs text-slate-400 block mb-1">タイトル <span className="text-red-400">*</span></label><input type="text" value={editingScenario.title || ""} onChange={e=>updateScenario('title', e.target.value)} className="w-full bg-slate-800 border border-slate-700 rounded p-2 text-sm" /></div>
+            <div><label className="text-xs text-slate-400 block mb-1">パッケージ画像URL</label><input type="text" value={editingScenario.imageUrl || ""} onChange={e=>updateScenario('imageUrl', e.target.value)} placeholder="https://..." className="w-full bg-slate-800 border border-slate-700 rounded p-2 text-sm" /></div>
             <div className="flex gap-4">
-              <div className="flex-1"><label className="text-xs text-slate-400 block mb-1">目安プレイ時間 (分)</label><input type="number" value={editingScenario.playTime} onChange={e=>updateScenario('playTime', parseInt(e.target.value))} className="w-full bg-slate-800 border border-slate-700 rounded p-2 text-sm" /></div>
-              <div className="flex-1"><label className="text-xs text-slate-400 block mb-1">販売価格 (pt)</label><input type="number" value={editingScenario.price} onChange={e=>updateScenario('price', parseInt(e.target.value))} className="w-full bg-slate-800 border border-slate-700 rounded p-2 text-sm" /></div>
+              <div className="flex-1"><label className="text-xs text-slate-400 block mb-1">目安プレイ時間 (分)</label><input type="number" value={editingScenario.playTime || 60} onChange={e=>updateScenario('playTime', parseInt(e.target.value))} className="w-full bg-slate-800 border border-slate-700 rounded p-2 text-sm" /></div>
+              <div className="flex-1"><label className="text-xs text-slate-400 block mb-1">販売価格 (pt)</label><input type="number" value={editingScenario.price || 0} onChange={e=>updateScenario('price', parseInt(e.target.value))} className="w-full bg-slate-800 border border-slate-700 rounded p-2 text-sm" /></div>
             </div>
             
-            <div className="bg-slate-900/80 border border-slate-600 p-4 rounded-lg mt-4 space-y-3 shadow-lg">
-              <label className="flex items-center gap-2 text-sm font-bold text-white cursor-pointer hover:text-blue-300 transition">
-                <input type="checkbox" checked={editingScenario.isPlayableByOthers} onChange={(e) => updateScenario('isPlayableByOthers', e.target.checked)} className="w-4 h-4 accent-blue-500" />
+            <div className="bg-slate-900/80 border border-slate-600 p-4 rounded-lg mt-4 space-y-4 shadow-lg">
+              <label className="flex items-center gap-3 text-sm font-bold text-white cursor-pointer hover:text-blue-300 transition select-none">
+                {/* ★ 確実に保存されるように !! を付与 */}
+                <input type="checkbox" checked={!!editingScenario.isPlayableByOthers} onChange={(e) => updateScenario('isPlayableByOthers', e.target.checked)} className="w-5 h-5 accent-blue-500 cursor-pointer" />
                 🌍 他のプレイヤーがこのシナリオで部屋を作成して遊ぶことを許可する
               </label>
-              <label className="flex items-center gap-2 text-sm font-bold text-pink-300 cursor-pointer hover:text-pink-200 transition">
-                <input type="checkbox" checked={editingScenario.isTrialOk} onChange={(e) => updateScenario('isTrialOk', e.target.checked)} className="w-4 h-4 accent-pink-500" />
+              <label className="flex items-center gap-3 text-sm font-bold text-pink-300 cursor-pointer hover:text-pink-200 transition select-none">
+                <input type="checkbox" checked={!!editingScenario.isTrialOk} onChange={(e) => updateScenario('isTrialOk', e.target.checked)} className="w-5 h-5 accent-pink-500 cursor-pointer" />
                 🌟 「お試しプレイ（導入のみ・他AI・無料）」を許可してロビーに公開する
               </label>
             </div>
@@ -94,7 +95,6 @@ export default function ScenarioEditView({ editingScenario, setEditingScenario, 
                       <div key={stat}><label className="text-[10px] text-slate-400 block mb-1 uppercase">{stat}</label><input type="number" value={(editingScenario.presetCharacters[editingCharIndex] as any)[stat]} onChange={e=>updateCharacter(editingCharIndex, stat as any, parseInt(e.target.value))} className="w-full bg-slate-900 border border-slate-700 rounded p-1 text-center text-sm" /></div>
                     ))}
                   </div>
-                  {/* ★ 初期アイテム入力枠 */}
                   <div><label className="text-xs text-amber-400 block mb-1 font-bold">🎒 初期所持アイテム (コンマ区切り等で記載)</label><textarea value={editingScenario.presetCharacters[editingCharIndex].items || ""} onChange={e=>updateCharacter(editingCharIndex, 'items', e.target.value)} placeholder="例：スマートフォン, 財布, 懐中電灯" className="w-full h-16 bg-slate-900 border border-slate-700 rounded p-2 text-sm" /></div>
                   <div><label className="text-xs text-slate-400 block mb-1">性格・裏設定 (AIがロールプレイに使用)</label><textarea value={editingScenario.presetCharacters[editingCharIndex].personality} onChange={e=>updateCharacter(editingCharIndex, 'personality', e.target.value)} className="w-full h-24 bg-slate-900 border border-slate-700 rounded p-2 text-sm" /></div>
                 </div>
@@ -105,8 +105,8 @@ export default function ScenarioEditView({ editingScenario, setEditingScenario, 
 
         {activeTab === 'plot' && (
           <div className="space-y-4">
-            <div><label className="text-xs text-slate-400 block mb-1">世界観・時代設定</label><textarea value={editingScenario.setting} onChange={e=>updateScenario('setting', e.target.value)} placeholder="例: 1920年代のアーカム..." className="w-full h-20 bg-slate-800 border border-slate-700 rounded p-2 text-sm" /></div>
-            <div><label className="text-xs text-slate-400 block mb-1">進行プロット・真相・ギミックの解法 (GMのみに公開)</label><textarea value={editingScenario.plot} onChange={e=>updateScenario('plot', e.target.value)} placeholder="AI GMが読み込むシナリオの台本です。" className="w-full h-64 bg-slate-800 border border-slate-700 rounded p-2 text-sm" /></div>
+            <div><label className="text-xs text-slate-400 block mb-1">世界観・時代設定</label><textarea value={editingScenario.setting || ""} onChange={e=>updateScenario('setting', e.target.value)} placeholder="例: 1920年代のアーカム..." className="w-full h-20 bg-slate-800 border border-slate-700 rounded p-2 text-sm" /></div>
+            <div><label className="text-xs text-slate-400 block mb-1">進行プロット・真相・ギミックの解法 (GMのみに公開)</label><textarea value={editingScenario.plot || ""} onChange={e=>updateScenario('plot', e.target.value)} placeholder="AI GMが読み込むシナリオの台本です。" className="w-full h-64 bg-slate-800 border border-slate-700 rounded p-2 text-sm" /></div>
           </div>
         )}
       </div>
