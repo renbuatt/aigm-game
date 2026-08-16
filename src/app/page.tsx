@@ -49,7 +49,6 @@ export default function Home() {
   
   const [consultWithAI, setConsultWithAI] = useState<boolean>(true);
 
-  const [splitSuggestions, setSplitSuggestions] = useState<string[]>([]);
   const [proposedTeams, setProposedTeams] = useState<{id: string, action: string, members: string[], leader: string}[]>([]);
   const [isGeneratingSplit, setIsGeneratingSplit] = useState(false);
 
@@ -983,234 +982,254 @@ export default function Home() {
     }
   };
 
-  const executeCreateRoom = async () => {
-    if (!currentUser || !roomConfigModal) return;
-    const { scenario, charId, privacy, message, difficulty, rule, showItems } = roomConfigModal;
-    if (!charId) { alert("キャラクターを選択してください。"); return; }
-    
-    const isAuthor = scenario.authorId === currentUser.id;
-    if (!isAuthor) {
-      const currentTickets = scenario.purchasedTickets || {};
-      const myTickets = currentTickets[currentUser.id] || 0;
-      if (myTickets <= 0) { alert("プレイチケットがありません。"); return; }
-      const newTickets = { ...currentTickets, [currentUser.id]: myTickets - 1 };
-      const { error: ticketError } = await supabase.from('scenarios').update({ purchased_tickets: newTickets }).eq('id', scenario.id);
-      if (ticketError) { alert("チケットの消費処理に失敗しました。"); return; }
-    }
+  const rollDice = async (targetValue: number, label: string, is1d100: boolean = false) => {
+    if(!myScene || !activeRoom || isLoading || !joinedCharacter) return;
+    let res = 0; let isSuccess = false; let msgText = "";
 
-    const hostChar = scenario.presetCharacters.find(c => c.id === charId);
-    if (!hostChar) return;
+    const rule = activeRoom.rule || "coc_jp";
 
-    const initialScenes: Scene[] = [{ id: `scene_main_${Date.now()}`, name: "メインルーム", memberIds: scenario.presetCharacters.map(c => c.id) }];
-    
-    const { data, error } = await supabase.from('rooms').insert({ 
-      scenario_id: scenario.id, host_name: currentUser.handleName, host_id: currentUser.id, 
-      status: "recruiting", scenes: initialScenes,
-      privacy: privacy, host_message: message, joined_users: { [currentUser.id]: charId },
-      current_summary: "",
-      difficulty: difficulty,
-      rule: rule,
-      is_paused: false,
-      afk_users: [],
-      is_trial: false,
-      show_items: showItems,
-      inventories: { [currentUser.id]: hostChar.items || "" }
-    }).select().single();
-    
-    if (error) { alert("データベースエラーが発生しました: " + error.message); return; }
-    if (data) {
-      setRoomConfigModal(null);
-      await fetchData();
-      const newRoom: Room = { id: data.id, scenario_id: data.scenario_id, scenario: scenario, host_name: data.host_name, host_id: data.host_id, status: data.status, scenes: data.scenes, privacy: data.privacy, host_message: data.host_message, joined_users: data.joined_users, current_summary: "", difficulty: data.difficulty, rule: data.rule, is_paused: false, afk_users: [], is_trial: false, show_items: data.show_items, inventories: data.inventories };
-      
-      await supabase.from('ai_memory').delete().eq('room_id', newRoom.id);
-      setActiveRoom(newRoom); setJoinedCharacter(hostChar);
-      setMessages([]); 
-      await pushMessage(newRoom.id, { sender: "system", text: `【入室完了】プレイヤー全員の準備が整うまでお待ちください。\n【案内】シークレット設定の場合、画面左上の「共有ID」をコピーして友人に伝えてください。`, type: "system", sceneId: newRoom.scenes?.[0]?.id, channel: "system" });
-      setCurrentView("game");
-    }
-  };
-
-  const executeTrialPlay = async () => {
-    if (!currentUser || !adModal.scenario) return;
-    const scenario = adModal.scenario;
-    setAdModal({ isOpen: false, step: 0, scenario: null });
-    
-    const charId = scenario.presetCharacters[0]?.id;
-    if (!charId) { alert("このシナリオにはプリセットキャラクターが設定されていないため、お試しプレイができません。"); return; }
-    const hostChar = scenario.presetCharacters[0];
-    
-    const initialScenes: Scene[] = [{ id: `scene_main_${Date.now()}`, name: "メインルーム", memberIds: scenario.presetCharacters.map(c => c.id) }];
-    
-    const { data, error } = await supabase.from('rooms').insert({ 
-      scenario_id: scenario.id, host_name: currentUser.handleName, host_id: currentUser.id, 
-      status: "recruiting", scenes: initialScenes,
-      privacy: 'secret', host_message: "お試しプレイ", joined_users: { [currentUser.id]: charId },
-      current_summary: "",
-      difficulty: "normal",
-      rule: "coc_jp",
-      is_paused: false,
-      afk_users: [],
-      is_trial: true,
-      show_items: false,
-      inventories: { [currentUser.id]: hostChar.items || "" }
-    }).select().single();
-    
-    if (error) { alert("データベースエラーが発生しました: " + error.message); return; }
-    if (data) {
-      await fetchData();
-      const newRoom: Room = { id: data.id, scenario_id: data.scenario_id, scenario: scenario, host_name: data.host_name, host_id: data.host_id, status: data.status, scenes: data.scenes, privacy: data.privacy, host_message: data.host_message, joined_users: data.joined_users, current_summary: "", difficulty: data.difficulty, rule: data.rule, is_paused: false, afk_users: [], is_trial: true, show_items: data.show_items, inventories: data.inventories };
-      
-      await supabase.from('ai_memory').delete().eq('room_id', newRoom.id);
-      setActiveRoom(newRoom); setJoinedCharacter(hostChar);
-      setMessages([]); 
-      
-      const aiChars = scenario.presetCharacters.filter(c => c.id !== charId);
-      setAiPlayersList(aiChars);
-
-      await pushMessage(newRoom.id, { sender: "system", text: `【お試しルーム作成完了】\n他のキャラクターはAIが担当します。\n右上の「▶お試し開始」ボタンを押してスタートしてください。`, type: "system", sceneId: newRoom.scenes?.[0]?.id, channel: "system" });
-      setCurrentView("game");
-    }
-  };
-
-  const executeJoinRoom = async (room: Room, charId: string) => {
-    if (!currentUser || !room || !charId) return;
-    
-    const { data: latestRoom } = await supabase.from('rooms').select('joined_users, inventories').eq('id', room.id).single();
-    const currentUsers = latestRoom?.joined_users || {};
-    const currentInventories = latestRoom?.inventories || {};
-
-    if (Object.values(currentUsers).includes(charId)) {
-      alert("申し訳ありません、そのキャラクターは先ほど他のプレイヤーに選択されました！");
-      await fetchData(); return;
-    }
-
-    const char = room.scenario?.presetCharacters.find(c => c.id === charId);
-    if (!char) return;
-
-    const newUsers = { ...currentUsers, [currentUser.id]: charId };
-    const newInventories = { ...currentInventories, [currentUser.id]: char.items || "" };
-
-    const { error } = await supabase.from('rooms').update({ joined_users: newUsers, inventories: newInventories }).eq('id', room.id);
-    if (error) { alert("入室エラー: " + error.message); return; }
-
-    const updatedRoom = { ...room, joined_users: newUsers, inventories: newInventories };
-    setActiveRoom(updatedRoom); setJoinedCharacter(char);
-    await loadChatLogs(room.id);
-    await pushMessage(room.id, { sender: "system", text: `【入室完了】${char.name}として参加しました！ホストの開始をお待ちください。`, type: "system", sceneId: room.scenes?.[0]?.id, channel: "system" });
-    setCurrentView("game");
-  };
-
-  const spectateRoom = async (room: Room) => {
-    setActiveRoom(room);
-    setJoinedCharacter(null); 
-    await loadChatLogs(room.id);
-    await pushMessage(room.id, { sender: "system", text: `【観戦モード】部屋に入室しました。チャットやダイスは使用できません。`, type: "system", sceneId: room.scenes?.[0]?.id, channel: "system" }, false);
-    setCurrentView("game");
-  };
-
-  const startGame = async () => {
-    if(!activeRoom || !activeRoom.scenario || !joinedCharacter || !myScene) return;
-    
-    let aiChars: Character[] = [];
-    const takenIds = Object.values(activeRoom.joined_users || {});
-    const emptyChars = activeRoom.scenario.presetCharacters.filter(c => !takenIds.includes(c.id));
-    if (emptyChars.length > 0) {
-      if (activeRoom.is_trial) {
-        aiChars = emptyChars; 
-      } else {
-        if (confirm(`参加していないキャラクターが ${emptyChars.length} 人います。\n彼らを「AIプレイヤー（相棒）」として参加させますか？\n（キャンセルを押すとソロプレイになります）`)) {
-          aiChars = emptyChars;
-        }
-      }
-    }
-    setAiPlayersList(aiChars);
-
-    await supabase.from('rooms').update({ status: 'playing', is_paused: false }).eq('id', activeRoom.id);
-    const updatedRoom: Room = { ...activeRoom, status: 'playing', is_paused: false };
-    setActiveRoom(updatedRoom);
-    await pushMessage(activeRoom.id, { sender: "system", text: `【システム】ゲームを開始しました。AI GMを呼び出しています...`, type: "system", sceneId: myScene.id, channel: "system" });
-    
-    await callAIGM(`【システムコマンド】セッションが開始されました。プロットに従い、導入部分の情景描写を行い、プレイヤーに行動方針の相談を促してください。`, "story", true);
-  };
-
-  const endGame = async () => {
-    if(!activeRoom) return;
-    if (currentUser?.id === activeRoom.host_id || activeRoom.is_trial) {
-      await supabase.from('rooms').update({ status: 'finished' }).eq('id', activeRoom.id);
-      setActiveRoom({...activeRoom, status: 'finished'});
-      await pushMessage(activeRoom.id, { sender: "system", text: `【システム】セッションが完了しました！\nこれより「感想戦モード」になります（AIは停止し、プレイヤー間のチャットのみ可能です）。お疲れ様でした！`, type: "system", sceneId: myScene?.id, channel: "system" });
-    }
-  };
-
-  const leaveGame = async () => {
-    if (!activeRoom || !currentUser) return;
-    
-    if (activeRoom.status === 'finished') {
-       setCurrentView("evaluation");
-       return;
-    }
-
-    if (!joinedCharacter) {
-      setCurrentView("lobby"); setActiveRoom(null); return;
-    }
-
-    const isHost = activeRoom.host_id === currentUser.id;
-    const isRecruiting = activeRoom.status === 'recruiting';
-    const remainingPlayers = Object.keys(activeRoom.joined_users || {}).filter(id => id !== currentUser.id).length;
-
-    if (isRecruiting) {
-      const newUsers = { ...activeRoom.joined_users };
-      delete newUsers[currentUser.id];
-      await supabase.from('rooms').update({ joined_users: newUsers }).eq('id', activeRoom.id);
-      if (isHost && remainingPlayers === 0) {
-         await supabase.from('rooms').update({ status: 'finished' }).eq('id', activeRoom.id);
-      }
-      setCurrentView("lobby"); setActiveRoom(null); setJoinedCharacter(null); return;
-    }
-
-    if (remainingPlayers === 0) {
-      const confirmLeave = confirm("【警告】\n他に人間プレイヤーがいないため、退出すると部屋は完全に閉じられ、現在のセッションに二度と復帰できなくなります。\n（あとで遊ぶ場合は、退出せずに「⏸️中断（セーブ）」を使用してください）\n本当によろしいですか？");
-      if (confirmLeave) {
-        await supabase.from('rooms').update({ status: 'finished' }).eq('id', activeRoom.id);
-        setCurrentView("lobby"); setActiveRoom(null); setJoinedCharacter(null); setAiPlayersList([]); setMessages([]); await fetchData(); 
-      }
+    if (rule === "dnd") {
+      res = Math.floor(Math.random() * 20) + 1;
+      const modifier = Math.floor((targetValue - 10) / 2) || 0;
+      const total = res + modifier;
+      const dc = 12;
+      isSuccess = total >= dc;
+      if (res === 20) isSuccess = true;
+      if (res === 1) isSuccess = false;
+      const modStr = modifier >= 0 ? `+${modifier}` : `${modifier}`;
+      msgText = `🎲 ${label}判定 (1d20${modStr}) ➔ 出目: ${res} (計: ${total}) vs DC${dc} 【${isSuccess ? "成功" : "失敗"}】`;
+      if (res === 20) msgText += " ✨クリティカル！";
+      if (res === 1) msgText += " 💀ファンブル！";
+    } else if (rule === "sw25") {
+      const d1 = Math.floor(Math.random() * 6) + 1;
+      const d2 = Math.floor(Math.random() * 6) + 1;
+      res = d1 + d2;
+      const bonus = Math.floor(targetValue / 6) || 0;
+      const total = res + bonus;
+      const target = 10;
+      isSuccess = total >= target;
+      if (res === 12) isSuccess = true;
+      if (res === 2) isSuccess = false;
+      const bonusStr = bonus >= 0 ? `+${bonus}` : `${bonus}`;
+      msgText = `🎲 ${label}判定 (2d6${bonusStr}) ➔ 出目: ${res}[${d1},${d2}] (計: ${total}) vs 目標${target} 【${isSuccess ? "成功" : "失敗"}】`;
+      if (res === 12) msgText += " ✨クリティカル！";
+      if (res === 2) msgText += " 💀ファンブル！";
+    } else if (rule === "storytelling") {
+      res = Math.floor(Math.random() * 6) + 1;
+      isSuccess = res >= 4;
+      msgText = `🎲 ${label}判定 (1d6) ➔ 出目: ${res} 【${isSuccess ? "成功" : "失敗"}】`;
+      if (res === 6) msgText += " ✨奇跡の転機！";
     } else {
-      const confirmLeave = confirm("自分のキャラクターをAIに引き継がせて離脱します。よろしいですか？");
-      if (confirmLeave) {
-        const newUsers = { ...activeRoom.joined_users };
-        delete newUsers[currentUser.id];
-        await supabase.from('rooms').update({ joined_users: newUsers }).eq('id', activeRoom.id);
-        setCurrentView("lobby"); setActiveRoom(null); setJoinedCharacter(null); setAiPlayersList([]); setMessages([]); await fetchData(); 
+      if (is1d100) {
+        res = Math.floor(Math.random() * 100) + 1;
+        isSuccess = res <= targetValue;
+        msgText = `🎲 ${label} (1d100 ≦ ${targetValue}%) ➔ 出目: ${res} 【${isSuccess ? "成功" : "失敗"}】`;
+        if (rule === "coc_en" && res === 1) msgText += " ✨クリティカル！";
+        if (rule === "coc_en" && res >= 96) msgText += " 💀ファンブル！";
+      } else {
+        const d1 = Math.floor(Math.random() * 6) + 1; const d2 = Math.floor(Math.random() * 6) + 1; const d3 = Math.floor(Math.random() * 6) + 1;
+        res = d1 + d2 + d3;
+        isSuccess = res <= targetValue;
+        msgText = `🎲 ${label} (3d6 ≦ ${targetValue}) ➔ 出目: ${res} [${d1},${d2},${d3}] 【${isSuccess ? "成功" : "失敗"}】`;
       }
+    }
+
+    const isRecruiting = activeRoom.status === 'recruiting';
+    const msgType = (chatTab === "gm" || isRecruiting) ? "ooc" : "ic";
+
+    await pushMessage(activeRoom.id, { sender: "player", text: msgText, type: msgType, sceneId: myScene.id, charName: joinedCharacter.name, channel: chatTab });
+
+    if (!isRecruiting && activeRoom.status === 'playing') {
+        let promptSuffix = "この結果を踏まえてGMとして情景描写を行ってください。";
+        if (chatTab === "gm") {
+            promptSuffix = "この結果を踏まえて、システム・ルールの裁定やヒントの提示を行ってください。";
+        } else if (chatTab === "consult") {
+            promptSuffix = "この結果を踏まえて、AI相棒としてリアクションを返してください。";
+        }
+        await callAIGM(`【システム判定結果】${joinedCharacter.name}が${label}ロールを行いました。\n結果: ${msgText}\n${promptSuffix}`, chatTab, false);
     }
   };
 
-  const handleSend = async () => {
-    if (!input.trim() || isLoading || !activeRoom || !joinedCharacter || !currentUser || !myScene) return;
-    
-    const currentInput = input;
-    const isFinished = activeRoom.status === 'finished';
-    const isRecruiting = activeRoom.status === 'recruiting';
+  const generateSceneImage = async (promptText: string) => {
+    if (!activeRoom || !myScene) return;
+    try {
+      const translationPrompt = [
+        "以下の日本語の情景描写を、画像生成AI用のカンマ区切りの英語プロンプトに変換してください。",
+        "【絶対条件】",
+        "・文章ではなく、英単語のカンマ区切りで出力してください。",
+        "・不適切な画像が生成されるのを防ぐため、必ず最後に「SFW, fully clothed, masterpiece, high quality」を含めてください。",
+        "",
+        "情景描写：",
+        promptText
+      ].join('\n');
 
-    if (isFinished || isRecruiting || (chatTab === "consult" && !consultWithAI)) {
-      await pushMessage(activeRoom.id, { sender: "player", text: currentInput, type: (isFinished || isRecruiting) ? "ooc" : "ic", sceneId: myScene.id, charName: joinedCharacter.name, channel: chatTab });
-      setInput("");
+      let englishPrompt = "";
+      try {
+        englishPrompt = await generateAITextWithPrompt(translationPrompt);
+      } catch (err) {
+        englishPrompt = `${promptText}, SFW, fully clothed, masterpiece, high quality`;
+      }
+
+      const prompt = encodeURIComponent(`${englishPrompt}, TRPG scene, cinematic lighting, dramatic atmosphere`);
+      const seed = Math.floor(Math.random() * 100000);
+      const url = `https://image.pollinations.ai/prompt/${prompt}?nologo=true&seed=${seed}&safe=true`;
+
+      const res = await fetch(url);
+      if (!res.ok) throw new Error("AIサーバーが混雑しています");
+      const blob = await res.blob();
+      
+      const reader = new FileReader();
+      reader.onloadend = async () => {
+        const base64data = reader.result as string;
+        await pushMessage(activeRoom.id, {
+          sender: "gm",
+          text: `【ホストが情景画像を生成しました】\n「${promptText}」`,
+          type: "image",
+          imageUrl: base64data,
+          sceneId: myScene.id,
+          channel: "story"
+        });
+      };
+      reader.readAsDataURL(blob);
+
+    } catch (err: any) {
+      alert("画像の生成に失敗しました（AIサーバー混雑エラー等）。\n少し時間をおいて再度お試しください。");
+    }
+  };
+
+  const executeExport = async (title: string, sourceMessages: Message[], type: 'chat' | 'summary' | 'novel', selectedImages?: string[]) => {
+    const printWindow = window.open('', '_blank');
+    if (!printWindow) {
+      alert("ポップアップがブロックされました。ブラウザの設定でポップアップを許可してください。");
       return;
     }
+    printWindow.document.write('<div style="padding: 20px; font-family: sans-serif; color: #333;">生成中...しばらくお待ちください。（AI執筆中の場合は十数秒かかることがあります）</div>');
 
-    await pushMessage(activeRoom.id, { sender: "player", text: currentInput, type: chatTab === "story" ? "ic" : "ooc", sceneId: myScene.id, charName: joinedCharacter.name, channel: chatTab });
-    setInput(""); 
+    const targetMessages = sourceMessages.filter(m => m.channel !== 'gm');
+
+    let contentHtml = "";
+
+    if (type === 'chat') {
+      contentHtml = targetMessages.map(m => {
+        if (m.type === 'image' && m.imageUrl) {
+          return `<div style="margin-bottom: 12px; border-bottom: 1px dashed #eee; padding-bottom: 8px;">
+                    <strong style="color: #2c3e50;">AI GM (画像)</strong><br>
+                    <img src="${m.imageUrl}" style="max-width: 300px; border-radius: 8px;" /><br>
+                    <span style="white-space: pre-wrap; color: #34495e;">${m.text}</span>
+                  </div>`;
+        }
+        const senderName = m.charName || (m.sender === "player" ? "プレイヤー" : m.sender === "gm" ? "AI GM" : "システム");
+        const text = m.text.replace(/\[SPLIT_PROPOSAL:.*?\]/, '').replace('[SCENARIO_END]', '').trim();
+        if (!text) return "";
+        return `<div style="margin-bottom: 12px; border-bottom: 1px dashed #eee; padding-bottom: 8px;">
+                  <strong style="color: #2c3e50;">${senderName}</strong><br>
+                  <span style="white-space: pre-wrap; color: #34495e;">${text}</span>
+                </div>`;
+      }).join('');
+    } else {
+      setIsExporting(true);
+      
+      const prompt = type === 'summary' 
+        ? [
+            "以下のTRPGセッションのチャットログを読み込み、物語のあらすじ・結末として分かりやすく要約してください。",
+            "※ログには「GMへの行動宣言」と「キャラクター同士の相談・会話」が含まれています。キャラクター同士の相談内容も物語の展開として要約に含めてください。"
+          ].join('\n')
+        : [
+            "以下のTRPGセッションのチャットログを元に、プロの小説家が書いたような臨場感あふれる【本格的なリプレイ小説】を執筆してください。",
+            "",
+            "【執筆の条件】",
+            "1. 単調な事実の羅列（〜した。〜と言った）を避け、五感（光、音、匂い、温度など）を刺激する情景描写と、キャラクターの深い心理描写を大幅に肉付けしてください。",
+            "2. プレイヤー間の「相談」や「作戦会議」は、キャラクター同士の緊迫感や関係性が伝わる魅力的な会話劇（ダイアログ）として昇華してください。",
+            "3. ダイスロールの成否はシステム的な数値として書くのではなく、「間一髪での回避」「絶望的な見落とし」などのドラマチックな演出に変換してください。",
+            "4. 起承転結のペース配分を意識し、読者を惹きつける一つの完成された短編小説に仕上げてください。"
+          ].join('\n');
+      
+      const logText = targetMessages.map(m => `${m.charName || (m.sender === 'gm' ? 'GM' : 'システム')}: ${m.text.replace(/\[SPLIT_PROPOSAL:.*?\]/, '').replace('[SCENARIO_END]', '').trim()}`).join('\n');
+      
+      try {
+        const generatedText = await generateAITextWithPrompt(prompt + "\n\n【チャットログ】\n" + logText);
+        
+        let imagesHtml = "";
+        if (type === 'novel' && selectedImages && selectedImages.length > 0) {
+          imagesHtml = `<div style="text-align: center; margin-bottom: 30px;">` + 
+            selectedImages.map(img => `<img src="${img}" style="max-width: 100%; border-radius: 8px; margin-bottom: 10px; max-height: 400px; object-fit: contain; box-shadow: 0 4px 6px rgba(0,0,0,0.1);" />`).join('') + 
+            `</div>`;
+        }
+
+        contentHtml = imagesHtml + `<div style="white-space: pre-wrap; line-height: 1.8; color: #333; font-size: 14px;">${generatedText}</div>`;
+      } catch(e: any) {
+        alert("エクスポート生成エラー: " + e.message);
+        setIsExporting(false);
+        printWindow.close();
+        return;
+      }
+      setIsExporting(false);
+    }
+
+    printWindow.document.open();
+    printWindow.document.write(`
+      <!DOCTYPE html>
+      <html>
+        <head>
+          <meta charset="utf-8">
+          <title>${title} - ${type === 'chat' ? 'チャットログ' : type === 'summary' ? '要約データ' : 'リプレイ小説'}</title>
+          <style>
+            body { font-family: 'Hiragino Kaku Gothic ProN', 'Meiryo', sans-serif; padding: 40px; color: #333; max-width: 800px; margin: 0 auto; }
+            h1 { font-size: 24px; border-bottom: 2px solid #2c3e50; padding-bottom: 10px; margin-bottom: 30px; color: #2c3e50; }
+            @media print { body { padding: 0; } }
+          </style>
+        </head>
+        <body>
+          <h1>${title} - ${type === 'chat' ? 'チャットログ' : type === 'summary' ? 'あらすじ要約' : 'リプレイ小説'}</h1>
+          ${contentHtml}
+          <script>
+            setTimeout(() => { window.print(); window.close(); }, 500);
+          </script>
+        </body>
+      </html>
+    `);
+    printWindow.document.close();
+  };
+
+  const exportToPDF = async (type: 'chat' | 'summary' | 'novel', selectedImages?: string[]) => {
+    if (!activeRoom) return;
+    const endIndex = messages.findIndex(m => m.text.includes('[SCENARIO_END]'));
+    const baseMessages = endIndex !== -1 ? messages.slice(0, endIndex + 1) : messages;
+    await executeExport(activeRoom.scenario?.title || "名称未設定", baseMessages, type, selectedImages);
+  };
+
+  const saveToArchive = async () => {
+    if (!currentUser || !activeRoom || !joinedCharacter) return;
     
-    const teamPrefix = isSplitMode && myScene.id !== 'scene_main' ? `[${myScene.name}チーム - ${joinedCharacter.name}] ` : `${joinedCharacter.name}「`;
-    const teamSuffix = isSplitMode && myScene.id !== 'scene_main' ? `` : `」`;
+    const endIndex = messages.findIndex(m => m.text.includes('[SCENARIO_END]'));
+    const baseMessages = endIndex !== -1 ? messages.slice(0, endIndex + 1) : messages;
 
-    let context = "";
-    if (chatTab === "story") context = `【行動宣言】${teamPrefix}${currentInput}${teamSuffix}`;
-    else if (chatTab === "consult") context = `【PL間相談】${teamPrefix}${currentInput}${teamSuffix}`;
-    else context = `【GMへの質問】PL: ${currentInput}`;
+    const archiveData = {
+      user_id: currentUser.id,
+      scenario_title: activeRoom.scenario?.title || "不明なシナリオ",
+      scenario_image: activeRoom.scenario?.imageUrl || "",
+      character_name: joinedCharacter.name,
+      chat_logs: baseMessages
+    };
 
-    await callAIGM(context, chatTab);
+    const { data, error } = await supabase.from('play_archives').insert(archiveData).select().single();
+    if (error) {
+      alert("書庫への保存に失敗しました: " + error.message);
+    } else {
+      alert("マイページ（プレイ書庫）に保存しました！\nロビー画面の「マイページ」から確認できます。");
+      setPlayArchives(prev => [
+        {
+          id: data.id,
+          userId: data.user_id,
+          scenarioTitle: data.scenario_title,
+          scenarioImage: data.scenario_image,
+          characterName: data.character_name,
+          chatLogs: data.chat_logs,
+          createdAt: data.created_at
+        },
+        ...prev
+      ]);
+    }
   };
 
   const updateInventory = async (newItems: string) => {
@@ -1229,7 +1248,6 @@ export default function Home() {
 
   const isChatDisabled = Boolean(isLoading || (isSplitMode && myScene && myScene.isMerged === true && chatTab !== 'consult'));
 
-  // ★ 追加：お試し終了後に本編部屋を立てるための遷移処理
   const leaveGameAndCreateRoom = async (scenario: Scenario) => {
     if (!activeRoom || !currentUser) return;
     const { data } = await supabase.from('rooms').select('joined_users').eq('id', activeRoom.id).single();
