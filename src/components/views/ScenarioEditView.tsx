@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useState } from "react";
 import { ViewState, Scenario, Character } from "../../types";
 
 type Props = {
@@ -13,6 +13,9 @@ type Props = {
 export default function ScenarioEditView({
   editingScenario, setEditingScenario, editingCharIndex, setEditingCharIndex, saveScenario, setCurrentView
 }: Props) {
+
+  // ★ AI画像生成中のローディング状態
+  const [isGenerating, setIsGenerating] = useState(false);
 
   const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>, isChar: boolean) => {
     const file = e.target.files?.[0];
@@ -40,6 +43,43 @@ export default function ScenarioEditView({
     e.target.value = "";
   };
 
+  // ★ pollinations.ai を使った画像生成ロジック
+  const generateImageWithAI = async (basePrompt: string, isChar: boolean) => {
+    setIsGenerating(true);
+    try {
+      // TRPGっぽい画風になるように英単語のキーワードを付与
+      const styleKeywords = isChar 
+        ? "anime style character portrait, highly detailed, dramatic lighting, TRPG" 
+        : "TRPG cover art, dark fantasy landscape, cinematic lighting, masterpiece";
+      
+      const prompt = encodeURIComponent(`${basePrompt}, ${styleKeywords}`);
+      const seed = Math.floor(Math.random() * 100000); // 毎回違う画像を生成するため
+      const url = `https://image.pollinations.ai/prompt/${prompt}?nologo=true&seed=${seed}`;
+
+      const res = await fetch(url);
+      if (!res.ok) throw new Error("AIサーバーが混雑しています");
+      const blob = await res.blob();
+      
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        const base64data = reader.result as string;
+        if (isChar && editingCharIndex !== null) {
+          const newC = [...editingScenario.presetCharacters];
+          newC[editingCharIndex].imageUrl = base64data;
+          setEditingScenario({ ...editingScenario, presetCharacters: newC });
+        } else {
+          setEditingScenario({ ...editingScenario, imageUrl: base64data });
+        }
+        setIsGenerating(false);
+      };
+      reader.readAsDataURL(blob);
+
+    } catch (error: any) {
+      alert("画像の生成に失敗しました（AIサーバー混雑エラー等）。\n少し時間をおいて再度お試しください。");
+      setIsGenerating(false);
+    }
+  };
+
   return (
     <div className="flex-1 flex flex-col items-center p-6 max-w-6xl mx-auto w-full min-h-0 overflow-y-auto">
       <h2 className="text-2xl font-bold text-amber-400 mb-6 w-full">{editingScenario.id ? "シナリオ・セット編集" : "シナリオ・セット新規作成"}</h2>
@@ -62,8 +102,24 @@ export default function ScenarioEditView({
             </div>
           </div>
 
-          <div className="bg-slate-900 border border-slate-700 rounded-lg p-4">
-            <label className="text-xs text-slate-400 block mb-2">キャラクター画像</label>
+          <div className="bg-slate-900 border border-slate-700 rounded-lg p-4 relative">
+            <div className="flex justify-between items-center mb-2">
+              <label className="text-xs text-slate-400 block">キャラクター画像</label>
+              
+              {/* ★ AI自動生成ボタン (キャラクター用) */}
+              <button 
+                onClick={() => {
+                  const char = editingScenario.presetCharacters[editingCharIndex];
+                  if (!char.name) { alert("先に「名前」を入力してください！"); return; }
+                  generateImageWithAI(`${char.name}, ${char.job || ""}, ${char.personality || ""}`.slice(0, 150), true);
+                }}
+                disabled={isGenerating}
+                className="text-[10px] bg-indigo-600 hover:bg-indigo-500 disabled:bg-slate-700 disabled:text-slate-400 text-white font-bold px-3 py-1.5 rounded shadow-lg transition-colors"
+              >
+                {isGenerating ? "⏳ 生成中..." : "✨ AIで自動生成 (β版)"}
+              </button>
+            </div>
+            
             <div className="flex flex-col gap-3">
               <input 
                 type="file" 
@@ -121,8 +177,23 @@ export default function ScenarioEditView({
               <input type="text" value={editingScenario.title} onChange={(e) => setEditingScenario({ ...editingScenario, title: e.target.value })} className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white" />
             </div>
 
-            <div className="bg-slate-900 border border-slate-700 rounded-lg p-4">
-              <label className="text-xs text-amber-200 block mb-2">パッケージ画像</label>
+            <div className="bg-slate-900 border border-slate-700 rounded-lg p-4 relative">
+              <div className="flex justify-between items-center mb-2">
+                <label className="text-xs text-amber-200 block">パッケージ画像</label>
+                
+                {/* ★ AI自動生成ボタン (シナリオ用) */}
+                <button 
+                  onClick={() => {
+                    if (!editingScenario.title) { alert("先に「シナリオタイトル」を入力してください！"); return; }
+                    generateImageWithAI(`${editingScenario.title}, ${editingScenario.setting || ""}`.slice(0, 150), false);
+                  }}
+                  disabled={isGenerating}
+                  className="text-[10px] bg-indigo-600 hover:bg-indigo-500 disabled:bg-slate-700 disabled:text-slate-400 text-white font-bold px-3 py-1.5 rounded shadow-lg transition-colors"
+                >
+                  {isGenerating ? "⏳ 生成中..." : "✨ AIで自動生成 (β版)"}
+                </button>
+              </div>
+
               <div className="flex flex-col gap-3">
                 <input 
                   type="file" 
@@ -195,7 +266,6 @@ export default function ScenarioEditView({
                         <p className="text-[10px] text-slate-400">HP:{char.hp} | SAN:{char.san}% | STR:{char.str} DEX:{char.dex} INT:{char.int}</p>
                       </div>
                     </div>
-                    {/* ★ 削除ボタンを追加 */}
                     <div className="flex gap-2">
                       <button onClick={() => setEditingCharIndex(idx)} className="text-xs bg-slate-700 px-3 py-2 rounded text-white hover:bg-slate-600 transition-colors">編集</button>
                       <button 

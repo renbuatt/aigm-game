@@ -142,7 +142,6 @@ export default function AdminView({
         <div className="bg-slate-900 border border-slate-700 rounded-xl p-5 space-y-4">
           <div className="flex justify-between items-center mb-3">
             <h3 className="font-bold text-white">ユーザー管理</h3>
-            {/* ★ ここが消えていました！ボタン復活！ */}
             <button onClick={() => setShowTesterModal(true)} className="text-[10px] bg-indigo-600 hover:bg-indigo-500 text-white px-3 py-1.5 rounded font-bold shadow">
               ＋ テスターアカウント発行
             </button>
@@ -162,8 +161,14 @@ export default function AdminView({
                     <p className="text-[10px] text-slate-400">{user.email}</p>
                   </div>
                 </div>
+                {/* ★ BANボタンを復旧しました！ */}
                 <div className="flex gap-2">
-                  <button onClick={() => toggleAdminStatus(user.id, user.isAdmin)} className="text-[10px] px-3 py-2 rounded bg-slate-700">権限変更</button>
+                  {user.isBanned ? (
+                    <span className="text-[10px] px-3 py-2 rounded bg-red-900/50 text-red-400 font-bold border border-red-700/50">BAN済み</span>
+                  ) : (
+                    <button onClick={() => { setBanTargetUser(user); setBanReason(""); }} className="text-[10px] px-3 py-2 rounded bg-red-900/50 hover:bg-red-800 text-red-300 font-bold border border-red-700/50 transition-colors">BANする</button>
+                  )}
+                  <button onClick={() => toggleAdminStatus(user.id, user.isAdmin)} className="text-[10px] px-3 py-2 rounded bg-slate-700 hover:bg-slate-600 transition-colors">権限変更</button>
                 </div>
               </div>
             ))}
@@ -200,6 +205,7 @@ export default function AdminView({
 
       {/* ================= モーダル群 ================= */}
 
+      {/* ログ確認モーダル */}
       {previewLogs && (
         <div className="fixed inset-0 bg-black/80 z-[60] flex items-center justify-center p-4">
           <div className="bg-slate-800 border border-blue-500/50 rounded-xl p-6 w-full max-w-2xl shadow-2xl flex flex-col max-h-[85vh]">
@@ -221,6 +227,7 @@ export default function AdminView({
         </div>
       )}
 
+      {/* シナリオ中身確認モーダル */}
       {previewScenario && (
         <div className="fixed inset-0 bg-black/80 z-[60] flex items-center justify-center p-4">
           <div className="bg-slate-800 border border-purple-500/50 rounded-xl p-6 w-full max-w-2xl shadow-2xl flex flex-col max-h-[85vh]">
