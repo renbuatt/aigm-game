@@ -50,7 +50,7 @@ type Props = {
   triggerAutoAction: () => Promise<void>;
   updateInventory: (newItems: string) => Promise<void>;
   openRoomConfigModal?: (scenario: Scenario) => void; 
-  aiPlayersList: Character[]; // ★ AIプレイヤーリストも受け取る
+  aiPlayersList: Character[];
 };
 
 export default function GameView({
@@ -98,6 +98,7 @@ export default function GameView({
 
   const rule = activeRoom.rule || "coc_jp";
   const isAfk = activeRoom.afk_users?.includes(currentUser.id);
+  const visibility = activeRoom.item_visibility || 'none'; // ★ 追加
 
   return (
     <div className="flex-1 flex flex-col max-w-5xl mx-auto w-full p-4 min-h-0 relative">
@@ -282,19 +283,30 @@ export default function GameView({
           </span>
           <div className="flex flex-wrap items-center gap-1 justify-end">
             
-            {/* ★ 読み取り専用のインベントリ一覧表示に変更 */}
-            {joinedCharacter && activeRoom.show_items && (
+            {/* ★ インベントリの表示出し分け */}
+            {joinedCharacter && visibility !== 'none' && (
                <div className="relative group flex items-center mr-2">
-                 <button className="bg-amber-800/80 hover:bg-amber-700 text-amber-100 border border-amber-500/50 text-[10px] px-2 py-1.5 rounded font-bold shadow-lg flex items-center">🎒 所持品</button>
+                 <button className="bg-amber-800/80 hover:bg-amber-700 text-amber-100 border border-amber-500/50 text-[10px] px-2 py-1.5 rounded font-bold shadow-lg flex items-center">
+                   {visibility === 'all' ? '🎒 全員の所持品' : '👜 あなたの所持品'}
+                 </button>
                  <div className="absolute top-full right-0 mt-1 w-64 bg-slate-800 border border-slate-600 rounded p-3 hidden group-hover:block z-50 shadow-2xl">
-                    <label className="text-xs text-amber-400 mb-2 block font-bold border-b border-slate-700 pb-1">パーティーの所持アイテム</label>
+                    <label className="text-xs text-amber-400 mb-2 block font-bold border-b border-slate-700 pb-1">
+                      {visibility === 'all' ? 'パーティーの所持アイテム' : 'あなたの所持アイテム'}
+                    </label>
                     <div className="max-h-48 overflow-y-auto custom-scrollbar space-y-2">
-                      {activeRoom.scenario?.presetCharacters.filter(c => Object.values(activeRoom.joined_users).includes(c.id) || aiPlayersList.find(a=>a.id===c.id)).map(c => (
-                        <div key={c.id} className="text-xs">
-                          <span className="text-blue-300 font-bold">{c.name}</span>
-                          <p className="text-slate-300 ml-1 leading-tight">{activeRoom.inventories?.[c.id] || c.items || "特になし"}</p>
+                      {visibility === 'all' ? (
+                        activeRoom.scenario?.presetCharacters.filter(c => Object.values(activeRoom.joined_users).includes(c.id) || aiPlayersList.find(a=>a.id===c.id)).map(c => (
+                          <div key={c.id} className="text-xs">
+                            <span className="text-blue-300 font-bold">{c.name}</span>
+                            <p className="text-slate-300 ml-1 leading-tight">{activeRoom.inventories?.[c.id] || c.items || "特になし"}</p>
+                          </div>
+                        ))
+                      ) : (
+                        <div className="text-xs">
+                          <span className="text-blue-300 font-bold">{joinedCharacter.name}</span>
+                          <p className="text-slate-300 ml-1 leading-tight">{activeRoom.inventories?.[joinedCharacter.id] || joinedCharacter.items || "特になし"}</p>
                         </div>
-                      ))}
+                      )}
                     </div>
                     <p className="text-[9px] text-slate-500 mt-2 pt-1 border-t border-slate-700">※アイテムの増減はAI GMが自動で判断・管理します。</p>
                  </div>
@@ -332,7 +344,7 @@ export default function GameView({
                   </>
                 )}
                 {rule === 'storytelling' && (
-                  <button onClick={() => rollDice(0, "行動")} className="bg-fuchsia-700 hover:bg-fuchsia-600 text-white text-[10px] px-4 py-1.5 rounded font-bold shadow-lg">🎲 行動・葛藤判定 (1d6)</button>
+                  <button onClick={() => rollDice(0, "行動")} className="bg-fuchsia-700 hover:bg-fuchsia-600 text-white text-[10px] px-4 py-1.5 rounded font-bold shadow-lg">🎲 行動・葛判定 (1d6)</button>
                 )}
               </div>
             )}
@@ -446,7 +458,6 @@ export default function GameView({
               <div className="flex justify-between items-center">
                 <span className="text-amber-400 text-sm font-bold">🎉 感想戦モード（AIは停止しています）</span>
                 <div className="flex gap-2">
-                  {/* ★ お試しプレイ終了後、他プレイヤー作成許可ONなら本編作成ボタンを表示 */}
                   {activeRoom.is_trial && activeRoom.scenario && (activeRoom.scenario.isPlayableByOthers || activeRoom.scenario.authorId === currentUser.id) && openRoomConfigModal && (
                     <button onClick={() => openRoomConfigModal(activeRoom.scenario!)} className="bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold px-4 py-2 rounded shadow transition">
                       ✨ このまま本編の部屋を作る

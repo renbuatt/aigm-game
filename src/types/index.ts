@@ -32,7 +32,7 @@ export type Character = {
   con: number;
   wis: number;
   cha: number;
-  items?: string; // ★ 追加：初期所持アイテム
+  items?: string;
 };
 
 export type Scenario = {
@@ -54,8 +54,8 @@ export type Scenario = {
   purchasedTickets?: Record<string, number>;
   isBanned?: boolean;
   playTime?: number;
-  isPlayableByOthers?: boolean; // ★ 追加
-  isTrialOk?: boolean; // ★ 追加
+  isPlayableByOthers?: boolean;
+  isTrialOk?: boolean;
 };
 
 export type Scene = {
@@ -85,8 +85,9 @@ export type Room = {
   is_paused?: boolean;
   afk_users?: string[];
   is_trial?: boolean;
-  show_items?: boolean; // ★ 追加
-  inventories?: Record<string, string>; // ★ 追加：各PLのインベントリ
+  show_items?: boolean; // 旧カラム（後方互換用）
+  item_visibility?: "all" | "self" | "none"; // ★ 3パターンの新カラム
+  inventories?: Record<string, string>;
 };
 
 export type Message = {
