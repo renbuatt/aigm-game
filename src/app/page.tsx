@@ -85,7 +85,6 @@ export default function Home() {
   const [secretRoomIdSearch, setSecretRoomIdSearch] = useState("");
   const [searchedSecretRoom, setSearchedSecretRoom] = useState<Room | null>(null);
 
-  // ★ お試しプレイの広告モーダル用ステート
   const [adModal, setAdModal] = useState<{ isOpen: boolean, step: number, scenario: Scenario | null }>({ isOpen: false, step: 0, scenario: null });
   
   const [unreadIndicators, setUnreadIndicators] = useState({ story: false, consult: false, gm: false });
@@ -179,6 +178,11 @@ export default function Home() {
     }
   }, [activeRoom?.scenes, activeRoom?.status, activeRoom?.host_id, currentUser?.id, isSplitMode]);
 
+  const handleTabClick = (tab: ChatTab) => {
+    setChatTab(tab);
+    setUnreadIndicators(prev => ({ ...prev, [tab]: false }));
+  };
+
   const fetchData = async () => {
     const { data: scData } = await supabase.from('scenarios').select('*').order('id', { ascending: false });
     let loadedScenarios: Scenario[] = [];
@@ -189,7 +193,7 @@ export default function Home() {
         ratingSum: d.rating_sum || 0, ratingCount: d.rating_count || 0,
         authorId: d.author_id, price: d.price || 500, playLimit: d.play_limit || 1, giftLimit: d.gift_limit || 1,
         purchasedTickets: d.purchased_tickets || {}, isBanned: d.is_banned || false, playTime: d.play_time || 60,
-        isTrialOk: d.is_trial_ok || false // ★ 追加
+        isTrialOk: d.is_trial_ok || false 
       }));
       setScenarios(loadedScenarios);
     }
@@ -205,7 +209,7 @@ export default function Home() {
         rule: r.rule || "coc_jp",
         is_paused: r.is_paused || false,
         afk_users: r.afk_users || [],
-        is_trial: r.is_trial || false // ★ 追加
+        is_trial: r.is_trial || false 
       })).filter(r => r.scenario) as Room[];
       setRooms(formattedRooms);
     }
@@ -372,7 +376,7 @@ export default function Home() {
       author_id: currentUser.id, purchased_tickets: editingScenario.purchasedTickets || {},
       price: editingScenario.price || 500, play_limit: editingScenario.playLimit || 1, gift_limit: editingScenario.giftLimit || 1,
       play_time: editingScenario.playTime || 60,
-      is_trial_ok: editingScenario.isTrialOk || false // ★ 追加
+      is_trial_ok: editingScenario.isTrialOk || false
     };
     if (editingScenario.id && !editingScenario.id.startsWith('s')) {
       await supabase.from('scenarios').update(dbData).eq('id', editingScenario.id);
@@ -538,18 +542,11 @@ export default function Home() {
       const recentLogs = memoryData?.reverse().map(m => `${m.role === 'user' ? 'PL' : 'GM'}: ${m.content}`).join('\n') || "";
       const chars = activeRoom.scenario?.presetCharacters.filter(c => Object.values(activeRoom.joined_users || {}).includes(c.id)).map(c => `{"id": "${c.id}", "name": "${c.name}"}`).join(", ") || "";
 
-      const prompt = `あなたはTRPGのシステムAIです。以下の「現在参加しているキャラクター」と「直近のチャットログ」を分析し、物語の展開上、最も自然な【チーム分け（2つ以上のグループへの分割）の構成案】を作成してください。
-
-【参加キャラクター】
-[${chars}]
-
-【直近のログ】
-${recentLogs}
-
-【出力形式（絶対遵守）】
-必ず以下のJSONフォーマットのみを出力してください。余計な文章やマークダウン記号は一切含めないでください。
-{"teams": [{"action": "目的A（例：2階を探索する）", "members": ["キャラID1", "キャラID2"]}, {"action": "目的B", "members": ["キャラID3"]}]}
-`;
+      const prompt = "あなたはTRPGのシステムAIです。以下の「現在参加しているキャラクター」と「直近のチャットログ」を分析し、物語の展開上、最も自然な【チーム分け（2つ以上のグループへの分割）の構成案】を作成してください。\n" +
+        "【参加キャラクター】\n" + chars + "\n\n【直近のログ】\n" + recentLogs + "\n\n" +
+        "【出力形式（絶対遵守）】\n必ず以下のJSONフォーマットのみを出力してください。余計な文章やマークダウン記号は一切含めないでください。\n" +
+        '{"teams": [{"action": "目的A（例：2階を探索する）", "members": ["キャラID1", "キャラID2"]}, {"action": "目的B", "members": ["キャラID3"]}]}';
+      
       const aiResponse = await generateAITextWithPrompt(prompt);
       const jsonStr = aiResponse.replace(/```json/g, "").replace(/```/g, "").trim();
       const parsed = JSON.parse(jsonStr);
@@ -925,7 +922,6 @@ ${recentLogs}
     }
   };
 
-  // ★ お試しプレイの生成と開始ロジック
   const executeTrialPlay = async () => {
     if (!currentUser || !adModal.scenario) return;
     const scenario = adModal.scenario;
@@ -945,7 +941,7 @@ ${recentLogs}
       rule: "coc_jp",
       is_paused: false,
       afk_users: [],
-      is_trial: true // ★ お試しフラグ
+      is_trial: true 
     }).select().single();
     
     if (error) { alert("データベースエラーが発生しました: " + error.message); return; }
@@ -958,7 +954,6 @@ ${recentLogs}
         setActiveRoom(newRoom); setJoinedCharacter(hostChar);
         setMessages([]); 
         
-        // 残りのキャラはAIに任せる
         const aiChars = scenario.presetCharacters.filter(c => c.id !== charId);
         setAiPlayersList(aiChars);
 
@@ -1008,7 +1003,7 @@ ${recentLogs}
     const emptyChars = activeRoom.scenario.presetCharacters.filter(c => !takenIds.includes(c.id));
     if (emptyChars.length > 0) {
       if (activeRoom.is_trial) {
-        aiChars = emptyChars; // お試しは自動的に全員AI化
+        aiChars = emptyChars; 
       } else {
         if (confirm(`参加していないキャラクターが ${emptyChars.length} 人います。\n彼らを「AIプレイヤー（相棒）」として参加させますか？\n（キャンセルを押すとソロプレイになります）`)) {
           aiChars = emptyChars;
@@ -1103,6 +1098,245 @@ ${recentLogs}
 
     await callAIGM(context, chatTab);
   };
+
+  const rollDice = async (targetValue: number, label: string, is1d100: boolean = false) => {
+    if(!myScene || !activeRoom || isLoading || !joinedCharacter) return;
+    let res = 0; let isSuccess = false; let msgText = "";
+
+    const rule = activeRoom.rule || "coc_jp";
+
+    if (rule === "dnd") {
+      res = Math.floor(Math.random() * 20) + 1;
+      const modifier = Math.floor((targetValue - 10) / 2) || 0;
+      const total = res + modifier;
+      const dc = 12; 
+      isSuccess = total >= dc;
+      if (res === 20) isSuccess = true;
+      if (res === 1) isSuccess = false;
+      const modStr = modifier >= 0 ? `+${modifier}` : `${modifier}`;
+      msgText = `🎲 ${label}判定 (1d20${modStr}) ➔ 出目: ${res} (計: ${total}) vs DC${dc} 【${isSuccess ? "成功" : "失敗"}】`;
+      if (res === 20) msgText += " ✨クリティカル！";
+      if (res === 1) msgText += " 💀ファンブル！";
+    } else if (rule === "sw25") {
+      const d1 = Math.floor(Math.random() * 6) + 1;
+      const d2 = Math.floor(Math.random() * 6) + 1;
+      res = d1 + d2;
+      const bonus = Math.floor(targetValue / 6) || 0; 
+      const total = res + bonus;
+      const target = 10;
+      isSuccess = total >= target;
+      if (res === 12) isSuccess = true;
+      if (res === 2) isSuccess = false;
+      const bonusStr = bonus >= 0 ? `+${bonus}` : `${bonus}`;
+      msgText = `🎲 ${label}判定 (2d6${bonusStr}) ➔ 出目: ${res}[${d1},${d2}] (計: ${total}) vs 目標${target} 【${isSuccess ? "成功" : "失敗"}】`;
+      if (res === 12) msgText += " ✨クリティカル！";
+      if (res === 2) msgText += " 💀ファンブル！";
+    } else if (rule === "storytelling") {
+      res = Math.floor(Math.random() * 6) + 1;
+      isSuccess = res >= 4;
+      msgText = `🎲 ${label}判定 (1d6) ➔ 出目: ${res} 【${isSuccess ? "成功" : "失敗"}】`;
+      if (res === 6) msgText += " ✨奇跡の転機！";
+    } else {
+      if (is1d100) {
+        res = Math.floor(Math.random() * 100) + 1;
+        isSuccess = res <= targetValue;
+        msgText = `🎲 ${label} (1d100 ≦ ${targetValue}%) ➔ 出目: ${res} 【${isSuccess ? "成功" : "失敗"}】`;
+        if (rule === "coc_en" && res === 1) msgText += " ✨クリティカル！";
+        if (rule === "coc_en" && res >= 96) msgText += " 💀ファンブル！";
+      } else {
+        const d1 = Math.floor(Math.random() * 6) + 1; const d2 = Math.floor(Math.random() * 6) + 1; const d3 = Math.floor(Math.random() * 6) + 1;
+        res = d1 + d2 + d3;
+        isSuccess = res <= targetValue;
+        msgText = `🎲 ${label} (3d6 ≦ ${targetValue}) ➔ 出目: ${res} [${d1},${d2},${d3}] 【${isSuccess ? "成功" : "失敗"}】`;
+      }
+    }
+
+    const isRecruiting = activeRoom.status === 'recruiting';
+    const msgType = (chatTab === "gm" || isRecruiting) ? "ooc" : "ic";
+
+    await pushMessage(activeRoom.id, { sender: "player", text: msgText, type: msgType, sceneId: myScene.id, charName: joinedCharacter.name, channel: chatTab });
+    
+    if (!isRecruiting && activeRoom.status === 'playing') {
+        let promptSuffix = "この結果を踏まえてGMとして情景描写を行ってください。";
+        if (chatTab === "gm") {
+            promptSuffix = "この結果を踏まえて、システム・ルールの裁定やヒントの提示を行ってください。";
+        } else if (chatTab === "consult") {
+            promptSuffix = "この結果を踏まえて、AI相棒としてリアクションを返してください。";
+        }
+        await callAIGM(`【システム判定結果】${joinedCharacter.name}が${label}ロールを行いました。\n結果: ${msgText}\n${promptSuffix}`, chatTab, false);
+    }
+  };
+
+  const generateSceneImage = async (promptText: string) => {
+    if (!activeRoom || !myScene) return;
+    try {
+      const translationPrompt = "以下の日本語の情景描写を、画像生成AI用のカンマ区切りの英語プロンプトに変換してください。\n" +
+        "【絶対条件】\n" +
+        "・文章ではなく、英単語のカンマ区切りで出力してください。\n" +
+        "・不適切な画像が生成されるのを防ぐため、必ず最後に「SFW, fully clothed, masterpiece, high quality」を含めてください。\n\n" +
+        "情景描写：\n" + promptText;
+
+      let englishPrompt = "";
+      try {
+        englishPrompt = await generateAITextWithPrompt(translationPrompt);
+      } catch (err) {
+        englishPrompt = `${promptText}, SFW, fully clothed, masterpiece, high quality`;
+      }
+
+      const prompt = encodeURIComponent(`${englishPrompt}, TRPG scene, cinematic lighting, dramatic atmosphere`);
+      const seed = Math.floor(Math.random() * 100000);
+      const url = `https://image.pollinations.ai/prompt/${prompt}?nologo=true&seed=${seed}&safe=true`;
+
+      const res = await fetch(url);
+      if (!res.ok) throw new Error("AIサーバーが混雑しています");
+      const blob = await res.blob();
+      
+      const reader = new FileReader();
+      reader.onloadend = async () => {
+        const base64data = reader.result as string;
+        await pushMessage(activeRoom.id, {
+          sender: "gm",
+          text: `【ホストが情景画像を生成しました】\n「${promptText}」`,
+          type: "image",
+          imageUrl: base64data,
+          sceneId: myScene.id,
+          channel: "story"
+        });
+      };
+      reader.readAsDataURL(blob);
+
+    } catch (err: any) {
+      alert("画像の生成に失敗しました（AIサーバー混雑エラー等）。\n少し時間をおいて再度お試しください。");
+    }
+  };
+
+  const executeExport = async (title: string, sourceMessages: Message[], type: 'chat' | 'summary' | 'novel', selectedImages?: string[]) => {
+    const printWindow = window.open('', '_blank');
+    if (!printWindow) {
+      alert("ポップアップがブロックされました。ブラウザの設定でポップアップを許可してください。");
+      return;
+    }
+    printWindow.document.write('<div style="padding: 20px; font-family: sans-serif; color: #333;">生成中...しばらくお待ちください。（AI執筆中の場合は十数秒かかることがあります）</div>');
+
+    const targetMessages = sourceMessages.filter(m => m.channel !== 'gm');
+
+    let contentHtml = "";
+
+    if (type === 'chat') {
+      contentHtml = targetMessages.map(m => {
+        if (m.type === 'image' && m.imageUrl) {
+          return `<div style="margin-bottom: 12px; border-bottom: 1px dashed #eee; padding-bottom: 8px;">
+                    <strong style="color: #2c3e50;">AI GM (画像)</strong><br>
+                    <img src="${m.imageUrl}" style="max-width: 300px; border-radius: 8px;" /><br>
+                    <span style="white-space: pre-wrap; color: #34495e;">${m.text}</span>
+                  </div>`;
+        }
+        const senderName = m.charName || (m.sender === "player" ? "プレイヤー" : m.sender === "gm" ? "AI GM" : "システム");
+        const text = m.text.replace(/\[SPLIT_PROPOSAL:.*?\]/, '').replace('[SCENARIO_END]', '').trim();
+        if (!text) return "";
+        return `<div style="margin-bottom: 12px; border-bottom: 1px dashed #eee; padding-bottom: 8px;">
+                  <strong style="color: #2c3e50;">${senderName}</strong><br>
+                  <span style="white-space: pre-wrap; color: #34495e;">${text}</span>
+                </div>`;
+      }).join('');
+    } else {
+      setIsExporting(true);
+      
+      const prompt = type === 'summary' 
+        ? "以下のTRPGセッションのチャットログを読み込み、物語のあらすじ・結末として分かりやすく要約してください。\n※ログには「GMへの行動宣言」と「キャラクター同士の相談・会話」が含まれています。キャラクター同士の相談内容も物語の展開として要約に含めてください。"
+        : "以下のTRPGセッションのチャットログを元に、プロの小説家が書いたような臨場感あふれる【本格的なリプレイ小説】を執筆してください。\n\n【執筆の条件】\n1. 単調な事実の羅列（〜した。〜と言った）を避け、五感（光、音、匂い、温度など）を刺激する情景描写と、キャラクターの深い心理描写を大幅に肉付けしてください。\n2. プレイヤー間の「相談」や「作戦会議」は、キャラクター同士の緊迫感や関係性が伝わる魅力的な会話劇（ダイアログ）として昇華してください。\n3. ダイスロールの成否はシステム的な数値として書くのではなく、「間一髪での回避」「絶望的な見落とし」などのドラマチックな演出に変換してください。\n4. 起承転結のペース配分を意識し、読者を惹きつける一つの完成された短編小説に仕上げてください。";
+      
+      const logText = targetMessages.map(m => `${m.charName || (m.sender === 'gm' ? 'GM' : 'システム')}: ${m.text.replace(/\[SPLIT_PROPOSAL:.*?\]/, '').replace('[SCENARIO_END]', '').trim()}`).join('\n');
+      
+      try {
+        const generatedText = await generateAITextWithPrompt(prompt + "\n\n【チャットログ】\n" + logText);
+        
+        let imagesHtml = "";
+        if (type === 'novel' && selectedImages && selectedImages.length > 0) {
+          imagesHtml = `<div style="text-align: center; margin-bottom: 30px;">` + 
+            selectedImages.map(img => `<img src="${img}" style="max-width: 100%; border-radius: 8px; margin-bottom: 10px; max-height: 400px; object-fit: contain; box-shadow: 0 4px 6px rgba(0,0,0,0.1);" />`).join('') + 
+            `</div>`;
+        }
+
+        contentHtml = imagesHtml + `<div style="white-space: pre-wrap; line-height: 1.8; color: #333; font-size: 14px;">${generatedText}</div>`;
+      } catch(e: any) {
+        alert("エクスポート生成エラー: " + e.message);
+        setIsExporting(false);
+        printWindow.close();
+        return;
+      }
+      setIsExporting(false);
+    }
+
+    printWindow.document.open();
+    printWindow.document.write(`
+      <!DOCTYPE html>
+      <html>
+        <head>
+          <meta charset="utf-8">
+          <title>${title} - ${type === 'chat' ? 'チャットログ' : type === 'summary' ? '要約データ' : 'リプレイ小説'}</title>
+          <style>
+            body { font-family: 'Hiragino Kaku Gothic ProN', 'Meiryo', sans-serif; padding: 40px; color: #333; max-width: 800px; margin: 0 auto; }
+            h1 { font-size: 24px; border-bottom: 2px solid #2c3e50; padding-bottom: 10px; margin-bottom: 30px; color: #2c3e50; }
+            @media print { body { padding: 0; } }
+          </style>
+        </head>
+        <body>
+          <h1>${title} - ${type === 'chat' ? 'チャットログ' : type === 'summary' ? 'あらすじ要約' : 'リプレイ小説'}</h1>
+          ${contentHtml}
+          <script>
+            setTimeout(() => { window.print(); window.close(); }, 500);
+          </script>
+        </body>
+      </html>
+    `);
+    printWindow.document.close();
+  };
+
+  const exportToPDF = async (type: 'chat' | 'summary' | 'novel', selectedImages?: string[]) => {
+    if (!activeRoom) return;
+    const endIndex = messages.findIndex(m => m.text.includes('[SCENARIO_END]'));
+    const baseMessages = endIndex !== -1 ? messages.slice(0, endIndex + 1) : messages;
+    await executeExport(activeRoom.scenario?.title || "名称未設定", baseMessages, type, selectedImages);
+  };
+
+  const saveToArchive = async () => {
+    if (!currentUser || !activeRoom || !joinedCharacter) return;
+    
+    const endIndex = messages.findIndex(m => m.text.includes('[SCENARIO_END]'));
+    const baseMessages = endIndex !== -1 ? messages.slice(0, endIndex + 1) : messages;
+
+    const archiveData = {
+      user_id: currentUser.id,
+      scenario_title: activeRoom.scenario?.title || "不明なシナリオ",
+      scenario_image: activeRoom.scenario?.imageUrl || "",
+      character_name: joinedCharacter.name,
+      chat_logs: baseMessages
+    };
+
+    const { data, error } = await supabase.from('play_archives').insert(archiveData).select().single();
+    if (error) {
+      alert("書庫への保存に失敗しました: " + error.message);
+    } else {
+      alert("マイページ（プレイ書庫）に保存しました！\nロビー画面の「マイページ」から確認できます。");
+      setPlayArchives(prev => [
+        {
+          id: data.id,
+          userId: data.user_id,
+          scenarioTitle: data.scenario_title,
+          scenarioImage: data.scenario_image,
+          characterName: data.character_name,
+          chatLogs: data.chat_logs,
+          createdAt: data.created_at
+        },
+        ...prev
+      ]);
+    }
+  };
+
+  const unreadCount = myNotifications.filter(n => !n.isRead).length;
+
+  const isChatDisabled = Boolean(isLoading || (isSplitMode && myScene && myScene.isMerged === true && chatTab !== 'consult'));
 
   return (
     <main className="h-screen w-full bg-slate-900 text-slate-100 flex flex-col font-sans overflow-hidden">
@@ -1250,7 +1484,6 @@ ${recentLogs}
         />
       )}
 
-      {/* ★ 広告視聴モーダル（モック） */}
       {adModal.isOpen && (
         <div className="fixed inset-0 bg-black/90 z-[80] flex items-center justify-center p-4">
           <div className="bg-slate-800 border border-pink-500/50 rounded-xl p-8 w-full max-w-sm shadow-2xl text-center space-y-6">
@@ -1268,8 +1501,122 @@ ${recentLogs}
         </div>
       )}
 
-      {/* 他のモーダル類は省略せずに配置（文字数制限のため一部略、既存と同じ） */}
-      {/* reportTarget, scenarioAppealTarget, banTargetScenario, banTargetUser, showMailbox, roomConfigModal など... */}
+      {reportTarget && (
+        <div className="fixed inset-0 bg-black/80 z-[60] flex items-center justify-center p-4">
+          <div className="bg-slate-800 border border-red-700/50 rounded-xl p-6 w-full max-w-lg shadow-2xl">
+            <h3 className="text-xl font-bold text-red-400 mb-4">🚩 通報する</h3>
+            
+            {reportTarget.roomId ? (
+              <div className="mb-4">
+                <label className="text-xs text-slate-400 block mb-1">通報対象を選択</label>
+                <select 
+                  className="w-full bg-slate-900 border border-slate-700 rounded p-2 text-sm text-white"
+                  onChange={(e) => {
+                    const val = e.target.value;
+                    if (val === 'room') {
+                      setReportTarget({...reportTarget, type: 'room', id: reportTarget.roomId!, name: 'この部屋の進行・チャット全般'});
+                    } else if (val === 'scenario') {
+                      setReportTarget({...reportTarget, type: 'scenario', id: reportTarget.scenarioId!, name: `シナリオ: ${reportTarget.scenarioName}`});
+                    } else {
+                      const user = reportTarget.availableUsers?.find(u => u.id === val);
+                      if (user) setReportTarget({...reportTarget, type: 'user', id: user.id, name: `プレイヤー: ${user.name}`});
+                    }
+                  }}
+                  value={reportTarget.type === 'user' ? reportTarget.id : reportTarget.type}
+                >
+                  <option value="room">この部屋の進行・チャット全般</option>
+                  <option value="scenario">シナリオの不適切・規約違反</option>
+                  {reportTarget.availableUsers?.map(u => (
+                    <option key={u.id} value={u.id}>プレイヤー: {u.name} を通報</option>
+                  ))}
+                </select>
+              </div>
+            ) : (
+              <p className="text-xs text-slate-400 mb-4">対象: {reportTarget.name}</p>
+            )}
+
+            <div className="space-y-3 mb-4">
+              <textarea value={reportReason} onChange={e=>setReportReason(e.target.value)} placeholder="不適切な発言や、規約違反の内容を詳しく記入してください。（対象のログも一緒に運営に送信されます）" className="w-full h-32 bg-slate-900 border border-slate-700 rounded p-3 text-sm text-white" />
+            </div>
+            <div className="flex gap-4">
+              <button onClick={() => { setReportTarget(null); setReportReason(""); }} className="flex-1 bg-slate-700 hover:bg-slate-600 py-3 rounded text-sm font-bold">キャンセル</button>
+              <button onClick={submitUserReport} disabled={!reportReason.trim()} className="flex-1 bg-red-600 hover:bg-red-500 disabled:bg-slate-600 py-3 rounded text-sm font-bold shadow-lg shadow-red-900/50">運営に送信する</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {scenarioAppealTarget && (
+        <div className="fixed inset-0 bg-black/80 z-[60] flex items-center justify-center p-4">
+          <div className="bg-slate-800 border border-amber-700/50 rounded-xl p-6 w-full max-w-lg shadow-2xl">
+            <h3 className="text-xl font-bold text-amber-400 mb-2">📝 再審査（修正完了）の申請</h3>
+            <p className="text-xs text-slate-400 mb-4">対象シナリオ: {scenarioAppealTarget.title}</p>
+            <div className="space-y-3 mb-4">
+              <textarea value={scenarioAppealText} onChange={e=>setScenarioAppealText(e.target.value)} placeholder="修正した箇所や、非公開措置へのコメントを入力してください。" className="w-full h-32 bg-slate-900 border border-slate-700 rounded p-3 text-sm text-white" />
+            </div>
+            <div className="flex gap-4">
+              <button onClick={() => { setScenarioAppealTarget(null); setScenarioAppealText(""); }} className="flex-1 bg-slate-700 hover:bg-slate-600 py-3 rounded text-sm font-bold">キャンセル</button>
+              <button onClick={submitScenarioAppeal} disabled={!scenarioAppealText.trim()} className="flex-1 bg-amber-600 hover:bg-amber-500 disabled:bg-slate-600 py-3 rounded text-sm font-bold shadow-lg shadow-amber-900/50">運営に申請を送信する</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {banTargetScenario && (
+        <div className="fixed inset-0 bg-black/80 z-[60] flex items-center justify-center p-4">
+          <div className="bg-slate-800 border border-slate-700 rounded-xl p-6 w-full max-w-lg shadow-2xl">
+            <h3 className="text-xl font-bold text-white mb-2">⚙️ シナリオの管理措置</h3>
+            <p className="text-xs text-slate-400 mb-4">対象: {banTargetScenario.title}</p>
+            <div className="space-y-3 mb-4">
+              <textarea value={scenarioBanReason} onChange={e=>setScenarioBanReason(e.target.value)} placeholder="措置の理由を入力してください（作者にメールで通知されます）" className="w-full h-32 bg-slate-900 border border-slate-700 rounded p-3 text-sm text-white" />
+            </div>
+            <div className="flex flex-col gap-3">
+              <div className="flex gap-2">
+                {!banTargetScenario.isBanned ? (
+                  <button onClick={() => executeScenarioBan('soft')} disabled={!scenarioBanReason.trim()} className="flex-1 bg-amber-600 hover:bg-amber-500 disabled:bg-slate-600 py-3 rounded text-sm font-bold shadow-lg">一時非公開にする</button>
+                ) : (
+                  <button onClick={() => executeScenarioBan('unban')} className="flex-1 bg-emerald-600 hover:bg-emerald-500 py-3 rounded text-sm font-bold shadow-lg">非公開を解除する</button>
+                )}
+                <button onClick={() => executeScenarioBan('hard')} disabled={!scenarioBanReason.trim()} className="flex-1 bg-red-600 hover:bg-red-500 disabled:bg-slate-600 py-3 rounded text-sm font-bold shadow-lg">完全に削除する</button>
+              </div>
+              <button onClick={() => setBanTargetScenario(null)} className="w-full bg-slate-700 hover:bg-slate-600 py-3 rounded text-sm font-bold mt-2">キャンセル</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {banTargetUser && (
+        <div className="fixed inset-0 bg-black/80 z-[60] flex items-center justify-center p-4">
+          <div className="bg-slate-800 border border-red-700/50 rounded-xl p-6 w-full max-w-lg shadow-2xl">
+            <h3 className="text-xl font-bold text-red-500 mb-2">⛔ ユーザーをBANする</h3>
+            <p className="text-xs text-slate-400 mb-4">対象: {banTargetUser.handleName} ({banTargetUser.email})</p>
+            <div className="space-y-3 mb-4">
+              <textarea value={banReason} onChange={e=>setBanReason(e.target.value)} placeholder="通報ログ・BANの理由を入力してください" className="w-full h-32 bg-slate-900 border border-slate-700 rounded p-3 text-sm text-white" />
+            </div>
+            <div className="flex gap-4">
+              <button onClick={() => setBanTargetUser(null)} className="flex-1 bg-slate-700 hover:bg-slate-600 py-3 rounded text-sm font-bold">キャンセル</button>
+              <button onClick={executeBan} disabled={!banReason.trim()} className="flex-1 bg-red-600 hover:bg-red-500 disabled:bg-slate-600 py-3 rounded text-sm font-bold shadow-lg shadow-red-900/50">BANを実行する</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {showMailbox && (
+        <div className="fixed inset-0 bg-black/80 z-[60] flex items-center justify-center p-4">
+          <div className="bg-slate-800 border border-slate-700 rounded-xl p-6 w-full max-w-lg shadow-2xl flex flex-col max-h-[80vh]">
+            <div className="flex justify-between items-center mb-4"><h3 className="text-xl font-bold">✉️ 受信箱</h3><button onClick={() => setShowMailbox(false)} className="text-xl">×</button></div>
+            <div className="h-[400px] overflow-y-scroll space-y-3 pr-2">
+              {myNotifications.length === 0 ? <p className="text-sm text-slate-500 text-center py-8">お知らせはありません。</p> : myNotifications.map(n => (
+                <div key={n.id} className={`p-4 rounded-lg border ${n.isRead ? 'bg-slate-900 border-slate-700' : 'bg-slate-800 border-blue-500/50'}`}>
+                  <h4 className="font-bold text-sm">{n.title}</h4>
+                  <p className="text-xs text-slate-300 whitespace-pre-wrap mt-2">{n.message}</p>
+                  {!n.isRead && <button onClick={() => markNotificationAsRead(n.id)} className="text-[10px] bg-slate-700 px-3 py-1 rounded mt-3">既読にする</button>}
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
 
       {roomConfigModal && (
         <div className="fixed inset-0 bg-black/80 z-[60] flex items-center justify-center p-4">
