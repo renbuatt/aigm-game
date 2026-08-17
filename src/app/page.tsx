@@ -90,8 +90,9 @@ export default function Home() {
   const prevMessagesLength = useRef(0);
   const [playArchives, setPlayArchives] = useState<PlayArchive[]>([]);
 
+  // ★修正箇所：自分が作ったシナリオは、BANされていても表示させる！
   const availableScenarios = scenarios.filter(s => !s.isBanned);
-  const createdScenarios = availableScenarios.filter(s => s.authorId === currentUser?.id);
+  const createdScenarios = scenarios.filter(s => s.authorId === currentUser?.id);
   const availableRooms = rooms.filter(r => !r.scenario?.isBanned);
 
   const defaultScene: Scene = { id: "scene_main", name: "メインルーム", memberIds: [] };
@@ -854,7 +855,6 @@ export default function Home() {
     } catch (err: any) { alert("画像の生成に失敗しました（AIサーバー混雑エラー等）。\n少し時間をおいて再度お試しください。"); }
   };
 
-  // ★ 改良: カバー画像やキャラクター画像を盛り込んだリッチなHTML生成
   const executeExport = async (title: string, sourceMessages: Message[], type: 'chat' | 'summary' | 'novel', options?: { archiveId?: string, modelName?: string, scenarioImage?: string, createdAt?: string, coPlayers?: string[], characters?: Character[] }) => {
     const printWindow = window.open('', '_blank');
     if (!printWindow) { alert("ポップアップがブロックされました。ブラウザの設定でポップアップを許可してください。"); return; }
@@ -938,7 +938,6 @@ export default function Home() {
       let imageCounter = 0;
       const imagesList: string[] = [];
 
-      // ★ 画像を置換するためのマーカー（[IMAGE_ID: X]）をログに埋め込む
       const logTextForAI = targetMessages.map(m => {
         if (m.type === 'image' && m.imageUrl) {
           imagesList.push(m.imageUrl);
@@ -965,7 +964,6 @@ export default function Home() {
         const generatedText = await generateAITextWithPrompt(prompt + "\n\n【チャットログ】\n" + logTextForAI);
         
         let finalNovelText = generatedText;
-        // ★ マーカーを実際のHTML <img> タグに置換する
         imagesList.forEach((imgUrl, idx) => {
           const imgTag = `</div><div class="novel-image"><img src="${imgUrl}" /></div><div class="novel-body">`;
           finalNovelText = finalNovelText.replace(new RegExp(`\\[IMAGE_ID:\\s*${idx + 1}\\]`, 'g'), imgTag);
@@ -986,7 +984,7 @@ export default function Home() {
         if (options?.archiveId && type === 'novel' && options.modelName) {
           const archive = playArchives.find(a => a.id === options.archiveId);
           if (archive) {
-            const updatedNovels = { ...(archive.novels || {}), [options.modelName]: contentHtml }; // 完成したHTMLごと保存
+            const updatedNovels = { ...(archive.novels || {}), [options.modelName]: contentHtml }; 
             await supabase.from('play_archives').update({ novels: updatedNovels }).eq('id', options.archiveId);
             setPlayArchives(prev => prev.map(a => a.id === options.archiveId ? { ...a, novels: updatedNovels } : a));
           }
@@ -1040,7 +1038,7 @@ export default function Home() {
       chat_logs: baseMessages,
       rule: activeRoom.rule,
       co_players: coPlayers,
-      characters: activeRoom.scenario?.presetCharacters || [] // ★ キャラ情報も保存
+      characters: activeRoom.scenario?.presetCharacters || [] 
     };
     
     const { error } = await supabase.from('play_archives').insert(archiveData);
@@ -1320,7 +1318,7 @@ export default function Home() {
 
       {currentView === "lobby" && currentUser && (
         <LobbyView 
-          currentUser={currentUser} handleLogout={handleLogout} setShowMailbox={setShowMailbox} unreadCount={unreadCount} secretRoomIdSearch={secretRoomIdSearch} setSecretRoomIdSearch={setSecretRoomIdSearch} rooms={rooms} searchedSecretRoom={searchedSecretRoom} setSearchedSecretRoom={setSearchedSecretRoom} executeJoinRoom={executeJoinRoom} availableRooms={availableRooms} spectateRoom={spectateRoom} setEditingScenario={setEditingScenario} setCurrentView={setCurrentView} createdScenarios={createdScenarios} deleteScenario={deleteScenario} setRoomConfigModal={setRoomConfigModal} fetchAdminData={fetchAdminData} startTrialPlay={(scenario) => setAdModal({ isOpen: true, step: 1, scenario })} availableScenarios={availableScenarios} openUserProfile={openUserProfile}
+          currentUser={currentUser} handleLogout={handleLogout} setShowMailbox={setShowMailbox} unreadCount={unreadCount} secretRoomIdSearch={secretRoomIdSearch} setSecretRoomIdSearch={setSecretRoomIdSearch} rooms={rooms} searchedSecretRoom={searchedSecretRoom} setSearchedSecretRoom={setSearchedSecretRoom} executeJoinRoom={executeJoinRoom} availableRooms={availableRooms} spectateRoom={spectateRoom} setEditingScenario={setEditingScenario} setCurrentView={setCurrentView} createdScenarios={createdScenarios} deleteScenario={deleteScenario} setRoomConfigModal={setRoomConfigModal} fetchAdminData={fetchAdminData} startTrialPlay={(scenario) => setAdModal({ isOpen: true, step: 1, scenario })} availableScenarios={availableScenarios} openUserProfile={openUserProfile} setScenarioAppealTarget={setScenarioAppealTarget}
         />
       )}
       
