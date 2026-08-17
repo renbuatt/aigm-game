@@ -101,7 +101,6 @@ export default function Home() {
 
   const isScenarioEnded = messages.some(m => m.text.includes('[SCENARIO_END]')) || activeRoom?.status === 'finished';
 
-  // ★ Googleアナリティクスに画面切り替えを通知
   useEffect(() => {
     if (typeof window !== "undefined" && typeof (window as any).gtag === "function") {
       (window as any).gtag("event", "page_view", {
@@ -639,7 +638,7 @@ export default function Home() {
   const leaveGame = async () => {
     if (!activeRoom || !currentUser) return;
     if (activeRoom.status === 'finished') { setCurrentView("evaluation"); return; }
-    if (!joinedCharacter) { setCurrentView("lobby"); setActiveRoom(null); return; }
+    if (!joinedCharacter) { setCurrentView("lobby"); setActiveRoom(null); await fetchData(); return; }
 
     const isHost = activeRoom.host_id === currentUser.id;
     const isRecruiting = activeRoom.status === 'recruiting';
@@ -650,7 +649,7 @@ export default function Home() {
       delete newUsers[currentUser.id];
       await supabase.from('rooms').update({ joined_users: newUsers }).eq('id', activeRoom.id);
       if (isHost && remainingPlayers === 0) await supabase.from('rooms').update({ status: 'finished' }).eq('id', activeRoom.id);
-      setCurrentView("lobby"); setActiveRoom(null); setJoinedCharacter(null); return;
+      setCurrentView("lobby"); setActiveRoom(null); setJoinedCharacter(null); await fetchData(); return;
     }
 
     if (remainingPlayers === 0) {
@@ -1040,9 +1039,21 @@ export default function Home() {
       {currentView === "banned" && <BannedView handleLogout={handleLogout} />}
       {currentView === "maintenance" && <MaintenanceView handleLogout={handleLogout} />}
       {currentView === "login" && <LoginView email={email} setEmail={setEmail} password={password} setPassword={setPassword} isLoginMode={isLoginMode} setIsLoginMode={setIsLoginMode} authLoading={authLoading} handleEmailAuth={handleEmailAuth} handleGoogleAuth={handleGoogleAuth} />}
-      {currentView === "lobby" && currentUser && <LobbyView currentUser={currentUser} handleLogout={handleLogout} setShowMailbox={setShowMailbox} unreadCount={unreadCount} secretRoomIdSearch={secretRoomIdSearch} setSecretRoomIdSearch={setSecretRoomIdSearch} rooms={rooms} searchedSecretRoom={searchedSecretRoom} setSearchedSecretRoom={setSearchedSecretRoom} executeJoinRoom={executeJoinRoom} availableRooms={availableRooms} spectateRoom={spectateRoom} setEditingScenario={setEditingScenario} setCurrentView={setCurrentView} createdScenarios={createdScenarios} deleteScenario={deleteScenario} setRoomConfigModal={setRoomConfigModal} fetchAdminData={fetchAdminData} startTrialPlay={(scenario) => setAdModal({ isOpen: true, step: 1, scenario })} availableScenarios={availableScenarios} />}
+      
+      {currentView === "lobby" && currentUser && (
+        <LobbyView 
+          currentUser={currentUser} handleLogout={handleLogout} setShowMailbox={setShowMailbox} unreadCount={unreadCount} secretRoomIdSearch={secretRoomIdSearch} setSecretRoomIdSearch={setSecretRoomIdSearch} rooms={rooms} searchedSecretRoom={searchedSecretRoom} setSearchedSecretRoom={setSearchedSecretRoom} executeJoinRoom={executeJoinRoom} availableRooms={availableRooms} spectateRoom={spectateRoom} setEditingScenario={setEditingScenario} setCurrentView={setCurrentView} createdScenarios={createdScenarios} deleteScenario={deleteScenario} setRoomConfigModal={setRoomConfigModal} fetchAdminData={fetchAdminData} startTrialPlay={(scenario) => setAdModal({ isOpen: true, step: 1, scenario })} availableScenarios={availableScenarios} 
+        />
+      )}
+      
       {currentView === "scenarioEdit" && editingScenario && <ScenarioEditView editingScenario={editingScenario} setEditingScenario={setEditingScenario} editingCharIndex={editingCharIndex} setEditingCharIndex={setEditingCharIndex} saveScenario={saveScenario} setCurrentView={setCurrentView} />}
-      {currentView === "game" && activeRoom && myScene && <GameView activeRoom={activeRoom} myScene={myScene} currentUser={currentUser!} joinedCharacter={joinedCharacter} leaveGame={leaveGame} setReportTarget={setReportTarget as React.Dispatch<React.SetStateAction<{type: 'user' | 'scenario' | 'room', id: string, name: string, roomId?: string, scenarioId?: string, scenarioName?: string, availableUsers?: { id: string, name: string }[]} | null>>} rollDice={rollDice} startGame={startGame} startSplitting={startSplitting} isSplitMode={isSplitMode} chatTab={chatTab} messages={messages} isLoading={isLoading} isScenarioEnded={isScenarioEnded} setCurrentView={setCurrentView} endGame={endGame} input={input} setInput={setInput} handleSend={handleSend} handleTabClick={handleTabClick} unreadIndicators={unreadIndicators} consultWithAI={consultWithAI} setConsultWithAI={setConsultWithAI} isChatDisabled={isChatDisabled} mergeTeam={mergeTeam} executeMergeAll={executeMergeAll} generateSceneImage={generateSceneImage} proposedTeams={proposedTeams} setProposedTeams={setProposedTeams} isGeneratingSplit={isGeneratingSplit} generateSplitProposal={generateSplitProposal} finishSplitting={finishSplitting} cancelSplitting={cancelSplitting} togglePauseRoom={togglePauseRoom} toggleAFK={toggleAFK} triggerAutoAction={triggerAutoAction} updateInventory={updateInventory} openRoomConfigModal={leaveGameAndCreateRoom} aiPlayersList={aiPlayersList} />}
+      
+      {currentView === "game" && activeRoom && myScene && (
+        <GameView 
+          activeRoom={activeRoom} myScene={myScene} currentUser={currentUser!} joinedCharacter={joinedCharacter} leaveGame={leaveGame} setReportTarget={setReportTarget as React.Dispatch<React.SetStateAction<{type: 'user' | 'scenario' | 'room', id: string, name: string, roomId?: string, scenarioId?: string, scenarioName?: string, availableUsers?: { id: string, name: string }[]} | null>>} rollDice={rollDice} startGame={startGame} startSplitting={startSplitting} isSplitMode={isSplitMode} chatTab={chatTab} messages={messages} isLoading={isLoading} isScenarioEnded={isScenarioEnded} setCurrentView={setCurrentView} endGame={endGame} input={input} setInput={setInput} handleSend={handleSend} handleTabClick={handleTabClick} unreadIndicators={unreadIndicators} consultWithAI={consultWithAI} setConsultWithAI={setConsultWithAI} isChatDisabled={isChatDisabled} mergeTeam={mergeTeam} executeMergeAll={executeMergeAll} generateSceneImage={generateSceneImage} proposedTeams={proposedTeams} setProposedTeams={setProposedTeams} isGeneratingSplit={isGeneratingSplit} generateSplitProposal={generateSplitProposal} finishSplitting={finishSplitting} cancelSplitting={cancelSplitting} togglePauseRoom={togglePauseRoom} toggleAFK={toggleAFK} triggerAutoAction={triggerAutoAction} updateInventory={updateInventory} openRoomConfigModal={leaveGameAndCreateRoom} aiPlayersList={aiPlayersList} 
+        />
+      )}
+      
       {currentView === "evaluation" && activeRoom && <EvaluationView activeRoom={activeRoom} messages={messages} ratingScenario={ratingScenario} setRatingScenario={setRatingScenario} ratingGM={ratingGM} setRatingGM={setRatingGM} submitEvaluation={submitEvaluation} exportToPDF={exportToPDF} isExporting={isExporting} saveToArchive={saveToArchive} />}
 
       {adModal.isOpen && (
