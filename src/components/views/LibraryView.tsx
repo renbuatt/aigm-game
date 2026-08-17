@@ -5,18 +5,17 @@ type Props = {
   currentUser: UserProfile;
   playArchives: PlayArchive[];
   setCurrentView: React.Dispatch<React.SetStateAction<ViewState>>;
-  executeExport: (title: string, messages: any[], type: 'chat' | 'summary' | 'novel', options?: { archiveId?: string, modelName?: string, scenarioImage?: string, createdAt?: string, coPlayers?: string[], characters?: Character[] }) => Promise<void>;
+  executeExport: (title: string, messages: any[], type: 'chat' | 'summary' | 'novel', options?: { archiveId?: string, modelName?: string, viewPoint?: 'third' | 'first', myCharacterName?: string, scenarioImage?: string, createdAt?: string, coPlayers?: string[], characters?: Character[] }) => Promise<void>;
   isExporting: boolean;
 };
 
 export default function LibraryView({ currentUser, playArchives, setCurrentView, executeExport, isExporting }: Props) {
   
-  // 保存済みの小説をポップアップで開く関数（リッチなHTMLがそのまま保存されている前提）
   const readSavedNovel = (title: string, content: string, modelName: string) => {
     const printWindow = window.open('', '_blank');
     if (!printWindow) { alert("ポップアップがブロックされました。ブラウザの設定をご確認ください。"); return; }
     printWindow.document.write(`
-      <!DOCTYPE html><html><head><meta charset="utf-8"><title>${title} - リプレイ小説 (${modelName}版)</title></head><body>${content}</body></html>
+      <!DOCTYPE html><html><head><meta charset="utf-8"><title>${title} - リプレイ小説 (${modelName})</title></head><body>${content}</body></html>
     `);
     printWindow.document.close();
   };
@@ -32,7 +31,7 @@ export default function LibraryView({ currentUser, playArchives, setCurrentView,
       
       <div className="mb-8">
         <p className="text-sm text-slate-300 mb-6 bg-slate-800 p-4 rounded border border-slate-700">
-          これまでに保存したすべてのプレイ履歴を閲覧し、当時のチャットログを出力したり、AIモデルを選択してリプレイ小説を生成・保存することができます。
+          これまでに保存したすべてのプレイ履歴を閲覧し、当時のチャットログを出力したり、AIモデルや視点を選択してリプレイ小説を生成・保存することができます。
         </p>
 
         {playArchives.length === 0 ? (
@@ -52,13 +51,25 @@ export default function LibraryView({ currentUser, playArchives, setCurrentView,
                     </div>
                   </div>
                   
+                  {/* ★ 生成メニューを第三者視点・自分視点で分ける */}
                   <div className="mt-3 border-t border-slate-700 pt-3">
                     <p className="text-[10px] text-slate-400 mb-2">▼ 出力・生成メニュー</p>
-                    <div className="flex flex-wrap gap-2">
-                      <button onClick={() => executeExport(`${a.scenarioTitle}_chat`, a.chatLogs, 'chat')} disabled={isExporting} className="text-xs bg-slate-700 hover:bg-slate-600 text-white px-3 py-1.5 rounded transition border border-slate-600 shadow">💬 ログ出力</button>
-                      <button onClick={() => executeExport(`${a.scenarioTitle}_novel`, a.chatLogs, 'novel', { archiveId: a.id, modelName: 'Gemini', scenarioImage: a.scenarioImage, createdAt: a.createdAt, coPlayers: a.coPlayers, characters: a.characters })} disabled={isExporting} className="text-xs bg-blue-600 hover:bg-blue-500 text-white px-3 py-1.5 rounded transition shadow disabled:opacity-50">✨ Geminiで小説化</button>
-                      <button onClick={() => executeExport(`${a.scenarioTitle}_novel`, a.chatLogs, 'novel', { archiveId: a.id, modelName: 'Gemini Pro', scenarioImage: a.scenarioImage, createdAt: a.createdAt, coPlayers: a.coPlayers, characters: a.characters })} disabled={isExporting} className="text-xs bg-indigo-600 hover:bg-indigo-500 text-white px-3 py-1.5 rounded transition shadow disabled:opacity-50">✨ Gemini Proで小説化</button>
-                      <button onClick={() => executeExport(`${a.scenarioTitle}_novel`, a.chatLogs, 'novel', { archiveId: a.id, modelName: 'Claude', scenarioImage: a.scenarioImage, createdAt: a.createdAt, coPlayers: a.coPlayers, characters: a.characters })} disabled={isExporting} className="text-xs bg-orange-600 hover:bg-orange-500 text-white px-3 py-1.5 rounded transition shadow disabled:opacity-50">✨ Claudeで小説化</button>
+                    <div className="flex flex-col gap-3">
+                      <div>
+                        <button onClick={() => executeExport(`${a.scenarioTitle}_chat`, a.chatLogs, 'chat')} disabled={isExporting} className="text-xs bg-slate-700 hover:bg-slate-600 text-white px-4 py-1.5 rounded transition border border-slate-600 shadow">💬 チャットログ出力</button>
+                      </div>
+                      <div className="flex flex-wrap items-center gap-2">
+                        <span className="text-[10px] text-emerald-400 w-20 font-bold">第三者視点:</span>
+                        <button onClick={() => executeExport(`${a.scenarioTitle}_novel`, a.chatLogs, 'novel', { archiveId: a.id, modelName: 'Gemini (第三者視点)', viewPoint: 'third', scenarioImage: a.scenarioImage, createdAt: a.createdAt, coPlayers: a.coPlayers, characters: a.characters })} disabled={isExporting} className="text-xs bg-blue-600 hover:bg-blue-500 text-white px-3 py-1.5 rounded transition shadow disabled:opacity-50">Gemini</button>
+                        <button onClick={() => executeExport(`${a.scenarioTitle}_novel`, a.chatLogs, 'novel', { archiveId: a.id, modelName: 'Gemini Pro (第三者視点)', viewPoint: 'third', scenarioImage: a.scenarioImage, createdAt: a.createdAt, coPlayers: a.coPlayers, characters: a.characters })} disabled={isExporting} className="text-xs bg-indigo-600 hover:bg-indigo-500 text-white px-3 py-1.5 rounded transition shadow disabled:opacity-50">Gemini Pro</button>
+                        <button onClick={() => executeExport(`${a.scenarioTitle}_novel`, a.chatLogs, 'novel', { archiveId: a.id, modelName: 'Claude (第三者視点)', viewPoint: 'third', scenarioImage: a.scenarioImage, createdAt: a.createdAt, coPlayers: a.coPlayers, characters: a.characters })} disabled={isExporting} className="text-xs bg-orange-600 hover:bg-orange-500 text-white px-3 py-1.5 rounded transition shadow disabled:opacity-50">Claude</button>
+                      </div>
+                      <div className="flex flex-wrap items-center gap-2">
+                        <span className="text-[10px] text-amber-400 w-20 font-bold leading-tight">自分視点<br/><span className="font-normal text-slate-400">({a.characterName})</span>:</span>
+                        <button onClick={() => executeExport(`${a.scenarioTitle}_novel`, a.chatLogs, 'novel', { archiveId: a.id, modelName: 'Gemini (自分視点)', viewPoint: 'first', myCharacterName: a.characterName, scenarioImage: a.scenarioImage, createdAt: a.createdAt, coPlayers: a.coPlayers, characters: a.characters })} disabled={isExporting} className="text-xs bg-blue-600 hover:bg-blue-500 text-white px-3 py-1.5 rounded transition shadow disabled:opacity-50">Gemini</button>
+                        <button onClick={() => executeExport(`${a.scenarioTitle}_novel`, a.chatLogs, 'novel', { archiveId: a.id, modelName: 'Gemini Pro (自分視点)', viewPoint: 'first', myCharacterName: a.characterName, scenarioImage: a.scenarioImage, createdAt: a.createdAt, coPlayers: a.coPlayers, characters: a.characters })} disabled={isExporting} className="text-xs bg-indigo-600 hover:bg-indigo-500 text-white px-3 py-1.5 rounded transition shadow disabled:opacity-50">Gemini Pro</button>
+                        <button onClick={() => executeExport(`${a.scenarioTitle}_novel`, a.chatLogs, 'novel', { archiveId: a.id, modelName: 'Claude (自分視点)', viewPoint: 'first', myCharacterName: a.characterName, scenarioImage: a.scenarioImage, createdAt: a.createdAt, coPlayers: a.coPlayers, characters: a.characters })} disabled={isExporting} className="text-xs bg-orange-600 hover:bg-orange-500 text-white px-3 py-1.5 rounded transition shadow disabled:opacity-50">Claude</button>
+                      </div>
                     </div>
                   </div>
 
@@ -68,7 +79,7 @@ export default function LibraryView({ currentUser, playArchives, setCurrentView,
                       <div className="flex flex-wrap gap-2">
                         {Object.keys(a.novels).map(model => (
                           <button key={model} onClick={() => readSavedNovel(a.scenarioTitle, a.novels![model], model)} className="text-xs bg-emerald-600 hover:bg-emerald-500 px-3 py-1.5 rounded shadow font-bold text-white transition-colors">
-                            📖 {model}版を読む
+                            📖 {model}
                           </button>
                         ))}
                       </div>

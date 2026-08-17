@@ -10,7 +10,7 @@ type Props = {
   ratingGM: number;
   setRatingGM: React.Dispatch<React.SetStateAction<number>>;
   submitEvaluation: () => Promise<void>;
-  exportToPDF: (type: 'chat' | 'summary' | 'novel') => Promise<void>; // ★ 引数変更
+  exportToPDF: (type: 'chat' | 'summary' | 'novel', viewPoint?: 'third' | 'first') => Promise<void>; // ★ 引数変更
   isExporting: boolean;
   saveToArchive: () => Promise<void>;
   currentUser: UserProfile;
@@ -66,15 +66,20 @@ export default function EvaluationView({
 
         <div className="bg-slate-900 border border-slate-700 p-6 rounded-xl space-y-4">
           <h3 className="text-sm font-bold text-emerald-400 mb-2 border-b border-slate-700 pb-2">💾 セッションの記録を保存</h3>
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          
+          {/* ★ ボタンを3つ（ログ・第三者・自分視点）に分割 */}
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
             <button onClick={() => exportToPDF('chat')} disabled={isExporting} className="bg-slate-700 hover:bg-slate-600 px-4 py-3 rounded-lg text-xs font-bold text-white shadow transition flex items-center justify-center gap-2">
-              💬 ログをPDF出力
+              💬 ログPDF出力
             </button>
-            {/* ★ 引数を変更しました */}
-            <button onClick={() => exportToPDF('novel')} disabled={isExporting} className="bg-indigo-700 hover:bg-indigo-600 px-4 py-3 rounded-lg text-xs font-bold text-white shadow transition flex items-center justify-center gap-2 disabled:opacity-50">
-              {isExporting ? "⏳ 執筆中..." : "📖 リプレイ小説を出力"}
+            <button onClick={() => exportToPDF('novel', 'third')} disabled={isExporting} className="bg-indigo-700 hover:bg-indigo-600 px-4 py-3 rounded-lg text-xs font-bold text-white shadow transition flex items-center justify-center gap-2 disabled:opacity-50">
+              {isExporting ? "⏳ 執筆中..." : "📖 小説(第三者視点)"}
+            </button>
+            <button onClick={() => exportToPDF('novel', 'first')} disabled={isExporting} className="bg-blue-700 hover:bg-blue-600 px-4 py-3 rounded-lg text-xs font-bold text-white shadow transition flex items-center justify-center gap-2 disabled:opacity-50">
+              {isExporting ? "⏳ 執筆中..." : "📖 小説(自分視点)"}
             </button>
           </div>
+
           <button onClick={saveToArchive} className="w-full mt-2 bg-amber-700 hover:bg-amber-600 px-4 py-3 rounded-lg text-sm font-bold text-white shadow transition flex items-center justify-center gap-2">
             👑 プレイ書庫(マイページ)に保存する
           </button>

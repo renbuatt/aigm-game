@@ -854,8 +854,8 @@ export default function Home() {
     } catch (err: any) { alert("画像の生成に失敗しました（AIサーバー混雑エラー等）。\n少し時間をおいて再度お試しください。"); }
   };
 
-  // ★ 変更: プロンプトでキャラ紹介を要求し、それをもとにHTMLを組み立てる
-  const executeExport = async (title: string, sourceMessages: Message[], type: 'chat' | 'summary' | 'novel', options?: { archiveId?: string, modelName?: string, scenarioImage?: string, createdAt?: string, coPlayers?: string[], characters?: Character[] }) => {
+  // ★ 改良: 視点指示を含んだプロンプト
+  const executeExport = async (title: string, sourceMessages: Message[], type: 'chat' | 'summary' | 'novel', options?: { archiveId?: string, modelName?: string, viewPoint?: 'third' | 'first', myCharacterName?: string, scenarioImage?: string, createdAt?: string, coPlayers?: string[], characters?: Character[] }) => {
     const printWindow = window.open('', '_blank');
     if (!printWindow) { alert("ポップアップがブロックされました。ブラウザの設定でポップアップを許可してください。"); return; }
     printWindow.document.write('<div style="padding: 20px; font-family: sans-serif; color: #333;">生成中...しばらくお待ちください。（AI執筆中の場合は数十秒かかることがあります）</div>');
@@ -961,13 +961,17 @@ export default function Home() {
         return `${m.charName || (m.sender === 'gm' ? 'GM' : 'システム')}: ${m.text.replace(/\[SPLIT_PROPOSAL:.*?\]/, '').replace('[SCENARIO_END]', '').trim()}`;
       }).join('\n');
 
+      const viewpointInstruction = options?.viewPoint === 'first' && options?.myCharacterName
+        ? `1. 単調な事実の羅列を避け、五感を刺激する情景描写と心理描写を大幅に肉付けすること。また、【${options.myCharacterName}】の視点（一人称）で物語を描写すること。`
+        : `1. 単調な事実の羅列を避け、五感を刺激する情景描写と心理描写を大幅に肉付けすること。神の視点（第三者視点）で物語を描写すること。`;
+
       const prompt = type === 'summary' 
         ? ["以下のTRPGセッションのチャットログを読み込み、物語のあらすじ・結末として分かりやすく要約してください。","※ログには「GMへの行動宣言」と「キャラクター同士の相談・会話」が含まれています。キャラクター同士の相談内容も物語の展開として要約に含めてください。"].join('\n')
         : [
             "以下のTRPGセッションのチャットログを元に、プロの小説家が書いたような臨場感あふれる【本格的なリプレイ小説】を執筆してください。",
             "",
             "【執筆の条件】",
-            "1. 単調な事実の羅列を避け、五感を刺激する情景描写と心理描写を大幅に肉付けすること。",
+            viewpointInstruction,
             "2. プレイヤー間の相談は魅力的な会話劇として昇華すること。",
             "3. ダイスロールの成否はドラマチックな演出に変換すること。",
             "4. 読者を惹きつける一つの完成された短編小説に仕上げること。",
@@ -1031,12 +1035,11 @@ export default function Home() {
     printWindow.document.close();
   };
 
-  const exportToPDF = async (type: 'chat' | 'summary' | 'novel') => {
+  const exportToPDF = async (type: 'chat' | 'summary' | 'novel', viewPoint: 'third' | 'first' = 'third') => {
     if (!activeRoom) return;
     const endIndex = messages.findIndex(m => m.text.includes('[SCENARIO_END]'));
     const baseMessages = endIndex !== -1 ? messages.slice(0, endIndex + 1) : messages;
 
-    // ★ HNを取得してキャラクターにマッピング
     const userIds = Object.keys(activeRoom.joined_users || {});
     const { data: profiles } = await supabase.from('profiles').select('id, handle_name').in('id', userIds);
     const profileMap: Record<string, string> = {};
@@ -1057,7 +1060,9 @@ export default function Home() {
         scenarioImage: activeRoom.scenario?.imageUrl,
         createdAt: new Date().toISOString(),
         coPlayers: Object.values(profileMap).filter(name => name !== currentUser?.handleName),
-        characters: charactersWithPlayers
+        characters: charactersWithPlayers,
+        viewPoint: viewPoint,
+        myCharacterName: joinedCharacter?.name
       }
     );
   };
@@ -1067,7 +1072,6 @@ export default function Home() {
     const endIndex = messages.findIndex(m => m.text.includes('[SCENARIO_END]'));
     const baseMessages = endIndex !== -1 ? messages.slice(0, endIndex + 1) : messages;
 
-    // ★ HNを取得してキャラクターにマッピングして保存
     const userIds = Object.keys(activeRoom.joined_users || {});
     const { data: profiles } = await supabase.from('profiles').select('id, handle_name').in('id', userIds);
     const profileMap: Record<string, string> = {};
