@@ -149,5 +149,6 @@ export type PlayArchive = {
   createdAt: string;
   rule?: string;
   coPlayers?: string[];
-  novels?: Record<string, string>; // ★ 各AIモデル別の小説を保存する枠を追加！
+  novels?: Record<string, string>;
+  characters?: Character[]; // ★追加
 };

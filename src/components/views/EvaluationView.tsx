@@ -10,7 +10,7 @@ type Props = {
   ratingGM: number;
   setRatingGM: React.Dispatch<React.SetStateAction<number>>;
   submitEvaluation: () => Promise<void>;
-  exportToPDF: (type: 'chat' | 'summary' | 'novel', images?: string[]) => Promise<void>;
+  exportToPDF: (type: 'chat' | 'summary' | 'novel') => Promise<void>; // ★ 引数変更
   isExporting: boolean;
   saveToArchive: () => Promise<void>;
   currentUser: UserProfile;
@@ -26,7 +26,6 @@ export default function EvaluationView({
 
   useEffect(() => {
     const fetchCoPlayers = async () => {
-      // 部屋にいる自分以外の全ユーザーIDを取得
       const ids = Object.keys(activeRoom.joined_users || {}).filter(id => id !== currentUser.id);
       if (ids.length === 0) return;
       
@@ -71,7 +70,8 @@ export default function EvaluationView({
             <button onClick={() => exportToPDF('chat')} disabled={isExporting} className="bg-slate-700 hover:bg-slate-600 px-4 py-3 rounded-lg text-xs font-bold text-white shadow transition flex items-center justify-center gap-2">
               💬 ログをPDF出力
             </button>
-            <button onClick={() => exportToPDF('novel', messages.filter(m=>m.type==='image').map(m=>m.imageUrl!))} disabled={isExporting} className="bg-indigo-700 hover:bg-indigo-600 px-4 py-3 rounded-lg text-xs font-bold text-white shadow transition flex items-center justify-center gap-2 disabled:opacity-50">
+            {/* ★ 引数を変更しました */}
+            <button onClick={() => exportToPDF('novel')} disabled={isExporting} className="bg-indigo-700 hover:bg-indigo-600 px-4 py-3 rounded-lg text-xs font-bold text-white shadow transition flex items-center justify-center gap-2 disabled:opacity-50">
               {isExporting ? "⏳ 執筆中..." : "📖 リプレイ小説を出力"}
             </button>
           </div>
@@ -81,7 +81,6 @@ export default function EvaluationView({
           <p className="text-[10px] text-slate-500 text-center">※退室後もマイページからいつでも出力できます。</p>
         </div>
 
-        {/* ★ 一緒に遊んだプレイヤーへのフレンド申請 */}
         {coPlayers.length > 0 && (
           <div className="bg-slate-900 border border-slate-700 p-6 rounded-xl shadow-lg mt-6">
             <h3 className="text-sm font-bold text-blue-400 mb-4 border-b border-slate-700 pb-2">🤝 一緒に遊んだプレイヤー</h3>

@@ -1,22 +1,22 @@
 import React from "react";
-import { ViewState, UserProfile, PlayArchive } from "../../types";
+import { ViewState, UserProfile, PlayArchive, Character } from "../../types";
 
 type Props = {
   currentUser: UserProfile;
   playArchives: PlayArchive[];
   setCurrentView: React.Dispatch<React.SetStateAction<ViewState>>;
-  executeExport: (title: string, messages: any[], type: 'chat' | 'summary' | 'novel', images?: string[], archiveId?: string, modelName?: string) => Promise<void>;
+  executeExport: (title: string, messages: any[], type: 'chat' | 'summary' | 'novel', options?: { archiveId?: string, modelName?: string, scenarioImage?: string, createdAt?: string, coPlayers?: string[], characters?: Character[] }) => Promise<void>;
   isExporting: boolean;
 };
 
 export default function LibraryView({ currentUser, playArchives, setCurrentView, executeExport, isExporting }: Props) {
   
-  // 保存済みの小説をポップアップで開く関数
+  // 保存済みの小説をポップアップで開く関数（リッチなHTMLがそのまま保存されている前提）
   const readSavedNovel = (title: string, content: string, modelName: string) => {
     const printWindow = window.open('', '_blank');
     if (!printWindow) { alert("ポップアップがブロックされました。ブラウザの設定をご確認ください。"); return; }
     printWindow.document.write(`
-      <!DOCTYPE html><html><head><meta charset="utf-8"><title>${title} - リプレイ小説 (${modelName}版)</title><style>body { font-family: 'Hiragino Kaku Gothic ProN', 'Meiryo', sans-serif; padding: 40px; color: #333; max-width: 800px; margin: 0 auto; line-height: 1.8; font-size: 14px; } h1 { font-size: 24px; border-bottom: 2px solid #2c3e50; padding-bottom: 10px; margin-bottom: 30px; color: #2c3e50; }</style></head><body><h1>${title} - リプレイ小説 <span style="font-size: 14px; color: #666;">(${modelName}版)</span></h1><div style="white-space: pre-wrap;">${content}</div></body></html>
+      <!DOCTYPE html><html><head><meta charset="utf-8"><title>${title} - リプレイ小説 (${modelName}版)</title></head><body>${content}</body></html>
     `);
     printWindow.document.close();
   };
@@ -52,18 +52,16 @@ export default function LibraryView({ currentUser, playArchives, setCurrentView,
                     </div>
                   </div>
                   
-                  {/* ★ 各モデルごとの生成＆保存ボタン */}
                   <div className="mt-3 border-t border-slate-700 pt-3">
                     <p className="text-[10px] text-slate-400 mb-2">▼ 出力・生成メニュー</p>
                     <div className="flex flex-wrap gap-2">
                       <button onClick={() => executeExport(`${a.scenarioTitle}_chat`, a.chatLogs, 'chat')} disabled={isExporting} className="text-xs bg-slate-700 hover:bg-slate-600 text-white px-3 py-1.5 rounded transition border border-slate-600 shadow">💬 ログ出力</button>
-                      <button onClick={() => executeExport(`${a.scenarioTitle}_novel`, a.chatLogs, 'novel', a.chatLogs.filter(m=>m.type==='image').map(m=>m.imageUrl!), a.id, 'Gemini')} disabled={isExporting} className="text-xs bg-blue-600 hover:bg-blue-500 text-white px-3 py-1.5 rounded transition shadow disabled:opacity-50">✨ Geminiで小説化</button>
-                      <button onClick={() => executeExport(`${a.scenarioTitle}_novel`, a.chatLogs, 'novel', a.chatLogs.filter(m=>m.type==='image').map(m=>m.imageUrl!), a.id, 'Gemini Pro')} disabled={isExporting} className="text-xs bg-indigo-600 hover:bg-indigo-500 text-white px-3 py-1.5 rounded transition shadow disabled:opacity-50">✨ Gemini Proで小説化</button>
-                      <button onClick={() => executeExport(`${a.scenarioTitle}_novel`, a.chatLogs, 'novel', a.chatLogs.filter(m=>m.type==='image').map(m=>m.imageUrl!), a.id, 'Claude')} disabled={isExporting} className="text-xs bg-orange-600 hover:bg-orange-500 text-white px-3 py-1.5 rounded transition shadow disabled:opacity-50">✨ Claudeで小説化</button>
+                      <button onClick={() => executeExport(`${a.scenarioTitle}_novel`, a.chatLogs, 'novel', { archiveId: a.id, modelName: 'Gemini', scenarioImage: a.scenarioImage, createdAt: a.createdAt, coPlayers: a.coPlayers, characters: a.characters })} disabled={isExporting} className="text-xs bg-blue-600 hover:bg-blue-500 text-white px-3 py-1.5 rounded transition shadow disabled:opacity-50">✨ Geminiで小説化</button>
+                      <button onClick={() => executeExport(`${a.scenarioTitle}_novel`, a.chatLogs, 'novel', { archiveId: a.id, modelName: 'Gemini Pro', scenarioImage: a.scenarioImage, createdAt: a.createdAt, coPlayers: a.coPlayers, characters: a.characters })} disabled={isExporting} className="text-xs bg-indigo-600 hover:bg-indigo-500 text-white px-3 py-1.5 rounded transition shadow disabled:opacity-50">✨ Gemini Proで小説化</button>
+                      <button onClick={() => executeExport(`${a.scenarioTitle}_novel`, a.chatLogs, 'novel', { archiveId: a.id, modelName: 'Claude', scenarioImage: a.scenarioImage, createdAt: a.createdAt, coPlayers: a.coPlayers, characters: a.characters })} disabled={isExporting} className="text-xs bg-orange-600 hover:bg-orange-500 text-white px-3 py-1.5 rounded transition shadow disabled:opacity-50">✨ Claudeで小説化</button>
                     </div>
                   </div>
 
-                  {/* ★ 書庫に保存済みの小説データ */}
                   {a.novels && Object.keys(a.novels).length > 0 && (
                     <div className="mt-3 bg-slate-900/50 p-3 rounded border border-emerald-700/50">
                       <p className="text-[10px] text-emerald-400 font-bold mb-2">▼ 書庫に保存済みの小説を読む</p>

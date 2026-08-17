@@ -276,7 +276,7 @@ export default function Home() {
     if (archiveData) {
       setPlayArchives(archiveData.map((d: any) => ({
         id: d.id, userId: d.user_id, scenarioTitle: d.scenario_title, scenarioImage: d.scenario_image,
-        characterName: d.character_name, chatLogs: d.chat_logs, createdAt: d.created_at, rule: d.rule, coPlayers: d.co_players, novels: d.novels || {} // ★ novelsを追加取得
+        characterName: d.character_name, chatLogs: d.chat_logs, createdAt: d.created_at, rule: d.rule, coPlayers: d.co_players, novels: d.novels || {}, characters: d.characters || []
       })));
     }
 
@@ -854,17 +854,64 @@ export default function Home() {
     } catch (err: any) { alert("画像の生成に失敗しました（AIサーバー混雑エラー等）。\n少し時間をおいて再度お試しください。"); }
   };
 
-  // ★ 変更: 出力時に指定されたモデルの小説データをDBの `novels` カラムに保存するロジックを追加
-  const executeExport = async (title: string, sourceMessages: Message[], type: 'chat' | 'summary' | 'novel', selectedImages?: string[], archiveId?: string, modelName: string = 'Gemini') => {
+  // ★ 改良: カバー画像やキャラクター画像を盛り込んだリッチなHTML生成
+  const executeExport = async (title: string, sourceMessages: Message[], type: 'chat' | 'summary' | 'novel', options?: { archiveId?: string, modelName?: string, scenarioImage?: string, createdAt?: string, coPlayers?: string[], characters?: Character[] }) => {
     const printWindow = window.open('', '_blank');
     if (!printWindow) { alert("ポップアップがブロックされました。ブラウザの設定でポップアップを許可してください。"); return; }
-    printWindow.document.write('<div style="padding: 20px; font-family: sans-serif; color: #333;">生成中...しばらくお待ちください。（AI執筆中の場合は十数秒かかることがあります）</div>');
+    printWindow.document.write('<div style="padding: 20px; font-family: sans-serif; color: #333;">生成中...しばらくお待ちください。（AI執筆中の場合は数十秒かかることがあります）</div>');
 
     const targetMessages = sourceMessages.filter(m => m.channel !== 'gm');
     let contentHtml = "";
 
+    const commonStyle = `
+      <style>
+        body { font-family: 'Hiragino Kaku Gothic ProN', 'Meiryo', sans-serif; color: #333; margin: 0; padding: 0; background: #f9f9f9; }
+        .page { background: #fff; max-width: 800px; margin: 20px auto; padding: 60px; box-shadow: 0 0 10px rgba(0,0,0,0.1); border-radius: 8px; }
+        .page-break { page-break-before: always; margin-top: 40px; padding-top: 40px; border-top: 2px dashed #ccc; }
+        @media print { body { background: #fff; } .page { box-shadow: none; margin: 0; padding: 0; } .page-break { border-top: none; padding-top: 0; margin-top: 0; } }
+        .cover { display: flex; flex-direction: column; align-items: center; justify-content: center; min-height: 80vh; text-align: center; }
+        .cover img { max-width: 80%; max-height: 50vh; object-fit: contain; border-radius: 8px; box-shadow: 0 4px 15px rgba(0,0,0,0.2); margin-bottom: 30px; }
+        .cover h1 { font-size: 36px; margin-bottom: 20px; color: #2c3e50; }
+        .cover .meta { font-size: 16px; color: #666; line-height: 1.6; }
+        .character-intro { display: flex; align-items: flex-start; gap: 20px; margin-bottom: 30px; border-bottom: 1px solid #eee; padding-bottom: 20px; }
+        .character-intro img { width: 120px; height: 120px; object-fit: cover; border-radius: 50%; box-shadow: 0 2px 8px rgba(0,0,0,0.1); }
+        .character-info h3 { margin: 0 0 5px 0; font-size: 20px; color: #2c3e50; }
+        .character-info p { margin: 0; color: #555; font-size: 14px; white-space: pre-wrap; line-height: 1.6; }
+        .novel-body { white-space: pre-wrap; line-height: 1.9; color: #333; font-size: 15px; }
+        .novel-image { text-align: center; margin: 40px 0; }
+        .novel-image img { max-width: 100%; max-height: 400px; border-radius: 8px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); }
+      </style>
+    `;
+
+    const coverHtml = `
+      <div class="cover">
+        ${options?.scenarioImage ? `<img src="${options.scenarioImage}" />` : ''}
+        <h1>${title}</h1>
+        <div class="meta">
+          <p>プレイ日時: ${options?.createdAt ? new Date(options.createdAt).toLocaleString() : '不明'}</p>
+          <p>参加プレイヤー: ${options?.coPlayers?.length ? options.coPlayers.join(', ') : 'ソロプレイ'}</p>
+        </div>
+      </div>
+    `;
+
+    const charactersHtml = options?.characters && options.characters.length > 0 ? `
+      <div class="page-break">
+        <h2 style="text-align: center; margin-bottom: 40px; font-size: 24px; color: #2c3e50;">登場キャラクター</h2>
+        ${options.characters.map(c => `
+          <div class="character-intro">
+            ${c.imageUrl ? `<img src="${c.imageUrl}" />` : `<div style="width:120px;height:120px;background:#eee;border-radius:50%;display:flex;align-items:center;justify-content:center;color:#999;font-size:12px;">No Image</div>`}
+            <div class="character-info">
+              <h3>${c.name} <span style="font-size:12px; font-weight:normal;">(${c.job})</span></h3>
+              <p><strong>【設定・性格】</strong><br/>${c.personality}</p>
+              <p style="font-size:12px; margin-top:5px; color:#888;">HP:${c.hp} / SAN:${c.san} / STR:${c.str} / DEX:${c.dex} / INT:${c.int} / CON:${c.con}</p>
+            </div>
+          </div>
+        `).join('')}
+      </div>
+    ` : '';
+
     if (type === 'chat') {
-      contentHtml = targetMessages.map(m => {
+      const chatHtml = targetMessages.map(m => {
         if (m.type === 'image' && m.imageUrl) {
           return `<div style="margin-bottom: 12px; border-bottom: 1px dashed #eee; padding-bottom: 8px;"><strong style="color: #2c3e50;">AI GM (画像)</strong><br><img src="${m.imageUrl}" style="max-width: 300px; border-radius: 8px;" /><br><span style="white-space: pre-wrap; color: #34495e;">${m.text}</span></div>`;
         }
@@ -873,47 +920,107 @@ export default function Home() {
         if (!text) return "";
         return `<div style="margin-bottom: 12px; border-bottom: 1px dashed #eee; padding-bottom: 8px;"><strong style="color: #2c3e50;">${senderName}</strong><br><span style="white-space: pre-wrap; color: #34495e;">${text}</span></div>`;
       }).join('');
+      
+      contentHtml = `
+        ${commonStyle}
+        <div class="page">
+          ${coverHtml}
+          ${charactersHtml}
+          <div class="page-break">
+            <h2 style="text-align: center; margin-bottom: 40px; font-size: 24px; color: #2c3e50;">チャットログ</h2>
+            ${chatHtml}
+          </div>
+        </div>
+      `;
     } else {
       setIsExporting(true);
+      
+      let imageCounter = 0;
+      const imagesList: string[] = [];
+
+      // ★ 画像を置換するためのマーカー（[IMAGE_ID: X]）をログに埋め込む
+      const logTextForAI = targetMessages.map(m => {
+        if (m.type === 'image' && m.imageUrl) {
+          imagesList.push(m.imageUrl);
+          imageCounter++;
+          return `[IMAGE_ID: ${imageCounter}] (ここに情景画像が生成されました: ${m.text})`;
+        }
+        return `${m.charName || (m.sender === 'gm' ? 'GM' : 'システム')}: ${m.text.replace(/\[SPLIT_PROPOSAL:.*?\]/, '').replace('[SCENARIO_END]', '').trim()}`;
+      }).join('\n');
+
       const prompt = type === 'summary' 
         ? ["以下のTRPGセッションのチャットログを読み込み、物語のあらすじ・結末として分かりやすく要約してください。","※ログには「GMへの行動宣言」と「キャラクター同士の相談・会話」が含まれています。キャラクター同士の相談内容も物語の展開として要約に含めてください。"].join('\n')
-        : ["以下のTRPGセッションのチャットログを元に、プロの小説家が書いたような臨場感あふれる【本格的なリプレイ小説】を執筆してください。","","【執筆の条件】","1. 単調な事実の羅列を避け、五感を刺激する情景描写と心理描写を大幅に肉付けすること。","2. プレイヤー間の相談は魅力的な会話劇として昇華すること。","3. ダイスロールの成否はドラマチックな演出に変換すること。","4. 読者を惹きつける一つの完成された短編小説に仕上げること。"].join('\n');
+        : [
+            "以下のTRPGセッションのチャットログを元に、プロの小説家が書いたような臨場感あふれる【本格的なリプレイ小説】を執筆してください。",
+            "",
+            "【執筆の条件】",
+            "1. 単調な事実の羅列を避け、五感を刺激する情景描写と心理描写を大幅に肉付けすること。",
+            "2. プレイヤー間の相談は魅力的な会話劇として昇華すること。",
+            "3. ダイスロールの成否はドラマチックな演出に変換すること。",
+            "4. 読者を惹きつける一つの完成された短編小説に仕上げること。",
+            "5. 【重要】チャットログ内に [IMAGE_ID: X] というマーカーがあった場合、小説の展開上それに対応するシーンの適切な段落の合間に、必ずそのまま `[IMAGE_ID: X]` という文字列を出力して画像を挿入する位置を指定すること。"
+          ].join('\n');
       
-      const logText = targetMessages.map(m => `${m.charName || (m.sender === 'gm' ? 'GM' : 'システム')}: ${m.text.replace(/\[SPLIT_PROPOSAL:.*?\]/, '').replace('[SCENARIO_END]', '').trim()}`).join('\n');
       try {
-        const generatedText = await generateAITextWithPrompt(prompt + "\n\n【チャットログ】\n" + logText);
+        const generatedText = await generateAITextWithPrompt(prompt + "\n\n【チャットログ】\n" + logTextForAI);
         
-        // ★ 生成完了後、アーカイブIDが渡されていればデータベースに保存
-        if (archiveId && type === 'novel') {
-          const archive = playArchives.find(a => a.id === archiveId);
+        let finalNovelText = generatedText;
+        // ★ マーカーを実際のHTML <img> タグに置換する
+        imagesList.forEach((imgUrl, idx) => {
+          const imgTag = `</div><div class="novel-image"><img src="${imgUrl}" /></div><div class="novel-body">`;
+          finalNovelText = finalNovelText.replace(new RegExp(`\\[IMAGE_ID:\\s*${idx + 1}\\]`, 'g'), imgTag);
+        });
+
+        contentHtml = `
+          ${commonStyle}
+          <div class="page">
+            ${coverHtml}
+            ${charactersHtml}
+            <div class="page-break">
+              <h2 style="text-align: center; margin-bottom: 40px; font-size: 24px; color: #2c3e50;">本編</h2>
+              <div class="novel-body">${finalNovelText}</div>
+            </div>
+          </div>
+        `;
+
+        if (options?.archiveId && type === 'novel' && options.modelName) {
+          const archive = playArchives.find(a => a.id === options.archiveId);
           if (archive) {
-            const updatedNovels = { ...(archive.novels || {}), [modelName]: generatedText };
-            await supabase.from('play_archives').update({ novels: updatedNovels }).eq('id', archiveId);
-            setPlayArchives(prev => prev.map(a => a.id === archiveId ? { ...a, novels: updatedNovels } : a));
+            const updatedNovels = { ...(archive.novels || {}), [options.modelName]: contentHtml }; // 完成したHTMLごと保存
+            await supabase.from('play_archives').update({ novels: updatedNovels }).eq('id', options.archiveId);
+            setPlayArchives(prev => prev.map(a => a.id === options.archiveId ? { ...a, novels: updatedNovels } : a));
           }
         }
-
-        let imagesHtml = "";
-        if (type === 'novel' && selectedImages && selectedImages.length > 0) {
-          imagesHtml = `<div style="text-align: center; margin-bottom: 30px;">` + selectedImages.map(img => `<img src="${img}" style="max-width: 100%; border-radius: 8px; margin-bottom: 10px; max-height: 400px; object-fit: contain; box-shadow: 0 4px 6px rgba(0,0,0,0.1);" />`).join('') + `</div>`;
-        }
-        contentHtml = imagesHtml + `<div style="white-space: pre-wrap; line-height: 1.8; color: #333; font-size: 14px;">${generatedText}</div>`;
       } catch(e: any) { alert("エクスポート生成エラー: " + e.message); setIsExporting(false); printWindow.close(); return; }
       setIsExporting(false);
     }
 
     printWindow.document.open();
     printWindow.document.write(`
-      <!DOCTYPE html><html><head><meta charset="utf-8"><title>${title} - ${type === 'chat' ? 'チャットログ' : type === 'summary' ? '要約データ' : 'リプレイ小説'}</title><style>body { font-family: 'Hiragino Kaku Gothic ProN', 'Meiryo', sans-serif; padding: 40px; color: #333; max-width: 800px; margin: 0 auto; } h1 { font-size: 24px; border-bottom: 2px solid #2c3e50; padding-bottom: 10px; margin-bottom: 30px; color: #2c3e50; } @media print { body { padding: 0; } }</style></head><body><h1>${title} - ${type === 'chat' ? 'チャットログ' : type === 'summary' ? 'あらすじ要約' : 'リプレイ小説'}</h1>${contentHtml}<script>setTimeout(() => { window.print(); window.close(); }, 500);</script></body></html>
+      <!DOCTYPE html><html><head><meta charset="utf-8"><title>${title} - ${type === 'chat' ? 'チャットログ' : type === 'summary' ? '要約データ' : 'リプレイ小説'}</title></head><body>${contentHtml}<script>setTimeout(() => { if('${type}' === 'chat') { window.print(); window.close(); } }, 500);</script></body></html>
     `);
     printWindow.document.close();
   };
 
-  const exportToPDF = async (type: 'chat' | 'summary' | 'novel', selectedImages?: string[]) => {
+  const exportToPDF = async (type: 'chat' | 'summary' | 'novel') => {
     if (!activeRoom) return;
     const endIndex = messages.findIndex(m => m.text.includes('[SCENARIO_END]'));
     const baseMessages = endIndex !== -1 ? messages.slice(0, endIndex + 1) : messages;
-    await executeExport(activeRoom.scenario?.title || "名称未設定", baseMessages, type, selectedImages);
+
+    const userIds = Object.keys(activeRoom.joined_users || {});
+    const coPlayers = allUsers.filter(u => userIds.includes(u.id) && u.id !== currentUser?.id).map(u => u.handleName);
+
+    await executeExport(
+      activeRoom.scenario?.title || "名称未設定", 
+      baseMessages, 
+      type, 
+      {
+        scenarioImage: activeRoom.scenario?.imageUrl,
+        createdAt: new Date().toISOString(),
+        coPlayers: coPlayers,
+        characters: activeRoom.scenario?.presetCharacters
+      }
+    );
   };
 
   const saveToArchive = async () => {
@@ -932,7 +1039,8 @@ export default function Home() {
       character_name: joinedCharacter.name, 
       chat_logs: baseMessages,
       rule: activeRoom.rule,
-      co_players: coPlayers 
+      co_players: coPlayers,
+      characters: activeRoom.scenario?.presetCharacters || [] // ★ キャラ情報も保存
     };
     
     const { error } = await supabase.from('play_archives').insert(archiveData);
@@ -1021,7 +1129,6 @@ export default function Home() {
       const currentChapter = chapters[currentChapIndex] || chapters[chapters.length - 1];
       const isLastChapter = currentChapIndex >= chapters.length - 1;
 
-      // ★ 全体構成マップをAIに教え、構造崩壊を防ぐ！
       const chapterProgress = chapters.map((c, idx) => {
         if (idx < currentChapIndex) return `[クリア済] 第${idx + 1}章: ${c.title}`;
         if (idx === currentChapIndex) return `[★現在進行中] 第${idx + 1}章: ${c.title}`;
