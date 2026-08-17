@@ -876,6 +876,37 @@ export default function Home() {
     }
   };
 
+  const generateSceneImage = async (promptText?: string) => {
+    if (!activeRoom || !myScene) return;
+    setIsLoading(true);
+    try {
+      let targetPrompt = promptText;
+      
+      if (!targetPrompt || !targetPrompt.trim()) {
+        const { data: memoryData } = await supabase.from('ai_memory').select('*').eq('room_id', activeRoom.id).order('created_at', { ascending: false }).limit(10);
+        const recentLogs = memoryData?.reverse().map(m => `${m.role === 'user' ? 'PL' : 'GM'}: ${m.content}`).join('\n') || "";
+        const autoPromptReq = ["あなたはTRPGの情景描写AIです。以下の直近のログから、現在の「場所、雰囲気、見えているもの」を1〜2文の簡潔な日本語で描写してください。キャラクターのセリフや行動ではなく、空間のビジュアルに焦点を当ててください。","【直近のログ】",recentLogs].join('\n');
+        targetPrompt = await generateAITextWithPrompt(autoPromptReq);
+      }
+
+      const translationPrompt = ["以下の日本語の情景描写を、画像生成AI用のカンマ区切りの英語プロンプトに変換してください。","【絶対条件】","・文章ではなく、英単語のカンマ区切りで出力してください。","・不適切な画像が生成されるのを防ぐため、必ず最後に「SFW, fully clothed, masterpiece, high quality」を含めてください。","","情景描写：",targetPrompt].join('\n');
+      let englishPrompt = "";
+      try { englishPrompt = await generateAITextWithPrompt(translationPrompt); } catch (err) { englishPrompt = `${targetPrompt}, SFW, fully clothed, masterpiece, high quality`; }
+      const prompt = encodeURIComponent(`${englishPrompt}, TRPG scene, cinematic lighting, dramatic atmosphere`);
+      const seed = Math.floor(Math.random() * 100000);
+      const url = `https://image.pollinations.ai/prompt/${prompt}?nologo=true&seed=${seed}&safe=true`;
+      const res = await fetch(url);
+      if (!res.ok) throw new Error("AIサーバーが混雑しています");
+      const blob = await res.blob();
+      const reader = new FileReader();
+      reader.onloadend = async () => {
+        const base64data = reader.result as string;
+        await pushMessage(activeRoom.id, { sender: "gm", text: `【ホストが情景画像を生成しました】\n「${targetPrompt}」`, type: "image", imageUrl: base64data, sceneId: myScene.id, channel: "story" });
+      };
+      reader.readAsDataURL(blob);
+    } catch (err: any) { alert("画像の生成に失敗しました（AIサーバー混雑エラー等）。\n少し時間をおいて再度お試しください。"); } finally { setIsLoading(false); }
+  };
+
   const executeExport = async (title: string, sourceMessages: Message[], type: 'chat' | 'summary' | 'novel', options?: { archiveId?: string, modelName?: string, viewPoint?: 'third' | 'first', myCharacterName?: string, scenarioImage?: string, createdAt?: string, coPlayers?: string[], characters?: Character[] }) => {
     const printWindow = window.open('', '_blank');
     if (!printWindow) { alert("ポップアップがブロックされました。ブラウザの設定でポップアップを許可してください。"); return; }
@@ -1266,7 +1297,6 @@ export default function Home() {
       const ruleSpec = ruleSpecLines.join('\n'); const gmStyle = gmStyleLines.join('\n');
       const diceBase = activeRoom.rule === 'dnd' ? '1d20' : activeRoom.rule === 'sw25' ? '2d6' : activeRoom.rule === 'storytelling' ? '1d6' : '1d100';
 
-      // ★ ボリュームとペース配分の指示を強化
       let roleInstructionLines: string[] = [];
       if (targetTab === "story") {
         roleInstructionLines = [
