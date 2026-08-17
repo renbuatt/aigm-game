@@ -5,7 +5,7 @@ import { supabase } from "../lib/supabase";
 import { generateAIResponse, generateAITextWithPrompt } from "../lib/ai";
 import { 
   ViewState, UserProfile, Notification, BanAppeal, Report, 
-  Character, Scenario, Scene, Room, Message, ChatTab 
+  Character, Scenario, Scene, Room, Message, ChatTab, PlayArchive 
 } from "../types";
 
 import LoginView from "../components/views/LoginView";
@@ -19,6 +19,7 @@ import ScenarioEditView from "../components/views/ScenarioEditView";
 import LobbyView from "../components/views/LobbyView";
 import GameView from "../components/views/GameView";
 import UserProfileView from "../components/views/UserProfileView";
+import LibraryView from "../components/views/LibraryView"; // ★ 追加
 
 const NO_IMAGE_SCENARIO = "https://images.unsplash.com/photo-1614729939124-03290b5609ce?auto=format&fit=crop&w=400&q=80";
 const DEFAULT_AVATAR = "https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&w=150&q=80";
@@ -87,6 +88,7 @@ export default function Home() {
   const [unreadIndicators, setUnreadIndicators] = useState({ story: false, consult: false, gm: false });
   const chatTabRef = useRef<ChatTab>(chatTab);
   const prevMessagesLength = useRef(0);
+  const [playArchives, setPlayArchives] = useState<PlayArchive[]>([]); // ★ 復活
 
   const availableScenarios = scenarios.filter(s => !s.isBanned);
   const createdScenarios = availableScenarios.filter(s => s.authorId === currentUser?.id);
@@ -268,6 +270,14 @@ export default function Home() {
 
     setCurrentUser(profileData);
     await fetchNotifications(userId);
+
+    const { data: archiveData } = await supabase.from('play_archives').select('*').eq('user_id', userId).order('created_at', { ascending: false });
+    if (archiveData) {
+      setPlayArchives(archiveData.map((d: any) => ({
+        id: d.id, userId: d.user_id, scenarioTitle: d.scenario_title, scenarioImage: d.scenario_image,
+        characterName: d.character_name, chatLogs: d.chat_logs, createdAt: d.created_at, rule: d.rule, coPlayers: d.co_players
+      })));
+    }
 
     if (!profileData.isBanned && (!currentMaintenance || profileData.isAdmin || profileData.isTester)) {
       const activeMyRoom = roomsData.find(r => (r.status === 'playing' || r.status === 'splitting' || r.status === 'recruiting') && r.joined_users && r.joined_users[userId]);
@@ -1114,6 +1124,18 @@ export default function Home() {
 
   return (
     <main className="h-screen w-full bg-slate-900 text-slate-100 flex flex-col font-sans overflow-hidden">
+      
+      {/* ★ 書庫画面を追加 */}
+      {currentView === "library" && currentUser && (
+        <LibraryView 
+          currentUser={currentUser} 
+          playArchives={playArchives} 
+          setCurrentView={setCurrentView} 
+          executeExport={executeExport} 
+          isExporting={isExporting} 
+        />
+      )}
+
       {currentView === "userProfile" && currentUser && (
         <UserProfileView 
           currentUser={currentUser} 
