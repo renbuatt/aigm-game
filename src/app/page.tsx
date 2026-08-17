@@ -5,7 +5,7 @@ import { supabase } from "../lib/supabase";
 import { generateAIResponse, generateAITextWithPrompt } from "../lib/ai";
 import { 
   ViewState, UserProfile, Notification, BanAppeal, Report, 
-  Character, Scenario, Scene, Room, Message, ChatTab, PlayArchive 
+  Character, Scenario, Scene, Room, Message, ChatTab 
 } from "../types";
 
 import LoginView from "../components/views/LoginView";
@@ -18,7 +18,7 @@ import AdminView from "../components/views/AdminView";
 import ScenarioEditView from "../components/views/ScenarioEditView";
 import LobbyView from "../components/views/LobbyView";
 import GameView from "../components/views/GameView";
-import UserProfileView from "../components/views/UserProfileView"; // ★ 変更
+import UserProfileView from "../components/views/UserProfileView";
 
 const NO_IMAGE_SCENARIO = "https://images.unsplash.com/photo-1614729939124-03290b5609ce?auto=format&fit=crop&w=400&q=80";
 const DEFAULT_AVATAR = "https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&w=150&q=80";
@@ -30,7 +30,7 @@ export default function Home() {
   const [authLoading, setAuthLoading] = useState(false);
 
   const [currentUser, setCurrentUser] = useState<UserProfile | null>(null);
-  const [targetUserId, setTargetUserId] = useState<string>(""); // ★ 追加: プロフィール表示用
+  const [targetUserId, setTargetUserId] = useState<string>(""); 
 
   const [scenarios, setScenarios] = useState<Scenario[]>([]);
   const [editingScenario, setEditingScenario] = useState<Scenario | null>(null);
@@ -98,13 +98,11 @@ export default function Home() {
 
   const isScenarioEnded = messages.some(m => m.text.includes('[SCENARIO_END]')) || activeRoom?.status === 'finished';
 
-  // ★ 追加: ユーザープロフィールを開く
   const openUserProfile = (userId: string) => {
     setTargetUserId(userId);
     setCurrentView("userProfile");
   };
 
-  // ★ 追加: フレンド追加処理
   const addFriend = async (targetId: string) => {
     if (!currentUser) return;
     if (currentUser.friendIds?.includes(targetId)) {
@@ -883,7 +881,6 @@ export default function Home() {
     const endIndex = messages.findIndex(m => m.text.includes('[SCENARIO_END]'));
     const baseMessages = endIndex !== -1 ? messages.slice(0, endIndex + 1) : messages;
 
-    // ★ プレイ履歴に参加したユーザー名を保存する処理を追加
     const userIds = Object.keys(activeRoom.joined_users || {});
     const { data: profiles } = await supabase.from('profiles').select('handle_name').in('id', userIds);
     const coPlayers = profiles ? profiles.map(p => p.handle_name) : [];
@@ -898,11 +895,10 @@ export default function Home() {
       co_players: coPlayers 
     };
     
-    const { data, error } = await supabase.from('play_archives').insert(archiveData).select().single();
+    const { error } = await supabase.from('play_archives').insert(archiveData);
     if (error) { alert("書庫への保存に失敗しました: " + error.message); } 
     else {
       alert("プレイ履歴に保存しました！\nユーザーページからいつでも確認できます。");
-      setPlayArchives(prev => [{ id: data.id, userId: data.user_id, scenarioTitle: data.scenario_title, scenarioImage: data.scenario_image, characterName: data.character_name, chatLogs: data.chat_logs, createdAt: data.created_at, rule: data.rule, coPlayers: data.co_players }, ...prev]);
     }
   };
 
@@ -1103,7 +1099,6 @@ export default function Home() {
 
   return (
     <main className="h-screen w-full bg-slate-900 text-slate-100 flex flex-col font-sans overflow-hidden">
-      {/* ★ MyPageView を UserProfileView に差し替えました */}
       {currentView === "userProfile" && currentUser && (
         <UserProfileView 
           currentUser={currentUser} 
