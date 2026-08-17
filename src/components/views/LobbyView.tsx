@@ -41,7 +41,7 @@ export default function LobbyView({
   const playableScenarios = availableScenarios.filter(s => s.isPlayableByOthers);
 
   return (
-    <div className="flex-1 flex flex-col p-6 max-w-7xl mx-auto w-full min-h-0 overflow-y-auto">
+    <div className="flex-1 flex flex-col p-6 max-w-7xl mx-auto w-full min-h-0 overflow-y-auto custom-scrollbar">
       <header className="mb-6 flex justify-between items-end border-b border-slate-700 pb-4">
         <div><h1 className="text-3xl font-extrabold text-emerald-400 mb-1">AI GM MORPG Lobby</h1></div>
         <div className="flex items-center gap-4">
@@ -55,13 +55,13 @@ export default function LobbyView({
         </div>
       </header>
 
-      <div className="flex gap-4 mb-6 border-b border-slate-700">
+      <div className="flex gap-4 mb-6 border-b border-slate-700 flex-shrink-0">
         <button onClick={() => setLobbyTab('rooms')} className={`pb-2 text-sm font-bold transition-colors border-b-2 ${lobbyTab === 'rooms' ? 'border-blue-500 text-blue-400' : 'border-transparent text-slate-400 hover:text-white'}`}>🌐 募集中のセッション</button>
         <button onClick={() => setLobbyTab('scenarios')} className={`pb-2 text-sm font-bold transition-colors border-b-2 ${lobbyTab === 'scenarios' ? 'border-emerald-500 text-emerald-400' : 'border-transparent text-slate-400 hover:text-white'}`}>📖 シナリオを探す・部屋を作る</button>
         <button onClick={() => setLobbyTab('trials')} className={`pb-2 text-sm font-bold transition-colors border-b-2 ${lobbyTab === 'trials' ? 'border-pink-500 text-pink-400' : 'border-transparent text-slate-400 hover:text-white'}`}>🌟 お試しプレイ (広告無料)</button>
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 flex-1 min-h-0">
         <div className="lg:col-span-2 flex flex-col gap-4">
           
           {lobbyTab === 'rooms' && (
@@ -74,7 +74,7 @@ export default function LobbyView({
                 </div>
               </div>
 
-              <div className="h-[500px] overflow-y-scroll space-y-4 pr-2 border border-slate-700/50 p-2 rounded-lg bg-slate-900/50 custom-scrollbar">
+              <div className="h-[500px] overflow-y-auto space-y-4 pr-2 border border-slate-700/50 p-2 rounded-lg bg-slate-900/50 custom-scrollbar">
                 {searchedSecretRoom && (
                   <div className="bg-indigo-900/40 border border-indigo-500/50 rounded-xl p-4 flex gap-4 mb-4 relative">
                     <span className="absolute top-[-10px] left-4 bg-indigo-500 text-white text-[10px] px-2 py-0.5 rounded-full">検索結果</span>
@@ -148,7 +148,7 @@ export default function LobbyView({
           )}
 
           {lobbyTab === 'scenarios' && (
-            <div className="h-[500px] overflow-y-scroll space-y-4 pr-2 custom-scrollbar">
+            <div className="h-[500px] overflow-y-auto space-y-4 pr-2 custom-scrollbar">
               {playableScenarios.length === 0 ? <p className="text-slate-400 text-sm p-4 text-center">公開されているシナリオはありません。</p> :
                 playableScenarios.map(s => (
                   <div key={s.id} className="bg-slate-800 border border-slate-700 rounded-xl p-4 flex gap-4 hover:border-emerald-500 transition-colors">
@@ -178,7 +178,7 @@ export default function LobbyView({
                   <button onClick={()=>setTrialSort('popular')} className={`px-3 py-1 ${trialSort==='popular'?'bg-pink-600 text-white':'text-slate-400 hover:bg-slate-700'}`}>人気順</button>
                 </div>
               </div>
-              <div className="h-[460px] overflow-y-scroll space-y-4 pr-2 custom-scrollbar">
+              <div className="h-[460px] overflow-y-auto space-y-4 pr-2 custom-scrollbar">
                 {sortedTrials.length === 0 ? <p className="text-slate-400 text-sm p-4 text-center">お試しプレイ可能なシナリオはありません。</p> :
                   sortedTrials.map(ts => (
                     <div key={ts.id} className="bg-pink-900/10 border border-pink-500/30 rounded-xl p-4 flex gap-4 hover:border-pink-500 transition-colors">
@@ -199,7 +199,6 @@ export default function LobbyView({
               </div>
             </>
           )}
-
         </div>
 
         <div className="space-y-6">
@@ -227,7 +226,7 @@ export default function LobbyView({
             {createdScenarios.length === 0 ? (
               <p className="text-xs text-slate-400 mt-2 text-center p-2 bg-slate-900 rounded border border-slate-700/50">作成したシナリオはありません。</p>
             ) : (
-              <div className="max-h-[300px] overflow-y-scroll space-y-3 pr-2 custom-scrollbar">
+              <div className="max-h-[300px] overflow-y-auto space-y-3 pr-2 custom-scrollbar">
                 {createdScenarios.map(s => {
                   return (
                     <div key={s.id} className={`bg-slate-900 border rounded-lg p-3 flex flex-col gap-2 ${s.isBanned ? 'border-red-900/50 opacity-80' : 'border-slate-700'}`}>
@@ -259,6 +258,14 @@ export default function LobbyView({
           </div>
         </div>
       </div>
+
+      {/* ★ 法務関連リンク用フッター */}
+      <footer className="mt-auto pt-4 border-t border-slate-800 flex flex-col md:flex-row justify-center items-center gap-4 text-xs text-slate-500 pb-2 flex-shrink-0">
+        <a href="/terms" target="_blank" className="hover:text-white transition-colors">利用規約</a>
+        <a href="/privacy" target="_blank" className="hover:text-white transition-colors">プライバシーポリシー</a>
+        <a href="/tokushoho" target="_blank" className="hover:text-white transition-colors">特定商取引法に基づく表記</a>
+        <span className="ml-2">&copy; {new Date().getFullYear()} 五輪警備保障株式会社</span>
+      </footer>
     </div>
   );
 }
