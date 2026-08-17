@@ -9,6 +9,7 @@ import {
 } from "../types";
 
 import LoginView from "../components/views/LoginView";
+import SignupView from "../components/views/SignupView"; // ★ 追加
 import BannedView from "../components/views/BannedView";
 import MaintenanceView from "../components/views/MaintenanceView";
 import EvaluationView from "../components/views/EvaluationView";
@@ -25,7 +26,6 @@ export default function Home() {
   const [currentView, setCurrentView] = useState<ViewState>("login");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
-  const [isLoginMode, setIsLoginMode] = useState(true);
   const [authLoading, setAuthLoading] = useState(false);
 
   const [currentUser, setCurrentUser] = useState<UserProfile | null>(null);
@@ -218,12 +218,12 @@ export default function Home() {
     let profileData: UserProfile;
     const { data } = await supabase.from('profiles').select('*').eq('id', userId).single();
     if (data) {
-      profileData = { id: data.id, handleName: data.handle_name, avatarUrl: data.avatar_url, bio: data.bio, discordId: data.discord_id, ratingSum: data.rating_sum || 0, ratingCount: data.rating_count || 0, isAdmin: data.is_admin || false, isTester: data.is_tester || false, isBanned: data.is_banned || false, email: data.email };
+      profileData = { id: data.id, handleName: data.handle_name, fullName: data.full_name, address: data.address, phone: data.phone, avatarUrl: data.avatar_url, bio: data.bio, discordId: data.discord_id, ratingSum: data.rating_sum || 0, ratingCount: data.rating_count || 0, isAdmin: data.is_admin || false, isTester: data.is_tester || false, isBanned: data.is_banned || false, email: data.email };
       if (data.email !== emailStr) await supabase.from('profiles').update({ email: emailStr }).eq('id', userId);
     } else {
-      const newProfile = { id: userId, handle_name: emailStr.split("@")[0], avatar_url: DEFAULT_AVATAR, bio: "よろしくお願いします。", discord_id: "", rating_sum: 0, rating_count: 0, is_admin: false, is_tester: false, is_banned: false, email: emailStr };
+      const newProfile = { id: userId, handle_name: emailStr.split("@")[0], full_name: "", address: "", phone: "", avatar_url: DEFAULT_AVATAR, bio: "よろしくお願いします。", discord_id: "", rating_sum: 0, rating_count: 0, is_admin: false, is_tester: false, is_banned: false, email: emailStr };
       await supabase.from('profiles').insert(newProfile);
-      profileData = { id: userId, handleName: newProfile.handle_name, avatarUrl: newProfile.avatar_url, bio: newProfile.bio, discordId: newProfile.discord_id, ratingSum: 0, ratingCount: 0, isAdmin: false, isTester: false, isBanned: false, email: emailStr };
+      profileData = { id: userId, handleName: newProfile.handle_name, fullName: "", address: "", phone: "", avatarUrl: newProfile.avatar_url, bio: newProfile.bio, discordId: newProfile.discord_id, ratingSum: 0, ratingCount: 0, isAdmin: false, isTester: false, isBanned: false, email: emailStr };
     }
     setCurrentUser(profileData);
     await fetchNotifications(userId);
@@ -274,18 +274,31 @@ export default function Home() {
     if (!email || !password) return;
     setAuthLoading(true);
     try {
-      if (isLoginMode) {
-        const { data, error } = await supabase.auth.signInWithPassword({ email, password });
-        if (error) throw error;
+      const { data, error } = await supabase.auth.signInWithPassword({ email, password });
+      if (error) throw error;
+      const { formattedRooms } = await fetchData();
+      if (data.user) await fetchProfile(data.user.id, email, isMaintenance, formattedRooms);
+    } catch (error: any) { alert("ログインエラー: " + error.message); } finally { setAuthLoading(false); }
+  };
+
+  const handleEmailSignUp = async (e: React.FormEvent, name: string, addr: string, phone: string) => {
+    e.preventDefault();
+    if (!email || !password || !name || !addr || !phone) return;
+    setAuthLoading(true);
+    try {
+      const { data, error } = await supabase.auth.signUp({ email, password });
+      if (error) throw error;
+      if (data.user) {
+        const { error: upsertError } = await supabase.from('profiles').upsert({
+          id: data.user.id, handle_name: name.split(" ")[0] || email.split("@")[0], full_name: name, address: addr, phone: phone,
+          avatar_url: DEFAULT_AVATAR, bio: "よろしくお願いします。", email: email
+        });
+        if (upsertError) throw upsertError;
+        alert("アカウントを作成しました！");
         const { formattedRooms } = await fetchData();
-        if (data.user) await fetchProfile(data.user.id, email, isMaintenance, formattedRooms);
-      } else {
-        const { data, error } = await supabase.auth.signUp({ email, password });
-        if (error) throw error;
-        const { formattedRooms } = await fetchData();
-        if (data.user) { alert("アカウントを作成しました！"); await fetchProfile(data.user.id, email, isMaintenance, formattedRooms); }
+        await fetchProfile(data.user.id, email, isMaintenance, formattedRooms);
       }
-    } catch (error: any) { alert("エラーが発生しました: " + error.message); } finally { setAuthLoading(false); }
+    } catch (error: any) { alert("登録エラー: " + error.message); } finally { setAuthLoading(false); }
   };
 
   const handleGoogleAuth = async () => {
@@ -1038,7 +1051,10 @@ export default function Home() {
       {currentView === "admin" && currentUser?.isAdmin && <AdminView isMaintenance={isMaintenance} toggleMaintenance={toggleMaintenance} reports={reports} allUsers={allUsers} scenarios={scenarios} resolveReport={resolveReport} setBanTargetUser={setBanTargetUser} setBanReason={setBanReason} setBanTargetScenario={setBanTargetScenario} setScenarioBanReason={setScenarioBanReason} unbanScenarioFromAppeal={unbanScenarioFromAppeal} userSearchQuery={userSearchQuery} setUserSearchQuery={setUserSearchQuery} toggleAdminStatus={toggleAdminStatus} scenarioSearchQuery={scenarioSearchQuery} setScenarioSearchQuery={setScenarioSearchQuery} setCurrentView={setCurrentView} executeCreateTester={executeCreateTester} />}
       {currentView === "banned" && <BannedView handleLogout={handleLogout} />}
       {currentView === "maintenance" && <MaintenanceView handleLogout={handleLogout} />}
-      {currentView === "login" && <LoginView email={email} setEmail={setEmail} password={password} setPassword={setPassword} isLoginMode={isLoginMode} setIsLoginMode={setIsLoginMode} authLoading={authLoading} handleEmailAuth={handleEmailAuth} handleGoogleAuth={handleGoogleAuth} />}
+      
+      {/* ログイン画面・新規登録画面の出し分け */}
+      {currentView === "login" && <LoginView email={email} setEmail={setEmail} password={password} setPassword={setPassword} authLoading={authLoading} handleEmailAuth={handleEmailAuth} handleGoogleAuth={handleGoogleAuth} setCurrentView={setCurrentView} />}
+      {currentView === "signup" && <SignupView email={email} setEmail={setEmail} password={password} setPassword={setPassword} authLoading={authLoading} handleEmailSignUp={handleEmailSignUp} handleGoogleAuth={handleGoogleAuth} setCurrentView={setCurrentView} />}
       
       {currentView === "lobby" && currentUser && (
         <LobbyView 

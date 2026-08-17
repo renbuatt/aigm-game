@@ -1,4 +1,4 @@
-export type ViewState = "login" | "lobby" | "game" | "evaluation" | "admin" | "banned" | "maintenance" | "scenarioEdit" | "mypage";
+export type ViewState = "login" | "signup" | "lobby" | "game" | "evaluation" | "admin" | "banned" | "maintenance" | "scenarioEdit" | "mypage";
 
 export type RoomDifficulty = "beginner" | "easy" | "normal" | "hard" | "pro" | "oni";
 export type GameRule = "dnd" | "coc_en" | "coc_jp" | "sw25" | "storytelling";
@@ -6,6 +6,9 @@ export type GameRule = "dnd" | "coc_en" | "coc_jp" | "sw25" | "storytelling";
 export type UserProfile = {
   id: string;
   handleName: string;
+  fullName?: string;
+  address?: string;
+  phone?: string;
   avatarUrl: string;
   bio: string;
   discordId: string;
@@ -43,8 +46,8 @@ export type Scenario = {
   setting: string;
   npcList: string;
   plot: string;
-  prologue?: string; // ★ 追加
-  epilogue?: string; // ★ 追加
+  prologue?: string;
+  epilogue?: string;
   imageUrl: string;
   presetCharacters: Character[];
   ratingSum: number;
