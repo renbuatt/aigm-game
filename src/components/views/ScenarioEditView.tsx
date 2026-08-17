@@ -1,5 +1,6 @@
 import React, { useState } from "react";
 import { ViewState, Scenario, Character } from "../../types";
+import { generateAITextWithPrompt } from "../../lib/ai"; // ★AI翻訳用に追加
 
 type Props = {
   editingScenario: Scenario;
@@ -13,6 +14,11 @@ type Props = {
 export default function ScenarioEditView({ editingScenario, setEditingScenario, editingCharIndex, setEditingCharIndex, saveScenario, setCurrentView }: Props) {
   const [tab, setTab] = useState<'basic' | 'chars' | 'plot'>('basic');
   
+  // 画像生成用のState
+  const [isGeneratingImg, setIsGeneratingImg] = useState(false);
+  const [coverPrompt, setCoverPrompt] = useState("");
+  const [charPrompt, setCharPrompt] = useState("");
+
   const initialChapters = (() => {
     try {
       const parsed = JSON.parse(editingScenario.plot);
@@ -56,6 +62,46 @@ export default function ScenarioEditView({ editingScenario, setEditingScenario, 
     }, 100);
   };
 
+  // ★ 画像のファイルアップロード処理
+  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>, callback: (base64: string) => void) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      if (file.size > 2 * 1024 * 1024) {
+        alert("画像サイズは2MB以下にしてください。");
+        return;
+      }
+      const reader = new FileReader();
+      reader.onloadend = () => callback(reader.result as string);
+      reader.readAsDataURL(file);
+    }
+  };
+
+  // ★ Pollinations AI による画像生成処理
+  const handleAIGenerate = async (promptText: string, callback: (base64: string) => void) => {
+    if (!promptText.trim()) { alert("画像生成用のプロンプト（描写）を入力してください。"); return; }
+    setIsGeneratingImg(true);
+    try {
+      const translationPrompt = ["以下の日本語の情景描写を、画像生成AI用のカンマ区切りの英語プロンプトに変換してください。","【絶対条件】","・文章ではなく、英単語のカンマ区切りで出力してください。","・不適切な画像が生成されるのを防ぐため、必ず最後に「SFW, fully clothed, masterpiece, high quality」を含めてください。","","情景描写：",promptText].join('\n');
+      let englishPrompt = "";
+      try { englishPrompt = await generateAITextWithPrompt(translationPrompt); } catch (err) { englishPrompt = `${promptText}, SFW, fully clothed, masterpiece, high quality`; }
+      const prompt = encodeURIComponent(`${englishPrompt}, TRPG illustration, cinematic lighting, dramatic atmosphere`);
+      const seed = Math.floor(Math.random() * 100000);
+      const url = `https://image.pollinations.ai/prompt/${prompt}?nologo=true&seed=${seed}&safe=true`;
+      const res = await fetch(url);
+      if (!res.ok) throw new Error("AIサーバーが混雑しています");
+      const blob = await res.blob();
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        callback(reader.result as string);
+        setIsGeneratingImg(false);
+      };
+      reader.readAsDataURL(blob);
+    } catch (err: any) {
+      alert("画像の生成に失敗しました。\n少し時間をおいて再度お試しください。");
+      setIsGeneratingImg(false);
+    }
+  };
+
   return (
     <div className="flex-1 flex flex-col p-6 max-w-5xl mx-auto w-full min-h-0 overflow-y-auto custom-scrollbar">
       <header className="mb-6 flex justify-between items-center border-b border-slate-700 pb-4">
@@ -81,7 +127,7 @@ export default function ScenarioEditView({ editingScenario, setEditingScenario, 
                 <label className="text-xs text-slate-400 block mb-1">タイトル <span className="text-red-400">*</span></label>
                 <input type="text" value={editingScenario.title} onChange={e=>setEditingScenario({...editingScenario, title: e.target.value})} className="w-full bg-slate-900 border border-slate-700 rounded p-3 text-white focus:border-emerald-500 font-bold" />
               </div>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                 <div>
                   <label className="text-xs text-slate-400 block mb-1">推奨システム (例: CoC, D&D)</label>
                   <input type="text" value={editingScenario.system} onChange={e=>setEditingScenario({...editingScenario, system: e.target.value})} className="w-full bg-slate-900 border border-slate-700 rounded p-3 text-white focus:border-emerald-500 text-sm" />
@@ -94,9 +140,32 @@ export default function ScenarioEditView({ editingScenario, setEditingScenario, 
                   <label className="text-xs text-slate-400 block mb-1">目安プレイ時間 (分)</label>
                   <input type="number" value={editingScenario.playTime || 60} onChange={e=>setEditingScenario({...editingScenario, playTime: Number(e.target.value)})} className="w-full bg-slate-900 border border-slate-700 rounded p-3 text-white focus:border-emerald-500 text-sm" />
                 </div>
-                <div>
-                  <label className="text-xs text-slate-400 block mb-1">カバー画像URL</label>
-                  <input type="text" value={editingScenario.imageUrl} onChange={e=>setEditingScenario({...editingScenario, imageUrl: e.target.value})} placeholder="https://..." className="w-full bg-slate-900 border border-slate-700 rounded p-3 text-white focus:border-emerald-500 text-sm" />
+              </div>
+
+              {/* ★ カバー画像設定枠をリッチ化 */}
+              <div className="mt-4 border-t border-slate-700 pt-4">
+                <label className="text-xs text-slate-400 block mb-2">シナリオのカバー画像 (パッケージ)</label>
+                <div className="flex flex-col md:flex-row gap-4 items-start">
+                  <div className="w-full md:w-48 flex-shrink-0">
+                    {editingScenario.imageUrl ? (
+                       <img src={editingScenario.imageUrl} className="w-full h-32 object-cover border border-slate-600 rounded-lg shadow-md" />
+                    ) : (
+                       <div className="w-full h-32 bg-slate-900 border border-dashed border-slate-600 rounded-lg flex items-center justify-center text-xs text-slate-500">No Image</div>
+                    )}
+                  </div>
+                  <div className="flex-1 w-full space-y-3">
+                    <div className="bg-slate-900/50 p-3 rounded border border-slate-700">
+                      <p className="text-[10px] text-slate-400 mb-1">📁 PCの画像をアップロードする</p>
+                      <input type="file" accept="image/*" onChange={(e) => handleFileUpload(e, (url) => setEditingScenario({...editingScenario, imageUrl: url}))} className="text-xs text-slate-300 file:mr-2 file:py-1 file:px-3 file:rounded file:border-0 file:text-xs file:font-bold file:bg-slate-700 file:text-white hover:file:bg-slate-600 cursor-pointer" />
+                    </div>
+                    <div className="bg-slate-900/50 p-3 rounded border border-emerald-900/50">
+                      <p className="text-[10px] text-emerald-400 mb-1">✨ AIにプロンプトから生成させる</p>
+                      <div className="flex gap-2">
+                        <input type="text" value={coverPrompt} onChange={e=>setCoverPrompt(e.target.value)} placeholder="例: 古びた洋館の入り口、暗い森、不気味な空" className="flex-1 bg-slate-900 border border-slate-700 rounded p-2 text-xs text-white focus:border-emerald-500" />
+                        <button onClick={() => handleAIGenerate(coverPrompt, (url) => setEditingScenario({...editingScenario, imageUrl: url}))} disabled={isGeneratingImg} className="bg-emerald-600 hover:bg-emerald-500 disabled:bg-slate-600 px-3 py-1 text-xs rounded text-white font-bold whitespace-nowrap shadow">{isGeneratingImg ? "生成中..." : "AI生成"}</button>
+                      </div>
+                    </div>
+                  </div>
                 </div>
               </div>
             </div>
@@ -211,19 +280,49 @@ export default function ScenarioEditView({ editingScenario, setEditingScenario, 
                 const newChar: Character = { id: `c_${Date.now()}`, name: "新規キャラクター", job: "職業", personality: "性格", imageUrl: "", hp: 10, san: 50, str: 10, dex: 10, int: 10, con: 10, wis: 10, cha: 10, items: "" };
                 setEditingScenario({...editingScenario, presetCharacters: [...editingScenario.presetCharacters, newChar]});
                 setEditingCharIndex(editingScenario.presetCharacters.length);
-              }} className="text-xs bg-blue-600 px-3 py-1.5 rounded text-white font-bold hover:bg-blue-500">＋ キャラクター追加</button>
+              }} className="text-xs bg-blue-600 px-3 py-1.5 rounded text-white font-bold hover:bg-blue-500 shadow">＋ キャラクター追加</button>
             </div>
 
             {editingCharIndex !== null ? (
               <div className="bg-slate-800 border border-blue-500 p-6 rounded-xl shadow-2xl relative">
-                <button onClick={() => setEditingCharIndex(null)} className="absolute top-4 right-4 text-xs bg-slate-700 px-3 py-1 rounded">完了</button>
+                <button onClick={() => setEditingCharIndex(null)} className="absolute top-4 right-4 text-xs bg-slate-700 px-4 py-2 font-bold rounded shadow hover:bg-slate-600">完了</button>
                 <h3 className="text-blue-400 font-bold mb-4">キャラクター詳細編集</h3>
+                
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  {/* ★ キャラ画像設定枠をリッチ化 */}
+                  <div className="md:col-span-2 border-b border-slate-700 pb-4 mb-2">
+                    <label className="text-xs text-slate-400 block mb-2">キャラクター画像</label>
+                    <div className="flex flex-col md:flex-row gap-4 items-center md:items-start">
+                      <div className="w-24 h-24 flex-shrink-0">
+                        {editingScenario.presetCharacters[editingCharIndex].imageUrl ? (
+                           <img src={editingScenario.presetCharacters[editingCharIndex].imageUrl} className="w-24 h-24 object-cover border-2 border-blue-500 rounded-full shadow-lg" />
+                        ) : (
+                           <div className="w-24 h-24 bg-slate-900 border border-dashed border-slate-600 rounded-full flex items-center justify-center text-xs text-slate-500">No Img</div>
+                        )}
+                      </div>
+                      <div className="flex-1 w-full space-y-3">
+                        <div className="bg-slate-900/50 p-2 rounded border border-slate-700 flex flex-col sm:flex-row sm:items-center gap-2">
+                          <span className="text-[10px] text-slate-400 whitespace-nowrap">📁 ファイル選択</span>
+                          <input type="file" accept="image/*" onChange={(e) => handleFileUpload(e, (url) => {
+                            const chars = [...editingScenario.presetCharacters]; chars[editingCharIndex].imageUrl = url; setEditingScenario({...editingScenario, presetCharacters: chars});
+                          })} className="text-xs text-slate-300 file:mr-2 file:py-1 file:px-3 file:rounded file:border-0 file:text-xs file:font-bold file:bg-slate-700 file:text-white hover:file:bg-slate-600 cursor-pointer w-full" />
+                        </div>
+                        <div className="bg-slate-900/50 p-2 rounded border border-blue-900/50 flex flex-col sm:flex-row sm:items-center gap-2">
+                          <span className="text-[10px] text-blue-400 whitespace-nowrap">✨ AI生成</span>
+                          <input type="text" value={charPrompt} onChange={e=>setCharPrompt(e.target.value)} placeholder="例: 黒髪ショートの真面目な警察官" className="flex-1 bg-slate-900 border border-slate-700 rounded p-2 text-xs text-white focus:border-blue-500" />
+                          <button onClick={() => handleAIGenerate(charPrompt, (url) => {
+                            const chars = [...editingScenario.presetCharacters]; chars[editingCharIndex].imageUrl = url; setEditingScenario({...editingScenario, presetCharacters: chars});
+                          })} disabled={isGeneratingImg} className="bg-blue-600 hover:bg-blue-500 disabled:bg-slate-600 px-3 py-1.5 text-xs rounded text-white font-bold shadow whitespace-nowrap">{isGeneratingImg ? "生成中..." : "生成"}</button>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
                   <div>
                     <label className="text-xs text-slate-400 block mb-1">名前</label>
                     <input type="text" value={editingScenario.presetCharacters[editingCharIndex].name} onChange={e=>{
                       const chars = [...editingScenario.presetCharacters]; chars[editingCharIndex].name = e.target.value; setEditingScenario({...editingScenario, presetCharacters: chars});
-                    }} className="w-full bg-slate-900 border border-slate-700 rounded p-2 text-sm text-white" />
+                    }} className="w-full bg-slate-900 border border-slate-700 rounded p-2 text-sm text-white font-bold" />
                   </div>
                   <div>
                     <label className="text-xs text-slate-400 block mb-1">職業・クラス</label>
@@ -232,7 +331,7 @@ export default function ScenarioEditView({ editingScenario, setEditingScenario, 
                     }} className="w-full bg-slate-900 border border-slate-700 rounded p-2 text-sm text-white" />
                   </div>
                   <div>
-                    <label className="text-xs text-slate-400 block mb-1">性別・種族</label>
+                    <label className="text-xs text-slate-400 block mb-1">性別・年齢などの特徴</label>
                     <input type="text" value={editingScenario.presetCharacters[editingCharIndex].genderOrRace || ""} onChange={e=>{
                       const chars = [...editingScenario.presetCharacters]; chars[editingCharIndex].genderOrRace = e.target.value; setEditingScenario({...editingScenario, presetCharacters: chars});
                     }} className="w-full bg-slate-900 border border-slate-700 rounded p-2 text-sm text-white" />
@@ -244,7 +343,7 @@ export default function ScenarioEditView({ editingScenario, setEditingScenario, 
                     }} placeholder="スマホ, 財布, 懐中電灯..." className="w-full bg-slate-900 border border-slate-700 rounded p-2 text-sm text-white" />
                   </div>
                   <div className="md:col-span-2">
-                    <label className="text-xs text-slate-400 block mb-1">性格・バックボーン</label>
+                    <label className="text-xs text-slate-400 block mb-1">性格・バックボーン (AIがRPに反映します)</label>
                     <textarea value={editingScenario.presetCharacters[editingCharIndex].personality} onChange={e=>{
                       const chars = [...editingScenario.presetCharacters]; chars[editingCharIndex].personality = e.target.value; setEditingScenario({...editingScenario, presetCharacters: chars});
                     }} className="w-full bg-slate-900 border border-slate-700 rounded p-2 text-sm text-white h-24" />
@@ -259,28 +358,23 @@ export default function ScenarioEditView({ editingScenario, setEditingScenario, 
                        </div>
                     ))}
                   </div>
-                  <div className="md:col-span-2">
-                    <label className="text-xs text-slate-400 block mb-1">画像URL</label>
-                    <input type="text" value={editingScenario.presetCharacters[editingCharIndex].imageUrl} onChange={e=>{
-                      const chars = [...editingScenario.presetCharacters]; chars[editingCharIndex].imageUrl = e.target.value; setEditingScenario({...editingScenario, presetCharacters: chars});
-                    }} className="w-full bg-slate-900 border border-slate-700 rounded p-2 text-sm text-white" />
-                  </div>
                 </div>
               </div>
             ) : (
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 {editingScenario.presetCharacters.map((char, index) => (
-                  <div key={char.id} className="bg-slate-800 border border-slate-700 p-4 rounded-xl flex gap-4 items-center">
-                    <div className="w-12 h-12 bg-slate-700 rounded-full flex items-center justify-center text-xs overflow-hidden">
+                  <div key={char.id} className="bg-slate-800 border border-slate-700 p-4 rounded-xl flex gap-4 items-center hover:border-blue-500 transition-colors">
+                    <div className="w-16 h-16 bg-slate-700 rounded-full flex items-center justify-center text-xs overflow-hidden flex-shrink-0 shadow-inner">
                       {char.imageUrl ? <img src={char.imageUrl} className="w-full h-full object-cover" /> : "No Img"}
                     </div>
-                    <div className="flex-1">
-                      <p className="font-bold text-sm">{char.name} <span className="text-[10px] text-slate-400 font-normal ml-1">({char.job})</span></p>
-                      <div className="flex gap-2 mt-2">
-                        <button onClick={() => setEditingCharIndex(index)} className="text-[10px] bg-slate-700 px-2 py-1 rounded hover:bg-slate-600">編集</button>
+                    <div className="flex-1 min-w-0">
+                      <p className="font-bold text-sm text-white truncate">{char.name}</p>
+                      <p className="text-[10px] text-slate-400 truncate mb-2">{char.job}</p>
+                      <div className="flex gap-2">
+                        <button onClick={() => setEditingCharIndex(index)} className="text-[10px] bg-slate-700 px-3 py-1 rounded font-bold hover:bg-slate-600">編集</button>
                         <button onClick={() => {
                           const chars = [...editingScenario.presetCharacters]; chars.splice(index, 1); setEditingScenario({...editingScenario, presetCharacters: chars});
-                        }} className="text-[10px] bg-red-900/50 text-red-300 px-2 py-1 rounded hover:bg-red-800/80">削除</button>
+                        }} className="text-[10px] bg-red-900/50 text-red-300 px-3 py-1 rounded font-bold hover:bg-red-800/80">削除</button>
                       </div>
                     </div>
                   </div>
