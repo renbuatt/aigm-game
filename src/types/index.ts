@@ -1,4 +1,3 @@
-// 1行目のみ修正
 export type ViewState = "login" | "signup" | "onboarding" | "lobby" | "game" | "evaluation" | "admin" | "banned" | "maintenance" | "scenarioEdit" | "userProfile" | "library";
 
 export type RoomDifficulty = "beginner" | "easy" | "normal" | "hard" | "pro" | "oni";
@@ -96,6 +95,7 @@ export type Room = {
   show_items?: boolean; 
   item_visibility?: "all" | "self" | "none"; 
   inventories?: Record<string, string>;
+  current_chapter_index?: number;
 };
 
 export type Message = {

@@ -19,7 +19,7 @@ import ScenarioEditView from "../components/views/ScenarioEditView";
 import LobbyView from "../components/views/LobbyView";
 import GameView from "../components/views/GameView";
 import UserProfileView from "../components/views/UserProfileView";
-import LibraryView from "../components/views/LibraryView"; // ★ 追加
+import LibraryView from "../components/views/LibraryView";
 
 const NO_IMAGE_SCENARIO = "https://images.unsplash.com/photo-1614729939124-03290b5609ce?auto=format&fit=crop&w=400&q=80";
 const DEFAULT_AVATAR = "https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&w=150&q=80";
@@ -88,7 +88,7 @@ export default function Home() {
   const [unreadIndicators, setUnreadIndicators] = useState({ story: false, consult: false, gm: false });
   const chatTabRef = useRef<ChatTab>(chatTab);
   const prevMessagesLength = useRef(0);
-  const [playArchives, setPlayArchives] = useState<PlayArchive[]>([]); // ★ 復活
+  const [playArchives, setPlayArchives] = useState<PlayArchive[]>([]);
 
   const availableScenarios = scenarios.filter(s => !s.isBanned);
   const createdScenarios = availableScenarios.filter(s => s.authorId === currentUser?.id);
@@ -237,7 +237,8 @@ export default function Home() {
         privacy: r.privacy || "open", host_message: r.host_message || "", joined_users: r.joined_users || {},
         current_summary: r.current_summary || "", difficulty: r.difficulty || "normal", rule: r.rule || "coc_jp",
         is_paused: r.is_paused || false, afk_users: r.afk_users || [], is_trial: r.is_trial || false,
-        item_visibility: r.item_visibility || "none", inventories: r.inventories || {}
+        item_visibility: r.item_visibility || "none", inventories: r.inventories || {},
+        current_chapter_index: r.current_chapter_index || 0 // ★ チャプター情報の読み込み
       })).filter(r => r.scenario) as Room[];
       setRooms(formattedRooms);
     }
@@ -609,13 +610,14 @@ export default function Home() {
     const { data, error } = await supabase.from('rooms').insert({ 
       scenario_id: scenario.id, host_name: currentUser.handleName, host_id: currentUser.id, status: "recruiting", scenes: initialScenes,
       privacy: privacy, host_message: message, joined_users: { [currentUser.id]: charId }, current_summary: "", difficulty: difficulty, rule: rule,
-      is_paused: false, afk_users: [], is_trial: false, item_visibility: itemVisibility, inventories: initialInventories
+      is_paused: false, afk_users: [], is_trial: false, item_visibility: itemVisibility, inventories: initialInventories,
+      current_chapter_index: 0 // ★ チャプター管理を0章からスタート
     }).select().single();
     
     if (error) { alert("データベースエラーが発生しました: " + error.message); return; }
     if (data) {
       setRoomConfigModal(null); await fetchData();
-      const newRoom: Room = { id: data.id, scenario_id: data.scenario_id, scenario: scenario, host_name: data.host_name, host_id: data.host_id, status: data.status, scenes: data.scenes, privacy: data.privacy, host_message: data.host_message, joined_users: data.joined_users, current_summary: "", difficulty: data.difficulty, rule: data.rule, is_paused: false, afk_users: [], is_trial: false, item_visibility: data.item_visibility, inventories: data.inventories };
+      const newRoom: Room = { id: data.id, scenario_id: data.scenario_id, scenario: scenario, host_name: data.host_name, host_id: data.host_id, status: data.status, scenes: data.scenes, privacy: data.privacy, host_message: data.host_message, joined_users: data.joined_users, current_summary: "", difficulty: data.difficulty, rule: data.rule, is_paused: false, afk_users: [], is_trial: false, item_visibility: data.item_visibility, inventories: data.inventories, current_chapter_index: 0 };
       await supabase.from('ai_memory').delete().eq('room_id', newRoom.id);
       setActiveRoom(newRoom); setJoinedCharacter(hostChar); setMessages([]); 
       await pushMessage(newRoom.id, { sender: "system", text: `【入室完了】プレイヤー全員の準備が整うまでお待ちください。\n【案内】シークレット設定の場合、画面左上の「共有ID」をコピーして友人に伝えてください。`, type: "system", sceneId: newRoom.scenes?.[0]?.id, channel: "system" });
@@ -639,13 +641,14 @@ export default function Home() {
     const { data, error } = await supabase.from('rooms').insert({ 
       scenario_id: scenario.id, host_name: currentUser.handleName, host_id: currentUser.id, status: "recruiting", scenes: initialScenes,
       privacy: 'secret', host_message: "お試しプレイ", joined_users: { [currentUser.id]: charId }, current_summary: "", difficulty: "normal", rule: "coc_jp",
-      is_paused: false, afk_users: [], is_trial: true, item_visibility: "none", inventories: initialInventories
+      is_paused: false, afk_users: [], is_trial: true, item_visibility: "none", inventories: initialInventories,
+      current_chapter_index: 0 // ★ チャプター管理を0章からスタート
     }).select().single();
     
     if (error) { alert("データベースエラーが発生しました: " + error.message); return; }
     if (data) {
       await fetchData();
-      const newRoom: Room = { id: data.id, scenario_id: data.scenario_id, scenario: scenario, host_name: data.host_name, host_id: data.host_id, status: data.status, scenes: data.scenes, privacy: data.privacy, host_message: data.host_message, joined_users: data.joined_users, current_summary: "", difficulty: data.difficulty, rule: data.rule, is_paused: false, afk_users: [], is_trial: true, item_visibility: "none", inventories: data.inventories };
+      const newRoom: Room = { id: data.id, scenario_id: data.scenario_id, scenario: scenario, host_name: data.host_name, host_id: data.host_id, status: data.status, scenes: data.scenes, privacy: data.privacy, host_message: data.host_message, joined_users: data.joined_users, current_summary: "", difficulty: data.difficulty, rule: data.rule, is_paused: false, afk_users: [], is_trial: true, item_visibility: "none", inventories: data.inventories, current_chapter_index: 0 };
       await supabase.from('ai_memory').delete().eq('room_id', newRoom.id);
       setActiveRoom(newRoom); setJoinedCharacter(hostChar); setMessages([]); 
       const aiChars = scenario.presetCharacters.filter(c => c.id !== charId); setAiPlayersList(aiChars);
@@ -994,7 +997,21 @@ export default function Home() {
       }
       const inventoryText = inventoryTextLines.join('\n');
 
-      let scenarioPlotText = activeRoom.scenario?.plot || "";
+      // ★ 追加: チャプター管理ロジック
+      let chapters: {title: string, content: string}[] = [];
+      try {
+        const parsed = JSON.parse(activeRoom.scenario?.plot || "");
+        if (Array.isArray(parsed)) chapters = parsed;
+      } catch(e) {
+        chapters = [{ title: "本編", content: activeRoom.scenario?.plot || "" }];
+      }
+      
+      const currentChapIndex = activeRoom.current_chapter_index || 0;
+      const currentChapter = chapters[currentChapIndex] || chapters[chapters.length - 1];
+      const isLastChapter = currentChapIndex >= chapters.length - 1;
+
+      let scenarioPlotText = `【現在のチャプター: ${currentChapter.title}】\n${currentChapter.content}`;
+
       let difficultyInstruction = "";
       switch (activeRoom.difficulty) {
         case "beginner": difficultyInstruction = "【難易度：初心者】超甘口の接待プレイです。失敗してもペナルティを与えないでください。30分以内でクリアできるよう誘導してください。"; break;
@@ -1046,6 +1063,11 @@ export default function Home() {
           "11. 【エピローグとエンディング（最重要）】目的を達成しても、いきなり [SCENARIO_END] を出力しないでください。目的達成後は必ず「【エピローグ】」と明記し、これまでの展開を踏まえて相応しい結末を動的に生成し、事後処理を行わせてください。エピローグ内で必ずプレイヤー全員に最後のダイス判定を行わせる状況を作り、PLがエピローグでの行動を終えたと判断できたターンの最後にのみ [SCENARIO_END] を出力してください。",
           "12. 【所持アイテムの自動更新】探索等でアイテムを入手・消費した場合は、文章の最後に [INVENTORY_UPDATE: キャラクター名, アイテムA, アイテムB...] と出力してください。"
         ];
+
+        // ★ 追加: チャプター進行指示
+        if (!isLastChapter) {
+           roleInstructionLines.push("13. 【チャプター進行（超重要）】現在のチャプターの目的が完全に達成された場合、必ず出力の最後に [CHAPTER_CLEAR] というタグを出力してください。");
+        }
 
         if (activeRoom.is_trial) {
           roleInstructionLines.push(
@@ -1112,10 +1134,29 @@ export default function Home() {
          setActiveRoom(prev => prev ? { ...prev, inventories: newInventories } : null);
       }
 
+      // ★ 追加: チャプタークリア処理
+      let cleanAiText = aiText.replace(/\[SPLIT_PROPOSAL:.*?\]/g, '').replace(/\[STATUS_UPDATE:.*?\]/g, '').replace(/\[INVENTORY_UPDATE:.*?\]/g, '').trim();
+      let isChapterCleared = false;
+      if (cleanAiText.includes('[CHAPTER_CLEAR]')) {
+         cleanAiText = cleanAiText.replace(/\[CHAPTER_CLEAR\]/g, '').trim();
+         isChapterCleared = true;
+      }
+
       await supabase.from('ai_memory').insert({ room_id: activeRoom.id, role: 'assistant', content: aiText });
       const msgSender = targetTab === "consult" ? "ai_player" : "gm";
-      const cleanAiText = aiText.replace(/\[SPLIT_PROPOSAL:.*?\]/g, '').replace(/\[STATUS_UPDATE:.*?\]/g, '').replace(/\[INVENTORY_UPDATE:.*?\]/g, '').trim();
       await pushMessage(activeRoom.id, { sender: msgSender, text: cleanAiText, type: targetTab === "gm" ? "ooc" : "ic", sceneId: myScene?.id, charName: targetTab === "consult" ? "AI相棒" : "AI GM", channel: targetTab });
+
+      // ★ 追加: チャプタークリアのシステムメッセージとDB更新
+      if (isChapterCleared && !isLastChapter) {
+         const nextIndex = currentChapIndex + 1;
+         await supabase.from('rooms').update({ current_chapter_index: nextIndex }).eq('id', activeRoom.id);
+         setActiveRoom(prev => prev ? { ...prev, current_chapter_index: nextIndex } : null);
+         await pushMessage(activeRoom.id, { sender: "system", text: `【システム】チャプター「${currentChapter.title}」をクリアしました！\n物語は次章「${chapters[nextIndex].title}」へ進行します...`, type: "system", sceneId: myScene?.id, channel: "system" }, false);
+         
+         // 新チャプター用のダミーコンテキストを追加して要約を引き継がせる
+         await supabase.from('ai_memory').insert({ room_id: activeRoom.id, role: 'user', content: `【システム情報：第${nextIndex+1}章（${chapters[nextIndex].title}）に突入しました。これまでの状況を踏まえ、次の展開を描写してください】` });
+      }
+
     } catch (err: any) { alert(err.message); await pushMessage(activeRoom.id, { sender: "system", text: `（システムエラー: ${err.message}）`, type: "system", sceneId: myScene?.id, channel: "system" }, false); } finally { setIsLoading(false); }
   };
 
@@ -1125,7 +1166,6 @@ export default function Home() {
   return (
     <main className="h-screen w-full bg-slate-900 text-slate-100 flex flex-col font-sans overflow-hidden">
       
-      {/* ★ 書庫画面を追加 */}
       {currentView === "library" && currentUser && (
         <LibraryView 
           currentUser={currentUser} 
