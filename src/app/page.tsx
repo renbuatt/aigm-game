@@ -833,27 +833,6 @@ export default function Home() {
     }
   };
 
-  const generateSceneImage = async (promptText: string) => {
-    if (!activeRoom || !myScene) return;
-    try {
-      const translationPrompt = ["以下の日本語の情景描写を、画像生成AI用のカンマ区切りの英語プロンプトに変換してください。","【絶対条件】","・文章ではなく、英単語のカンマ区切りで出力してください。","・不適切な画像が生成されるのを防ぐため、必ず最後に「SFW, fully clothed, masterpiece, high quality」を含めてください。","","情景描写：",promptText].join('\n');
-      let englishPrompt = "";
-      try { englishPrompt = await generateAITextWithPrompt(translationPrompt); } catch (err) { englishPrompt = `${promptText}, SFW, fully clothed, masterpiece, high quality`; }
-      const prompt = encodeURIComponent(`${englishPrompt}, TRPG scene, cinematic lighting, dramatic atmosphere`);
-      const seed = Math.floor(Math.random() * 100000);
-      const url = `https://image.pollinations.ai/prompt/${prompt}?nologo=true&seed=${seed}&safe=true`;
-      const res = await fetch(url);
-      if (!res.ok) throw new Error("AIサーバーが混雑しています");
-      const blob = await res.blob();
-      const reader = new FileReader();
-      reader.onloadend = async () => {
-        const base64data = reader.result as string;
-        await pushMessage(activeRoom.id, { sender: "gm", text: `【ホストが情景画像を生成しました】\n「${promptText}」`, type: "image", imageUrl: base64data, sceneId: myScene.id, channel: "story" });
-      };
-      reader.readAsDataURL(blob);
-    } catch (err: any) { alert("画像の生成に失敗しました（AIサーバー混雑エラー等）。\n少し時間をおいて再度お試しください。"); }
-  };
-
   const executeExport = async (title: string, sourceMessages: Message[], type: 'chat' | 'summary' | 'novel', options?: { archiveId?: string, modelName?: string, viewPoint?: 'third' | 'first', myCharacterName?: string, scenarioImage?: string, createdAt?: string, coPlayers?: string[], characters?: Character[] }) => {
     const printWindow = window.open('', '_blank');
     if (!printWindow) { alert("ポップアップがブロックされました。ブラウザの設定でポップアップを許可してください。"); return; }
@@ -896,14 +875,12 @@ export default function Home() {
       </div>
     `;
 
-    // ★ 古いデータの救済措置を含めたキャラクターHTML生成ロジック
     const generateCharsHtml = (introMap: Record<string, string> = {}) => {
       let charsToRender = options?.characters;
 
-      // 古いアーカイブ等でキャラクター情報がない場合は、AIが抽出した introMap からダミーを構築する
       if (!charsToRender || charsToRender.length === 0) {
         const extractedNames = Object.keys(introMap);
-        if (extractedNames.length === 0) return ''; // 万が一AIが紹介文を作らなかった場合はスキップ
+        if (extractedNames.length === 0) return '';
         charsToRender = extractedNames.map(name => ({
           id: name,
           name: name,
@@ -911,7 +888,7 @@ export default function Home() {
           personality: introMap[name],
           imageUrl: '',
           hp: 0, san: 0, str: 0, dex: 0, int: 0, con: 0, wis: 0, cha: 0,
-          playerName: 'プレイヤー' // HNが不明なため仮置き
+          playerName: 'プレイヤー' 
         }));
       }
 
@@ -925,7 +902,6 @@ export default function Home() {
         <div class="page-break">
           ${chunkIdx === 0 ? '<h2 style="text-align: center; margin-bottom: 40px; font-size: 24px; color: #2c3e50;">登場キャラクター</h2>' : ''}
           ${chunk.map(c => {
-            // AIの出力と実際のキャラ名が少し違ってもマッチするように検索
             const matchedKey = Object.keys(introMap).find(k => k.includes(c.name) || c.name.includes(k));
             const introText = matchedKey ? introMap[matchedKey] : (c.personality || '情報なし');
             const playerName = c.playerName ? c.playerName : 'AI相棒';
@@ -955,7 +931,6 @@ export default function Home() {
         return `<div style="margin-bottom: 12px; border-bottom: 1px dashed #eee; padding-bottom: 8px;"><strong style="color: #2c3e50;">${senderName}</strong><br><span style="white-space: pre-wrap; color: #34495e;">${text}</span></div>`;
       }).join('');
       
-      // チャットログ出力時は introMap は空のまま（元の設定を使用）
       contentHtml = `
         ${commonStyle}
         <div class="page">
@@ -986,7 +961,6 @@ export default function Home() {
         ? `1. 単調な事実の羅列を避け、五感を刺激する情景描写と心理描写を大幅に肉付けすること。また、【${options.myCharacterName}】の視点（一人称）で物語を描写すること。`
         : `1. 単調な事実の羅列を避け、五感を刺激する情景描写と心理描写を大幅に肉付けすること。神の視点（第三者視点）で物語を描写すること。`;
 
-      // 過去データの救済用：登場キャラクターの名前をログから無理やり抽出してAIに紹介文を作らせる
       const uniqueCharNames = Array.from(new Set(targetMessages.filter(m => m.sender === 'player' || m.sender === 'ai_player').map(m => m.charName).filter(Boolean)));
       const charNamesStr = uniqueCharNames.length > 0 ? `登場キャラクター（${uniqueCharNames.join('、')}）` : '各キャラクター';
 
@@ -1215,15 +1189,16 @@ export default function Home() {
 
       let scenarioPlotText = `【物語の全体構成（全${chapters.length}章）】\n${chapterProgress}\n\n【現在（第${currentChapIndex + 1}章）のプロット・台本】\n${currentChapter.content}`;
 
+      // ★ 難易度指示の強化（普通以上はヒント・誘導・選択肢を完全禁止）
       let difficultyInstruction = "";
       switch (activeRoom.difficulty) {
-        case "beginner": difficultyInstruction = "【難易度：初心者】超甘口の接待プレイです。失敗してもペナルティを与えないでください。30分以内でクリアできるよう誘導してください。"; break;
-        case "easy": difficultyInstruction = "【難易度：簡単】判定が通りやすく、ヒントを多めに出してください。"; break;
-        case "normal": difficultyInstruction = "【難易度：普通】成功と失敗のバランスを取り、標準的に進行してください。"; break;
-        case "hard": difficultyInstruction = "【難易度：難しい】判定はやや厳しく、ヒントは減らし、失敗すると状況が悪化するようにしてください。"; break;
-        case "pro": difficultyInstruction = "【難易度：プロ】判定はかなり厳しくし、ロストの危険も提示する本格的な進行を行ってください。"; break;
-        case "oni": difficultyInstruction = "【難易度：鬼】ほぼ失敗前提の厳しい判定にし、生存自体が困難な容赦のない進行をしてください。"; break;
-        default: difficultyInstruction = "【難易度：普通】成功と失敗のバランスを取り、標準的に進行してください。";
+        case "beginner": difficultyInstruction = "【難易度：初心者】接待プレイです。困っていればヒントや選択肢を出しても構いません。"; break;
+        case "easy": difficultyInstruction = "【難易度：簡単】判定が通りやすく、探索で見つかる情報を多めに描写してください。ただし露骨な解法の指示は避けてください。"; break;
+        case "normal": difficultyInstruction = "【難易度：普通】【ヒント・誘導・選択肢の提示は完全禁止】純粋な情景描写と結果のみを出力してください。解法（燃やす、壊すなど）や、周囲にあるものの匂わせ（「※〜があるかもしれません」「〜が必要」等の補足・誘導）は絶対に書かないでください。"; break;
+        case "hard": difficultyInstruction = "【難易度：難しい】【ノーヒント・厳格】解法のヒントや補足は一切禁止。PLから具体的な探索宣言がない限りオブジェクトの存在すら明かさないでください。判定失敗時は即座に状況を悪化させてください。"; break;
+        case "pro": difficultyInstruction = "【難易度：プロ】【容赦ない本格派】一切のヒントや誘導を禁止。PLの軽率な行動には即座に致命的なペナルティやロストの危機を与えてください。"; break;
+        case "oni": difficultyInstruction = "【難易度：鬼】【理不尽・極限】一切の手加減・ヒントを排除。死と隣り合わせの無慈悲な描写を徹底してください。"; break;
+        default: difficultyInstruction = "【難易度：普通】【ヒント・誘導・選択肢の提示は完全禁止】純粋な情景描写と結果のみを出力してください。";
       }
 
       let ruleSpecLines: string[] = []; let gmStyleLines: string[] = [];
@@ -1253,7 +1228,7 @@ export default function Home() {
           "【重要：GMの絶対ルール】",
           "1. PLたちが明確な「行動宣言」を出した時のみ物語を進行させてください。",
           `2. リスクを伴う行動には必ず判定（${diceBase}）を要求し、結果が出るまで描写を待機してください。`,
-          "3. 【行動のヒント禁止】PLに具体的な選択肢を提示しないでください。（初心者難易度を除く）",
+          "3. 【解法・ヒント・選択肢・補足の完全禁止（超重要）】「（※〜があるかもしれません）」「〜を処分（焼却など）するか」「〜する必要がある」といった、解法の匂わせ、具体的な選択肢、カッコ書きによるアドバイスやヒントは一切出力しないでください（初心者難易度を除く）。PLが自発的に「周囲を探す」「火をつける方法を探す」と宣言するまで、解法や有用なオブジェクトの存在を絶対に明かさないでください。",
           "4. 【アイテムの厳格な管理（四次元ポケット禁止）】上記の【現在の全キャラクターの所持アイテム】に記載されていないアイテムを使おうとした場合は即座に却下してください。",
           "5. 【ダイスの自己処理禁止】GM自身がダイスを振らないでください。",
           "6. 誰かが行動した後は、必ず「〇〇さんはそう動きました。では、△△さんはどうしますか？」と他の人間PLに行動を促し、全員の行動が出揃うまで待機してください。",
