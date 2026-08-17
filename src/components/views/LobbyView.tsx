@@ -25,13 +25,14 @@ type Props = {
   startTrialPlay: (scenario: Scenario) => void;
   availableScenarios: Scenario[];
   openUserProfile: (userId: string) => void;
+  setScenarioAppealTarget: React.Dispatch<React.SetStateAction<Scenario | null>>; // ★ 追加：再審査申請用
 };
 
 export default function LobbyView({
   currentUser, handleLogout, setShowMailbox, unreadCount, secretRoomIdSearch, setSecretRoomIdSearch,
   rooms, searchedSecretRoom, setSearchedSecretRoom, executeJoinRoom, availableRooms,
   spectateRoom, setEditingScenario, setCurrentView, createdScenarios, deleteScenario, setRoomConfigModal,
-  fetchAdminData, startTrialPlay, availableScenarios, openUserProfile
+  fetchAdminData, startTrialPlay, availableScenarios, openUserProfile, setScenarioAppealTarget
 }: Props) {
   
   const [lobbyTab, setLobbyTab] = useState<'rooms' | 'scenarios' | 'trials'>('rooms');
@@ -56,7 +57,6 @@ export default function LobbyView({
         </div>
       </header>
 
-      {/* ★ 目立つメール通知バナー */}
       {unreadCount > 0 && (
         <div className="mb-4 bg-indigo-900/50 border border-indigo-500 p-3 rounded-lg flex items-center justify-between shadow-lg animate-pulse">
           <p className="text-sm font-bold text-indigo-200">
@@ -223,11 +223,16 @@ export default function LobbyView({
                             {s.title} 
                             {s.isTrialOk && <span className="text-[8px] bg-pink-600 text-white px-1 rounded">試</span>}
                             {s.isPlayableByOthers && <span className="text-[8px] bg-blue-600 text-white px-1 rounded">公</span>}
+                            {s.isBanned && <span className="text-[8px] bg-red-600 text-white px-1 rounded">BAN</span>}
                           </h4>
                           <p className="text-[9px] text-emerald-400">目安: {s.playTime || 60}分</p>
                           <div className="flex gap-2 mt-2 items-center">
                             <button onClick={() => { setEditingScenario(s); setCurrentView("scenarioEdit"); }} className="text-[10px] bg-slate-700 px-2 py-1 rounded text-white hover:bg-slate-600">編集</button>
                             <button onClick={() => deleteScenario(s.id)} className="text-[10px] bg-red-900/50 px-2 py-1 rounded text-red-300 hover:bg-red-800/80">削除</button>
+                            {/* ★ 追加: BANされている場合は「再審査申請」ボタンを表示 */}
+                            {s.isBanned && (
+                              <button onClick={() => setScenarioAppealTarget(s)} className="text-[10px] bg-amber-900/50 px-2 py-1 rounded text-amber-300 hover:bg-amber-800/80 border border-amber-700/50">再審査申請</button>
+                            )}
                           </div>
                         </div>
                       </div>
