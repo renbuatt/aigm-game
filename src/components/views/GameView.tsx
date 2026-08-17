@@ -231,7 +231,19 @@ export default function GameView({
               </button>
             )}
             <button onClick={() => setShowSummaryModal(true)} className="text-xs bg-slate-700 hover:bg-slate-600 text-slate-300 px-3 py-1.5 rounded font-bold shadow">📖 あらすじ</button>
-            {/* 書庫に保存ボタンを削除しました */}
+            
+            {/* ★ 通報ボタンを追加 */}
+            <button onClick={() => setReportTarget({
+              type: 'room',
+              id: activeRoom.id,
+              name: 'この部屋の進行・チャット全般',
+              roomId: activeRoom.id,
+              scenarioId: activeRoom.scenario_id,
+              scenarioName: activeRoom.scenario?.title,
+              availableUsers: Object.keys(activeRoom.joined_users || {}).filter(uid => uid !== currentUser.id).map(uid => ({ id: uid, name: playerNames[uid] || 'プレイヤー' }))
+            })} className="text-xs bg-red-900/30 hover:bg-red-800/80 text-red-400 border border-red-700/50 px-3 py-1.5 rounded font-bold shadow transition-colors">
+              🚩 通報
+            </button>
           </div>
           
           <div className="flex flex-col items-end">
