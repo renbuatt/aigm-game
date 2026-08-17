@@ -9,16 +9,15 @@ type Props = {
   executeExport: (title: string, messages: any[], type: 'chat' | 'summary' | 'novel', images?: string[]) => Promise<void>;
   isExporting: boolean;
   allScenarios: Scenario[];
-  updateProfile: (updates: Partial<UserProfile>) => Promise<void>; // ★追加
+  updateProfile: (updates: Partial<UserProfile>) => Promise<void>;
 };
 
-export default function UserProfileView({ currentUser, targetUserId, setCurrentView, executeExport, isExporting, allScenarios, updateProfile }: Props) {
+export default function UserProfileView({ currentUser, targetUserId, setCurrentView, allScenarios, updateProfile }: Props) {
   const [user, setUser] = useState<UserProfile | null>(null);
   const [archives, setArchives] = useState<PlayArchive[]>([]);
   const [friends, setFriends] = useState<UserProfile[]>([]);
   const [loading, setLoading] = useState(true);
 
-  // ★ 編集用のState
   const [isEditing, setIsEditing] = useState(false);
   const [editName, setEditName] = useState("");
   const [editBio, setEditBio] = useState("");
@@ -48,7 +47,8 @@ export default function UserProfileView({ currentUser, targetUserId, setCurrentV
         }
       }
 
-      const { data: archiveData } = await supabase.from('play_archives').select('*').eq('user_id', targetUserId).order('created_at', { ascending: false });
+      // ★ 履歴は最新5件のみ取得
+      const { data: archiveData } = await supabase.from('play_archives').select('*').eq('user_id', targetUserId).order('created_at', { ascending: false }).limit(5);
       if (archiveData) {
         setArchives(archiveData.map((d: any) => ({
           id: d.id, userId: d.user_id, scenarioTitle: d.scenario_title, scenarioImage: d.scenario_image,
@@ -59,7 +59,7 @@ export default function UserProfileView({ currentUser, targetUserId, setCurrentV
       setLoading(false);
     };
     fetchUserData();
-  }, [targetUserId, isMe, currentUser]); // currentUserの変更時も再取得
+  }, [targetUserId, isMe, currentUser]);
 
   const startEdit = () => {
     if (!user) return;
@@ -72,7 +72,6 @@ export default function UserProfileView({ currentUser, targetUserId, setCurrentV
   const handleImageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) {
-      // 2MB以上の画像は弾く
       if (file.size > 2 * 1024 * 1024) {
         alert("画像サイズは2MB以下にしてください。");
         return;
@@ -103,10 +102,8 @@ export default function UserProfileView({ currentUser, targetUserId, setCurrentV
         <button onClick={() => setCurrentView("lobby")} className="text-sm bg-slate-700 px-4 py-2 rounded font-bold hover:bg-slate-600 transition-colors">ロビーに戻る</button>
       </header>
 
-      {/* ★ プロフィール表示エリア */}
       <div className="bg-slate-800 border border-slate-700 rounded-xl p-6 shadow-xl mb-6">
         {isEditing ? (
-          // 編集モード
           <div className="space-y-4">
             <div className="flex items-center gap-4">
               <img src={editAvatar} className="w-24 h-24 rounded-full object-cover border-4 border-slate-600 shadow" />
@@ -129,7 +126,6 @@ export default function UserProfileView({ currentUser, targetUserId, setCurrentV
             </div>
           </div>
         ) : (
-          // 通常表示モード
           <div className="flex gap-6 items-start relative">
             {isMe && (
               <button onClick={startEdit} className="absolute top-0 right-0 bg-slate-700 hover:bg-slate-600 text-white px-3 py-1 text-xs rounded font-bold shadow">
@@ -171,7 +167,8 @@ export default function UserProfileView({ currentUser, targetUserId, setCurrentV
       )}
 
       <div className="mb-8">
-        <h3 className="text-lg font-bold text-amber-400 mb-4 border-b border-slate-700 pb-2">📜 プレイ履歴</h3>
+        {/* ★ ボタンを削除し、純粋な履歴表示のみに変更 */}
+        <h3 className="text-lg font-bold text-amber-400 mb-4 border-b border-slate-700 pb-2">📜 最近のプレイ履歴 (最大5件)</h3>
         {archives.length === 0 ? (
           <p className="text-sm text-slate-500 bg-slate-800 p-4 rounded text-center">プレイ履歴がありません。</p>
         ) : (
@@ -186,12 +183,6 @@ export default function UserProfileView({ currentUser, targetUserId, setCurrentV
                     <span>🎲 {a.rule === 'coc_jp' ? 'CoC日本卓' : a.rule === 'dnd' ? 'D&D' : a.rule === 'sw25' ? 'SW2.5' : a.rule === 'storytelling' ? 'ストテリ' : a.rule === 'coc_en' ? 'CoC海外版' : '不明'}</span>
                     <span>👤 参加HN: {a.coPlayers && a.coPlayers.length > 0 ? a.coPlayers.join(", ") : "ソロプレイ"}</span>
                   </div>
-                  {isMe && (
-                     <div className="mt-3 flex gap-2">
-                       <button onClick={() => executeExport(`${a.scenarioTitle}_chat`, a.chatLogs, 'chat')} disabled={isExporting} className="text-xs bg-slate-700 hover:bg-slate-600 px-3 py-1.5 rounded font-bold transition shadow">💬 ログ出力</button>
-                       <button onClick={() => executeExport(`${a.scenarioTitle}_novel`, a.chatLogs, 'novel', a.chatLogs.filter(m=>m.type==='image').map(m=>m.imageUrl!))} disabled={isExporting} className="text-xs bg-amber-700 hover:bg-amber-600 px-3 py-1.5 rounded font-bold transition shadow">📖 小説化</button>
-                     </div>
-                  )}
                 </div>
               </div>
             ))}

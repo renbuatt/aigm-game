@@ -1,4 +1,5 @@
-export type ViewState = "login" | "signup" | "onboarding" | "lobby" | "game" | "evaluation" | "admin" | "banned" | "maintenance" | "scenarioEdit" | "mypage" | "userProfile";
+// 1行目のみ修正
+export type ViewState = "login" | "signup" | "onboarding" | "lobby" | "game" | "evaluation" | "admin" | "banned" | "maintenance" | "scenarioEdit" | "userProfile" | "library";
 
 export type RoomDifficulty = "beginner" | "easy" | "normal" | "hard" | "pro" | "oni";
 export type GameRule = "dnd" | "coc_en" | "coc_jp" | "sw25" | "storytelling";
@@ -18,7 +19,7 @@ export type UserProfile = {
   isTester: boolean;
   isBanned: boolean;
   email: string;
-  friendIds?: string[]; // ★追加
+  friendIds?: string[];
 };
 
 export type Character = {
@@ -146,6 +147,6 @@ export type PlayArchive = {
   characterName: string;
   chatLogs: Message[];
   createdAt: string;
-  rule?: string; // ★追加
-  coPlayers?: string[]; // ★追加
+  rule?: string;
+  coPlayers?: string[];
 };

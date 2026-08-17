@@ -43,11 +43,10 @@ export default function LobbyView({
 
   return (
     <div className="flex-1 flex flex-col p-6 max-w-7xl mx-auto w-full min-h-0 overflow-y-auto custom-scrollbar">
-      <header className="mb-6 flex justify-between items-end border-b border-slate-700 pb-4">
+      <header className="mb-4 flex justify-between items-end border-b border-slate-700 pb-4">
         <div><h1 className="text-3xl font-extrabold text-emerald-400 mb-1">AI GM MORPG Lobby</h1></div>
         <div className="flex items-center gap-4">
-          {/* ★ ボタンのリンク先を openUserProfile に変更 */}
-          <button onClick={() => openUserProfile(currentUser.id)} className="bg-amber-600/20 text-amber-400 border border-amber-500/50 hover:bg-amber-600/40 px-3 py-1.5 rounded font-bold text-xs flex items-center gap-1 transition-colors">
+          <button onClick={() => setCurrentView("library")} className="bg-amber-600/20 text-amber-400 border border-amber-500/50 hover:bg-amber-600/40 px-3 py-1.5 rounded font-bold text-xs flex items-center gap-1 transition-colors">
             <span className="text-base">👑</span> プレイ書庫 (Premium)
           </button>
           <button onClick={() => setShowMailbox(true)} className="relative text-slate-300 hover:text-white p-2 text-xl">
@@ -56,6 +55,18 @@ export default function LobbyView({
           <button onClick={handleLogout} className="text-xs text-slate-400 hover:text-white underline">ログアウト</button>
         </div>
       </header>
+
+      {/* ★ 目立つメール通知バナー */}
+      {unreadCount > 0 && (
+        <div className="mb-4 bg-indigo-900/50 border border-indigo-500 p-3 rounded-lg flex items-center justify-between shadow-lg animate-pulse">
+          <p className="text-sm font-bold text-indigo-200">
+            ⚠️ 新着メッセージ（お知らせ等）が {unreadCount} 件あります！
+          </p>
+          <button onClick={() => setShowMailbox(true)} className="bg-indigo-600 hover:bg-indigo-500 text-white text-xs px-4 py-1.5 rounded font-bold transition-colors">
+            確認する
+          </button>
+        </div>
+      )}
 
       <div className="flex gap-4 mb-6 border-b border-slate-700 flex-shrink-0">
         <button onClick={() => setLobbyTab('rooms')} className={`pb-2 text-sm font-bold transition-colors border-b-2 ${lobbyTab === 'rooms' ? 'border-blue-500 text-blue-400' : 'border-transparent text-slate-400 hover:text-white'}`}>🌐 募集中のセッション</button>
