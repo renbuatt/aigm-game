@@ -9,13 +9,20 @@ type Props = {
   executeExport: (title: string, messages: any[], type: 'chat' | 'summary' | 'novel', images?: string[]) => Promise<void>;
   isExporting: boolean;
   allScenarios: Scenario[];
+  updateProfile: (updates: Partial<UserProfile>) => Promise<void>; // ★追加
 };
 
-export default function UserProfileView({ currentUser, targetUserId, setCurrentView, executeExport, isExporting, allScenarios }: Props) {
+export default function UserProfileView({ currentUser, targetUserId, setCurrentView, executeExport, isExporting, allScenarios, updateProfile }: Props) {
   const [user, setUser] = useState<UserProfile | null>(null);
   const [archives, setArchives] = useState<PlayArchive[]>([]);
   const [friends, setFriends] = useState<UserProfile[]>([]);
   const [loading, setLoading] = useState(true);
+
+  // ★ 編集用のState
+  const [isEditing, setIsEditing] = useState(false);
+  const [editName, setEditName] = useState("");
+  const [editBio, setEditBio] = useState("");
+  const [editAvatar, setEditAvatar] = useState("");
 
   const isMe = currentUser.id === targetUserId;
 
@@ -52,7 +59,36 @@ export default function UserProfileView({ currentUser, targetUserId, setCurrentV
       setLoading(false);
     };
     fetchUserData();
-  }, [targetUserId, isMe]);
+  }, [targetUserId, isMe, currentUser]); // currentUserの変更時も再取得
+
+  const startEdit = () => {
+    if (!user) return;
+    setEditName(user.handleName);
+    setEditBio(user.bio);
+    setEditAvatar(user.avatarUrl);
+    setIsEditing(true);
+  };
+
+  const handleImageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      // 2MB以上の画像は弾く
+      if (file.size > 2 * 1024 * 1024) {
+        alert("画像サイズは2MB以下にしてください。");
+        return;
+      }
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        setEditAvatar(reader.result as string);
+      };
+      reader.readAsDataURL(file);
+    }
+  };
+
+  const saveProfile = async () => {
+    await updateProfile({ handleName: editName, bio: editBio, avatarUrl: editAvatar });
+    setIsEditing(false);
+  };
 
   if (loading || !user) {
     return <div className="flex-1 flex items-center justify-center h-full"><div className="animate-pulse text-emerald-400 font-bold">読み込み中...</div></div>;
@@ -67,16 +103,50 @@ export default function UserProfileView({ currentUser, targetUserId, setCurrentV
         <button onClick={() => setCurrentView("lobby")} className="text-sm bg-slate-700 px-4 py-2 rounded font-bold hover:bg-slate-600 transition-colors">ロビーに戻る</button>
       </header>
 
-      <div className="bg-slate-800 border border-slate-700 rounded-xl p-6 shadow-xl mb-6 flex gap-6 items-start">
-        <img src={user.avatarUrl} className="w-24 h-24 rounded-full object-cover border-4 border-slate-700 shadow" />
-        <div className="flex-1">
-          <h3 className="text-2xl font-bold text-white flex items-center gap-2">{user.handleName}</h3>
-          <p className="text-xs text-slate-500 mt-1 select-all">ID: {user.id}</p>
-          <div className="mt-4 bg-slate-900 border border-slate-700 p-4 rounded-lg text-sm text-slate-300">
-            <span className="text-xs text-slate-500 font-bold block mb-1">ひとことコメント</span>
-            {user.bio}
+      {/* ★ プロフィール表示エリア */}
+      <div className="bg-slate-800 border border-slate-700 rounded-xl p-6 shadow-xl mb-6">
+        {isEditing ? (
+          // 編集モード
+          <div className="space-y-4">
+            <div className="flex items-center gap-4">
+              <img src={editAvatar} className="w-24 h-24 rounded-full object-cover border-4 border-slate-600 shadow" />
+              <div>
+                <label className="text-xs text-slate-400 block mb-1">アイコン画像の変更</label>
+                <input type="file" accept="image/*" onChange={handleImageChange} className="text-sm text-slate-300 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-emerald-600 file:text-white hover:file:bg-emerald-500 cursor-pointer" />
+              </div>
+            </div>
+            <div>
+              <label className="text-xs text-slate-400 block mb-1">ハンドルネーム</label>
+              <input type="text" value={editName} onChange={e=>setEditName(e.target.value)} className="w-full bg-slate-900 border border-slate-700 rounded p-2 text-white font-bold" />
+            </div>
+            <div>
+              <label className="text-xs text-slate-400 block mb-1">ひとことコメント</label>
+              <textarea value={editBio} onChange={e=>setEditBio(e.target.value)} className="w-full bg-slate-900 border border-slate-700 rounded p-2 text-white text-sm h-24" />
+            </div>
+            <div className="flex gap-2">
+              <button onClick={() => setIsEditing(false)} className="flex-1 bg-slate-700 py-2 rounded font-bold hover:bg-slate-600 text-sm">キャンセル</button>
+              <button onClick={saveProfile} className="flex-1 bg-emerald-600 py-2 rounded font-bold text-white shadow-lg hover:bg-emerald-500 text-sm">保存する</button>
+            </div>
           </div>
-        </div>
+        ) : (
+          // 通常表示モード
+          <div className="flex gap-6 items-start relative">
+            {isMe && (
+              <button onClick={startEdit} className="absolute top-0 right-0 bg-slate-700 hover:bg-slate-600 text-white px-3 py-1 text-xs rounded font-bold shadow">
+                ✏️ プロフィールを編集
+              </button>
+            )}
+            <img src={user.avatarUrl} className="w-24 h-24 rounded-full object-cover border-4 border-slate-700 shadow" />
+            <div className="flex-1">
+              <h3 className="text-2xl font-bold text-white flex items-center gap-2">{user.handleName}</h3>
+              <p className="text-xs text-slate-500 mt-1 select-all">ID: {user.id}</p>
+              <div className="mt-4 bg-slate-900 border border-slate-700 p-4 rounded-lg text-sm text-slate-300">
+                <span className="text-xs text-slate-500 font-bold block mb-1">ひとことコメント</span>
+                {user.bio}
+              </div>
+            </div>
+          </div>
+        )}
       </div>
 
       {isMe && (

@@ -24,7 +24,7 @@ type Props = {
   fetchAdminData: () => Promise<void>;
   startTrialPlay: (scenario: Scenario) => void;
   availableScenarios: Scenario[];
-  openUserProfile: (userId: string) => void; // ★追加
+  openUserProfile: (userId: string) => void;
 };
 
 export default function LobbyView({
@@ -46,6 +46,10 @@ export default function LobbyView({
       <header className="mb-6 flex justify-between items-end border-b border-slate-700 pb-4">
         <div><h1 className="text-3xl font-extrabold text-emerald-400 mb-1">AI GM MORPG Lobby</h1></div>
         <div className="flex items-center gap-4">
+          {/* ★ ボタンのリンク先を openUserProfile に変更 */}
+          <button onClick={() => openUserProfile(currentUser.id)} className="bg-amber-600/20 text-amber-400 border border-amber-500/50 hover:bg-amber-600/40 px-3 py-1.5 rounded font-bold text-xs flex items-center gap-1 transition-colors">
+            <span className="text-base">👑</span> プレイ書庫 (Premium)
+          </button>
           <button onClick={() => setShowMailbox(true)} className="relative text-slate-300 hover:text-white p-2 text-xl">
             ✉️{unreadCount > 0 && <span className="absolute top-0 right-0 bg-red-500 text-white text-[9px] px-1.5 rounded-full">{unreadCount}</span>}
           </button>
@@ -170,7 +174,6 @@ export default function LobbyView({
         </div>
 
         <div className="space-y-6">
-          {/* ★画像のようにクリックしてマイページへ飛べるようにしました */}
           <div className="bg-slate-800 border border-slate-700 rounded-xl p-4 shadow-lg">
             <div className="flex justify-between items-center mb-3 border-b border-slate-700 pb-2">
               <h2 className="text-sm font-bold text-blue-400">👤 プレイヤー情報</h2>
