@@ -276,7 +276,7 @@ export default function Home() {
     if (archiveData) {
       setPlayArchives(archiveData.map((d: any) => ({
         id: d.id, userId: d.user_id, scenarioTitle: d.scenario_title, scenarioImage: d.scenario_image,
-        characterName: d.character_name, chatLogs: d.chat_logs, createdAt: d.created_at, rule: d.rule, coPlayers: d.co_players
+        characterName: d.character_name, chatLogs: d.chat_logs, createdAt: d.created_at, rule: d.rule, coPlayers: d.co_players, novels: d.novels || {} // ★ novelsを追加取得
       })));
     }
 
@@ -854,7 +854,8 @@ export default function Home() {
     } catch (err: any) { alert("画像の生成に失敗しました（AIサーバー混雑エラー等）。\n少し時間をおいて再度お試しください。"); }
   };
 
-  const executeExport = async (title: string, sourceMessages: Message[], type: 'chat' | 'summary' | 'novel', selectedImages?: string[]) => {
+  // ★ 変更: 出力時に指定されたモデルの小説データをDBの `novels` カラムに保存するロジックを追加
+  const executeExport = async (title: string, sourceMessages: Message[], type: 'chat' | 'summary' | 'novel', selectedImages?: string[], archiveId?: string, modelName: string = 'Gemini') => {
     const printWindow = window.open('', '_blank');
     if (!printWindow) { alert("ポップアップがブロックされました。ブラウザの設定でポップアップを許可してください。"); return; }
     printWindow.document.write('<div style="padding: 20px; font-family: sans-serif; color: #333;">生成中...しばらくお待ちください。（AI執筆中の場合は十数秒かかることがあります）</div>');
@@ -881,6 +882,17 @@ export default function Home() {
       const logText = targetMessages.map(m => `${m.charName || (m.sender === 'gm' ? 'GM' : 'システム')}: ${m.text.replace(/\[SPLIT_PROPOSAL:.*?\]/, '').replace('[SCENARIO_END]', '').trim()}`).join('\n');
       try {
         const generatedText = await generateAITextWithPrompt(prompt + "\n\n【チャットログ】\n" + logText);
+        
+        // ★ 生成完了後、アーカイブIDが渡されていればデータベースに保存
+        if (archiveId && type === 'novel') {
+          const archive = playArchives.find(a => a.id === archiveId);
+          if (archive) {
+            const updatedNovels = { ...(archive.novels || {}), [modelName]: generatedText };
+            await supabase.from('play_archives').update({ novels: updatedNovels }).eq('id', archiveId);
+            setPlayArchives(prev => prev.map(a => a.id === archiveId ? { ...a, novels: updatedNovels } : a));
+          }
+        }
+
         let imagesHtml = "";
         if (type === 'novel' && selectedImages && selectedImages.length > 0) {
           imagesHtml = `<div style="text-align: center; margin-bottom: 30px;">` + selectedImages.map(img => `<img src="${img}" style="max-width: 100%; border-radius: 8px; margin-bottom: 10px; max-height: 400px; object-fit: contain; box-shadow: 0 4px 6px rgba(0,0,0,0.1);" />`).join('') + `</div>`;
@@ -997,7 +1009,6 @@ export default function Home() {
       }
       const inventoryText = inventoryTextLines.join('\n');
 
-      // ★ 追加・改良: チャプター管理ロジック
       let chapters: {title: string, content: string}[] = [];
       try {
         const parsed = JSON.parse(activeRoom.scenario?.plot || "");
@@ -1010,7 +1021,7 @@ export default function Home() {
       const currentChapter = chapters[currentChapIndex] || chapters[chapters.length - 1];
       const isLastChapter = currentChapIndex >= chapters.length - 1;
 
-      // ★ 改良: AIに「物語の全体構成（マップ）」を教え、構造崩壊を防ぐ！
+      // ★ 全体構成マップをAIに教え、構造崩壊を防ぐ！
       const chapterProgress = chapters.map((c, idx) => {
         if (idx < currentChapIndex) return `[クリア済] 第${idx + 1}章: ${c.title}`;
         if (idx === currentChapIndex) return `[★現在進行中] 第${idx + 1}章: ${c.title}`;

@@ -5,11 +5,22 @@ type Props = {
   currentUser: UserProfile;
   playArchives: PlayArchive[];
   setCurrentView: React.Dispatch<React.SetStateAction<ViewState>>;
-  executeExport: (title: string, messages: any[], type: 'chat' | 'summary' | 'novel', images?: string[]) => Promise<void>;
+  executeExport: (title: string, messages: any[], type: 'chat' | 'summary' | 'novel', images?: string[], archiveId?: string, modelName?: string) => Promise<void>;
   isExporting: boolean;
 };
 
 export default function LibraryView({ currentUser, playArchives, setCurrentView, executeExport, isExporting }: Props) {
+  
+  // 保存済みの小説をポップアップで開く関数
+  const readSavedNovel = (title: string, content: string, modelName: string) => {
+    const printWindow = window.open('', '_blank');
+    if (!printWindow) { alert("ポップアップがブロックされました。ブラウザの設定をご確認ください。"); return; }
+    printWindow.document.write(`
+      <!DOCTYPE html><html><head><meta charset="utf-8"><title>${title} - リプレイ小説 (${modelName}版)</title><style>body { font-family: 'Hiragino Kaku Gothic ProN', 'Meiryo', sans-serif; padding: 40px; color: #333; max-width: 800px; margin: 0 auto; line-height: 1.8; font-size: 14px; } h1 { font-size: 24px; border-bottom: 2px solid #2c3e50; padding-bottom: 10px; margin-bottom: 30px; color: #2c3e50; }</style></head><body><h1>${title} - リプレイ小説 <span style="font-size: 14px; color: #666;">(${modelName}版)</span></h1><div style="white-space: pre-wrap;">${content}</div></body></html>
+    `);
+    printWindow.document.close();
+  };
+
   return (
     <div className="flex-1 flex flex-col p-6 max-w-5xl mx-auto w-full min-h-0 overflow-y-auto custom-scrollbar">
       <header className="mb-6 flex justify-between items-center border-b border-slate-700 pb-4">
@@ -21,7 +32,7 @@ export default function LibraryView({ currentUser, playArchives, setCurrentView,
       
       <div className="mb-8">
         <p className="text-sm text-slate-300 mb-6 bg-slate-800 p-4 rounded border border-slate-700">
-          これまでに保存したすべてのプレイ履歴を閲覧し、当時のチャットログやリプレイ小説を出力することができます。
+          これまでに保存したすべてのプレイ履歴を閲覧し、当時のチャットログを出力したり、AIモデルを選択してリプレイ小説を生成・保存することができます。
         </p>
 
         {playArchives.length === 0 ? (
@@ -29,8 +40,8 @@ export default function LibraryView({ currentUser, playArchives, setCurrentView,
         ) : (
           <div className="space-y-4">
             {playArchives.map(a => (
-              <div key={a.id} className="bg-slate-800 border border-amber-700/50 p-4 rounded-xl flex flex-col sm:flex-row gap-5 shadow-lg">
-                <img src={a.scenarioImage || "https://images.unsplash.com/photo-1614729939124-03290b5609ce?auto=format&fit=crop&w=150&q=80"} className="w-24 h-24 object-cover rounded-lg hidden sm:block border border-slate-600 shadow" />
+              <div key={a.id} className="bg-slate-800 border border-amber-700/50 p-4 rounded-xl flex flex-col md:flex-row gap-5 shadow-lg">
+                <img src={a.scenarioImage || "https://images.unsplash.com/photo-1614729939124-03290b5609ce?auto=format&fit=crop&w=150&q=80"} className="w-24 h-24 object-cover rounded-lg hidden md:block border border-slate-600 shadow" />
                 <div className="flex-1 flex flex-col justify-between">
                   <div>
                     <h4 className="font-bold text-white text-xl">{a.scenarioTitle}</h4>
@@ -40,10 +51,32 @@ export default function LibraryView({ currentUser, playArchives, setCurrentView,
                       <span className="bg-slate-900 px-2 py-1 rounded">👤 参加HN: {a.coPlayers && a.coPlayers.length > 0 ? a.coPlayers.join(", ") : "ソロプレイ"}</span>
                     </div>
                   </div>
-                  <div className="flex gap-3 mt-2">
-                    <button onClick={() => executeExport(`${a.scenarioTitle}_chat`, a.chatLogs, 'chat')} disabled={isExporting} className="text-xs bg-slate-700 hover:bg-slate-600 text-white px-4 py-2 rounded font-bold transition shadow border border-slate-600">💬 ログ出力</button>
-                    <button onClick={() => executeExport(`${a.scenarioTitle}_novel`, a.chatLogs, 'novel', a.chatLogs.filter(m=>m.type==='image').map(m=>m.imageUrl!))} disabled={isExporting} className="text-xs bg-amber-600 hover:bg-amber-500 text-white px-4 py-2 rounded font-bold transition shadow disabled:opacity-50 border border-amber-500">📖 小説化して出力</button>
+                  
+                  {/* ★ 各モデルごとの生成＆保存ボタン */}
+                  <div className="mt-3 border-t border-slate-700 pt-3">
+                    <p className="text-[10px] text-slate-400 mb-2">▼ 出力・生成メニュー</p>
+                    <div className="flex flex-wrap gap-2">
+                      <button onClick={() => executeExport(`${a.scenarioTitle}_chat`, a.chatLogs, 'chat')} disabled={isExporting} className="text-xs bg-slate-700 hover:bg-slate-600 text-white px-3 py-1.5 rounded transition border border-slate-600 shadow">💬 ログ出力</button>
+                      <button onClick={() => executeExport(`${a.scenarioTitle}_novel`, a.chatLogs, 'novel', a.chatLogs.filter(m=>m.type==='image').map(m=>m.imageUrl!), a.id, 'Gemini')} disabled={isExporting} className="text-xs bg-blue-600 hover:bg-blue-500 text-white px-3 py-1.5 rounded transition shadow disabled:opacity-50">✨ Geminiで小説化</button>
+                      <button onClick={() => executeExport(`${a.scenarioTitle}_novel`, a.chatLogs, 'novel', a.chatLogs.filter(m=>m.type==='image').map(m=>m.imageUrl!), a.id, 'Gemini Pro')} disabled={isExporting} className="text-xs bg-indigo-600 hover:bg-indigo-500 text-white px-3 py-1.5 rounded transition shadow disabled:opacity-50">✨ Gemini Proで小説化</button>
+                      <button onClick={() => executeExport(`${a.scenarioTitle}_novel`, a.chatLogs, 'novel', a.chatLogs.filter(m=>m.type==='image').map(m=>m.imageUrl!), a.id, 'Claude')} disabled={isExporting} className="text-xs bg-orange-600 hover:bg-orange-500 text-white px-3 py-1.5 rounded transition shadow disabled:opacity-50">✨ Claudeで小説化</button>
+                    </div>
                   </div>
+
+                  {/* ★ 書庫に保存済みの小説データ */}
+                  {a.novels && Object.keys(a.novels).length > 0 && (
+                    <div className="mt-3 bg-slate-900/50 p-3 rounded border border-emerald-700/50">
+                      <p className="text-[10px] text-emerald-400 font-bold mb-2">▼ 書庫に保存済みの小説を読む</p>
+                      <div className="flex flex-wrap gap-2">
+                        {Object.keys(a.novels).map(model => (
+                          <button key={model} onClick={() => readSavedNovel(a.scenarioTitle, a.novels![model], model)} className="text-xs bg-emerald-600 hover:bg-emerald-500 px-3 py-1.5 rounded shadow font-bold text-white transition-colors">
+                            📖 {model}版を読む
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
                 </div>
               </div>
             ))}
