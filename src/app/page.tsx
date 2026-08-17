@@ -9,7 +9,7 @@ import {
 } from "../types";
 
 import LoginView from "../components/views/LoginView";
-import SignupView from "../components/views/SignupView"; // ★ 追加
+import SignupView from "../components/views/SignupView";
 import BannedView from "../components/views/BannedView";
 import MaintenanceView from "../components/views/MaintenanceView";
 import EvaluationView from "../components/views/EvaluationView";
@@ -1052,9 +1052,8 @@ export default function Home() {
       {currentView === "banned" && <BannedView handleLogout={handleLogout} />}
       {currentView === "maintenance" && <MaintenanceView handleLogout={handleLogout} />}
       
-      {/* ログイン画面・新規登録画面の出し分け */}
-      {currentView === "login" && <LoginView email={email} setEmail={setEmail} password={password} setPassword={setPassword} authLoading={authLoading} handleEmailAuth={handleEmailAuth} handleGoogleAuth={handleGoogleAuth} setCurrentView={setCurrentView} />}
-      {currentView === "signup" && <SignupView email={email} setEmail={setEmail} password={password} setPassword={setPassword} authLoading={authLoading} handleEmailSignUp={handleEmailSignUp} handleGoogleAuth={handleGoogleAuth} setCurrentView={setCurrentView} />}
+      {currentView === "login" && <LoginView email={email} setEmail={setEmail} password={password} setPassword={setPassword} authLoading={authLoading} handleEmailAuth={handleEmailAuth} handleGoogleAuth={handleGoogleAuth} setCurrentView={setCurrentView} isMaintenance={isMaintenance} />}
+      {currentView === "signup" && <SignupView email={email} setEmail={setEmail} password={password} setPassword={setPassword} authLoading={authLoading} handleEmailSignUp={handleEmailSignUp} handleGoogleAuth={handleGoogleAuth} setCurrentView={setCurrentView} isMaintenance={isMaintenance} />}
       
       {currentView === "lobby" && currentUser && (
         <LobbyView 

@@ -10,13 +10,29 @@ type Props = {
   handleEmailSignUp: (e: React.FormEvent, name: string, addr: string, phone: string) => Promise<void>;
   handleGoogleAuth: () => Promise<void>;
   setCurrentView: React.Dispatch<React.SetStateAction<ViewState>>;
+  isMaintenance: boolean; // ★追加
 };
 
-export default function SignupView({ email, setEmail, password, setPassword, authLoading, handleEmailSignUp, handleGoogleAuth, setCurrentView }: Props) {
+export default function SignupView({ email, setEmail, password, setPassword, authLoading, handleEmailSignUp, handleGoogleAuth, setCurrentView, isMaintenance }: Props) {
   const [fullName, setFullName] = useState("");
   const [address, setAddress] = useState("");
   const [phone, setPhone] = useState("");
   const [agreeTerms, setAgreeTerms] = useState(false);
+
+  // ★メンテナンス中ブロック
+  if (isMaintenance) {
+    return (
+      <div className="flex-1 flex items-center justify-center p-4 overflow-y-auto">
+        <div className="bg-slate-800 border border-slate-700 rounded-xl p-8 w-full max-w-md shadow-2xl my-auto text-center">
+          <h2 className="text-xl font-bold text-amber-400 mb-4">現在メンテナンス中です</h2>
+          <p className="text-sm text-slate-300 mb-6">新規アカウントの登録は一時的に停止しております。</p>
+          <button onClick={() => setCurrentView("login")} className="bg-slate-700 px-4 py-2 rounded text-sm font-bold text-white hover:bg-slate-600 transition-colors">
+            ログイン画面へ戻る
+          </button>
+        </div>
+      </div>
+    );
+  }
 
   const onSubmit = (e: React.FormEvent) => {
     e.preventDefault();
