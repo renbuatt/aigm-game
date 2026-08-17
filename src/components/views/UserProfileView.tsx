@@ -166,7 +166,14 @@ export default function UserProfileView({ currentUser, targetUserId, setCurrentV
       )}
 
       <div className="mb-8">
-        <h3 className="text-lg font-bold text-amber-400 mb-4 border-b border-slate-700 pb-2">📜 最近のプレイ履歴 (最大5件)</h3>
+        {/* ★ ここに書庫への導線を新設 */}
+        <div className="flex justify-between items-center mb-4 border-b border-slate-700 pb-2">
+          <h3 className="text-lg font-bold text-amber-400">📜 最近のプレイ履歴 (最大5件)</h3>
+          <button onClick={() => setCurrentView("library")} className="text-xs bg-amber-600/20 text-amber-400 border border-amber-500/50 hover:bg-amber-600/40 px-3 py-1.5 rounded font-bold transition-colors">
+            👑 書庫ですべて見る
+          </button>
+        </div>
+
         {archives.length === 0 ? (
           <p className="text-sm text-slate-500 bg-slate-800 p-4 rounded text-center">プレイ履歴がありません。</p>
         ) : (

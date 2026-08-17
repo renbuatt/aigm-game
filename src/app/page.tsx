@@ -833,7 +833,6 @@ export default function Home() {
     }
   };
 
-  // ★ 復活＆改良: 空欄でもAIが自動でプロンプトを推測して画像生成するように修正
   const generateSceneImage = async (promptText?: string) => {
     if (!activeRoom || !myScene) return;
     setIsLoading(true);
@@ -1127,9 +1126,11 @@ export default function Home() {
       characters: charactersWithPlayers 
     };
     
-    const { error } = await supabase.from('play_archives').insert(archiveData);
+    // ★ 修正：select().single() を追加し、保存成功時に state の playArchives を更新
+    const { data, error } = await supabase.from('play_archives').insert(archiveData).select().single();
     if (error) { alert("書庫への保存に失敗しました: " + error.message); } 
     else {
+      setPlayArchives(prev => [data, ...prev]);
       alert("プレイ履歴に保存しました！\nユーザーページからいつでも確認できます。");
     }
   };
@@ -1221,15 +1222,16 @@ export default function Home() {
 
       let scenarioPlotText = `【物語の全体構成（全${chapters.length}章）】\n${chapterProgress}\n\n【現在（第${currentChapIndex + 1}章）のプロット・台本】\n${currentChapter.content}`;
 
+      // ★ 改良: 難易度指示の強化（タスクリストの提示を完全禁止）
       let difficultyInstruction = "";
       switch (activeRoom.difficulty) {
         case "beginner": difficultyInstruction = "【難易度：初心者】接待プレイです。困っていればヒントや選択肢を出しても構いません。"; break;
         case "easy": difficultyInstruction = "【難易度：簡単】判定が通りやすく、探索で見つかる情報を多めに描写してください。ただし露骨な解法の指示は避けてください。"; break;
-        case "normal": difficultyInstruction = "【難易度：普通】【ヒント・誘導・選択肢の提示は完全禁止】純粋な情景描写と結果のみを出力してください。解法（燃やす、壊すなど）や、周囲にあるものの匂わせ（「※〜があるかもしれません」「〜が必要」等の補足・誘導）は絶対に書かないでください。"; break;
-        case "hard": difficultyInstruction = "【難易度：難しい】【ノーヒント・厳格】解法のヒントや補足は一切禁止。PLから具体的な探索宣言がない限りオブジェクトの存在すら明かさないでください。判定失敗時は即座に状況を悪化させてください。"; break;
+        case "normal": difficultyInstruction = "【難易度：普通】【ヒント・誘導・選択肢の提示・次期目標の指示は完全禁止】純粋な情景描写と結果のみを出力してください。「次は〜が残されています」「〜しましょう」といったタスクリストや次期目標の提示、解法の匂わせ（「※〜があるかもしれません」「〜が必要」等）は絶対に書かないでください。"; break;
+        case "hard": difficultyInstruction = "【難易度：難しい】【ノーヒント・厳格】解法のヒントや補足、目標の提示は一切禁止。PLから具体的な探索宣言がない限りオブジェクトの存在すら明かさないでください。判定失敗時は即座に状況を悪化させてください。"; break;
         case "pro": difficultyInstruction = "【難易度：プロ】【容赦ない本格派】一切のヒントや誘導を禁止。PLの軽率な行動には即座に致命的なペナルティやロストの危機を与えてください。"; break;
         case "oni": difficultyInstruction = "【難易度：鬼】【理不尽・極限】一切の手加減・ヒントを排除。死と隣り合わせの無慈悲な描写を徹底してください。"; break;
-        default: difficultyInstruction = "【難易度：普通】【ヒント・誘導・選択肢の提示は完全禁止】純粋な情景描写と結果のみを出力してください。";
+        default: difficultyInstruction = "【難易度：普通】【ヒント・誘導・選択肢の提示・次期目標の指示は完全禁止】純粋な情景描写と結果のみを出力してください。";
       }
 
       let ruleSpecLines: string[] = []; let gmStyleLines: string[] = [];
@@ -1259,22 +1261,23 @@ export default function Home() {
           "【重要：GMの絶対ルール】",
           "1. PLたちが明確な「行動宣言」を出した時のみ物語を進行させてください。",
           `2. リスクを伴う行動には必ず判定（${diceBase}）を要求し、結果が出るまで描写を待機してください。`,
-          "3. 【解法・ヒント・選択肢・補足の完全禁止（超重要）】「（※〜があるかもしれません）」「〜を処分（焼却など）するか」「〜する必要がある」といった、解法の匂わせ、具体的な選択肢、カッコ書きによるアドバイスやヒントは一切出力しないでください（初心者難易度を除く）。PLが自発的に「周囲を探す」「火をつける方法を探す」と宣言するまで、解法や有用なオブジェクトの存在を絶対に明かさないでください。",
+          "3. 【解法・ヒント・選択肢・次期目標の完全禁止（超重要）】「次は〜が残されています」「〜をしましょう」「（※〜があるかもしれません）」といった、タスクリストの提示、次期目標の誘導、具体的な選択肢、カッコ書きによるアドバイスやヒントは一切出力しないでください（初心者難易度を除く）。進行は完全にPLの自発的な行動に委ねてください。",
           "4. 【アイテムの厳格な管理（四次元ポケット禁止）】上記の【現在の全キャラクターの所持アイテム】に記載されていないアイテムを使おうとした場合は即座に却下してください。",
           "5. 【ダイスの自己処理禁止】GM自身がダイスを振らないでください。",
           "6. 誰かが行動した後は、必ず「〇〇さんはそう動きました。では、△△さんはどうしますか？」と他の人間PLに行動を促し、全員の行動が出揃うまで待機してください。",
-          "7. 【AI相棒の自律ダイスロール】全員行動の際、AI相棒のターンになったら自律的にAI相棒の行動を宣言し、結果をシミュレートして「🎲 [名前]の〇〇判定 ➔ 出目: X 【成功/失敗】」と出力してください。",
+          "7. 【AI相棒の自律行動と割合（超重要）】AI相棒のターンになったら、人間に「どうしますか？」と尋ねるのではなく、AI GM自身が彼らの行動を自律的に描写し、必要なら結果をシミュレートして「🎲 [名前]の〇〇判定 ➔ 出目: X 【成功/失敗】」と自己完結させてください。また、AI相棒はあくまでサポート役です。ダイスロールや重要な決断の頻度は【AI 2 : 人間PL 8】の割合になるよう控えめに行動させてください。",
           "8. 不自然な行動や間違ったアイテムの使用は容赦なく失敗扱い・状況悪化させてください。",
           `9. 想定プレイ時間は「約${activeRoom.scenario?.playTime || 60}分」です。ペース配分を意識し、早すぎる場合は障害を追加してください。`,
           "10. 【プロローグ（導入）について】セッション開始直後の導入フェーズでは、設定されたプロローグ情報があればそれに従い、無ければ本編プロットから推測して自動生成してください。",
           "【設定されたプロローグ】: " + (activeRoom.scenario?.prologue || "特になし"),
           "この導入部において、必ずプレイヤー全員が最低1回はダイス判定を行わなければならない状況を作ってください。",
           "11. 【エピローグとエンディング（最重要）】目的を達成しても、いきなり [SCENARIO_END] を出力しないでください。目的達成後は必ず「【エピローグ】」と明記し、これまでの展開を踏まえて相応しい結末を動的に生成し、事後処理を行わせてください。エピローグ内で必ずプレイヤー全員に最後のダイス判定を行わせる状況を作り、PLがエピローグでの行動を終えたと判断できたターンの最後にのみ [SCENARIO_END] を出力してください。",
-          "12. 【所持アイテムの厳格な更新（超重要）】アイテムを入手・消費した場合は、必ず文章の最後に [INVENTORY_UPDATE: キャラクター名, アイテムA, アイテムB...] のタグを出力して、そのキャラの【最新の所持品リスト全体】をカンマ区切りで上書き登録してください。例：アイテムを拾ったら古いアイテムに加えて新しいアイテムも列挙すること。"
+          "12. 【所持アイテムの厳格な更新】アイテムを入手・消費した場合は、必ず文章の最後に [INVENTORY_UPDATE: キャラクター名, アイテムA, アイテムB...] のタグを出力してください。",
+          "13. 【ステータスの厳格な更新（超重要）】HPやSAN値が減少・変動した場合は、(HPが減少した)といった文章だけでなく、必ず文章の最後に【変動後の最新の値】を使って [STATUS_UPDATE: キャラ名, 最新HP, 最新SAN] のタグを出力してください。これがないとシステムに反映されません。"
         ];
 
         if (!isLastChapter) {
-           roleInstructionLines.push("13. 【チャプター進行（超重要）】現在のチャプターの目的が完全に達成された場合、必ず出力の最後に [CHAPTER_CLEAR] というタグを出力してください。");
+           roleInstructionLines.push("14. 【チャプター進行（超重要）】現在のチャプターの目的が完全に達成された場合、必ず出力の最後に [CHAPTER_CLEAR] というタグを出力してください。");
         }
 
         if (activeRoom.is_trial) {
@@ -1312,13 +1315,13 @@ export default function Home() {
       }
 
       const roleInstruction = roleInstructionLines.join('\n');
-      const sysPrompt = ["あなたはTRPGの優秀なAIシステムです。", `タイトル: ${activeRoom.scenario?.title}`, `世界観: ${activeRoom.scenario?.setting}`, `プロット: ${scenarioPlotText}`, "", "【これまでのあらすじ】", currentSummary || "まだセッションは始まったばかりだ。", "", `【人間PL】名前: ${joinedCharacter.name} (${joinedCharacter.genderOrRace || "性別不詳"}) / ステータス: HP:${joinedCharacter.hp} SAN:${joinedCharacter.san}% STR:${joinedCharacter.str} DEX:${joinedCharacter.dex} INT:${joinedCharacter.int} CON:${joinedCharacter.con}`, inventoryText, "【AI相棒】", aiPlayersText, "", ruleSpec, gmStyle, "", "【共通ルール】", difficultyInstruction, "HP・SAN値が減少・変動した場合は必ず出力の最後に [STATUS_UPDATE: キャラ名, HP:値, SAN:値] を出力してください。", "", roleInstruction].join('\n');
+      const sysPrompt = ["あなたはTRPGの優秀なAIシステムです。", `タイトル: ${activeRoom.scenario?.title}`, `世界観: ${activeRoom.scenario?.setting}`, `プロット: ${scenarioPlotText}`, "", "【これまでのあらすじ】", currentSummary || "まだセッションは始まったばかりだ。", "", `【人間PL】名前: ${joinedCharacter.name} (${joinedCharacter.genderOrRace || "性別不詳"}) / ステータス: HP:${joinedCharacter.hp} SAN:${joinedCharacter.san}% STR:${joinedCharacter.str} DEX:${joinedCharacter.dex} INT:${joinedCharacter.int} CON:${joinedCharacter.con}`, inventoryText, "【AI相棒】", aiPlayersText, "", ruleSpec, gmStyle, "", "【共通ルール】", difficultyInstruction, "HP・SAN値が減少・変動した場合は必ず出力の最後に [STATUS_UPDATE: キャラ名, 最新HP, 最新SAN] を出力してください。", "", roleInstruction].join('\n');
 
       const aiText = await generateAIResponse(sysPrompt, history);
       const splitMatch = aiText.match(/\[SPLIT_PROPOSAL:\s*(.+?)\]/);
       if (splitMatch) { setProposedTeams([]); generateSplitProposal(); }
 
-      const statusRegex = /\[STATUS_UPDATE:\s*(.+?),\s*HP:\s*(\d+),\s*SAN:\s*(\d+)\]/g;
+      const statusRegex = /\[STATUS_UPDATE:\s*(.+?),\s*(\d+),\s*(\d+)\]/g;
       let match;
       while ((match = statusRegex.exec(aiText)) !== null) {
          const targetName = match[1].trim().replace(/\s+/g, '');
@@ -1327,7 +1330,6 @@ export default function Home() {
          setAiPlayersList(prev => prev.map(p => p.name.replace(/\s+/g, '').includes(targetName) ? { ...p, hp: newHp, san: newSan } : p));
       }
 
-      // ★ 改良: INVENTORY_UPDATEの正規表現を安全なものに修正（後ろの]まで取得する）
       const invRegex = /\[INVENTORY_UPDATE:\s*([^,]+),\s*([^\]]+)\]/g;
       let invMatch;
       let newInventories = { ...(activeRoom.inventories || {}) };
