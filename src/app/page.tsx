@@ -115,6 +115,11 @@ export default function Home() {
 
   const isScenarioEnded = messages.some(m => m.text.includes('[SCENARIO_END]')) || activeRoom?.status === 'finished';
 
+  const handleOpenRoomConfig = (scenario: Scenario) => {
+    setRoomConfigModal({ scenario, charId: "", privacy: "open", message: "", difficulty: "normal", rule: "coc_jp", itemVisibility: "all" });
+    setCurrentView("lobby");
+  };
+
   const openUserProfile = (userId: string) => {
     setTargetUserId(userId);
     setCurrentView("userProfile");
@@ -1163,6 +1168,7 @@ export default function Home() {
 
     const archiveData = { 
       user_id: currentUser.id, 
+      scenario_id: activeRoom.scenario?.id || activeRoom.scenario_id,
       scenario_title: archiveTitle, 
       scenario_image: activeRoom.scenario?.imageUrl || "", 
       character_name: joinedCharacter.name, 

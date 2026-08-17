@@ -272,7 +272,9 @@ export default function UserProfileView({
         ) : (
           <div className="space-y-4">
             {archives.map(a => {
-              const originScenario = allScenarios.find(s => s.id === a.scenarioId);
+              // ★ 修正：シナリオIDがない古い履歴でも、タイトルから逆引きして復元する
+              const cleanTitle = a.scenarioTitle.replace(/^【体験版】/, '').trim();
+              const originScenario = allScenarios.find(s => s.id === a.scenarioId) || allScenarios.find(s => s.title === cleanTitle);
               const canPlay = originScenario && (!originScenario.isBanned) && (originScenario.isPlayableByOthers || originScenario.authorId === currentUser.id);
 
               return (

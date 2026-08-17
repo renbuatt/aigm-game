@@ -7,8 +7,8 @@ type Props = {
   setCurrentView: React.Dispatch<React.SetStateAction<ViewState>>;
   executeExport: (title: string, messages: any[], type: 'chat' | 'summary' | 'novel', options?: { archiveId?: string, modelName?: string, viewPoint?: 'third' | 'first', myCharacterName?: string, scenarioImage?: string, createdAt?: string, coPlayers?: string[], characters?: Character[] }) => Promise<void>;
   isExporting: boolean;
-  allScenarios: Scenario[]; // ★ 追加
-  openRoomConfigModal: (scenario: Scenario) => void; // ★ 追加
+  allScenarios: Scenario[];
+  openRoomConfigModal: (scenario: Scenario) => void;
 };
 
 export default function LibraryView({ currentUser, playArchives, setCurrentView, executeExport, isExporting, allScenarios, openRoomConfigModal }: Props) {
@@ -41,7 +41,9 @@ export default function LibraryView({ currentUser, playArchives, setCurrentView,
         ) : (
           <div className="space-y-4">
             {playArchives.map(a => {
-              const originScenario = allScenarios.find(s => s.id === a.scenarioId);
+              // ★ 修正：シナリオIDがない古い履歴でも、タイトルから「【体験版】」を除外して逆引き検索する
+              const cleanTitle = a.scenarioTitle.replace(/^【体験版】/, '').trim();
+              const originScenario = allScenarios.find(s => s.id === a.scenarioId) || allScenarios.find(s => s.title === cleanTitle);
               const canPlay = originScenario && (!originScenario.isBanned) && (originScenario.isPlayableByOthers || originScenario.authorId === currentUser.id);
 
               return (
