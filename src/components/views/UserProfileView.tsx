@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from "react";
-import { ViewState, UserProfile, PlayArchive, Scenario, Character } from "../../types";
+import { ViewState, UserProfile, PlayArchive, Scenario, Character, Room } from "../../types";
 import { supabase } from "../../lib/supabase";
 
 type Props = {
@@ -10,15 +10,20 @@ type Props = {
   isExporting: boolean;
   allScenarios: Scenario[];
   updateProfile: (updates: Partial<UserProfile>) => Promise<void>;
-  blockUser: (targetId: string) => Promise<void>; // ★ 追加
-  unblockUser: (targetId: string) => Promise<void>; // ★ 追加
+  blockUser: (targetId: string) => Promise<void>;
+  unblockUser: (targetId: string) => Promise<void>;
+  activeRooms: Room[]; // ★追加：現在進行中のすべての部屋データ
+  executeSpectateWithAd: (room: Room) => void; // ★追加：広告付き観戦の実行
 };
 
-export default function UserProfileView({ currentUser, targetUserId, setCurrentView, allScenarios, updateProfile, blockUser, unblockUser }: Props) {
+export default function UserProfileView({ 
+  currentUser, targetUserId, setCurrentView, allScenarios, updateProfile, 
+  blockUser, unblockUser, activeRooms, executeSpectateWithAd 
+}: Props) {
   const [user, setUser] = useState<UserProfile | null>(null);
   const [archives, setArchives] = useState<PlayArchive[]>([]);
   const [friends, setFriends] = useState<UserProfile[]>([]);
-  const [blockedUsers, setBlockedUsers] = useState<UserProfile[]>([]); // ★ 追加：ブロック一覧
+  const [blockedUsers, setBlockedUsers] = useState<UserProfile[]>([]);
   const [loading, setLoading] = useState(true);
 
   const [isEditing, setIsEditing] = useState(false);
@@ -49,7 +54,6 @@ export default function UserProfileView({ currentUser, targetUserId, setCurrentV
           }
         }
 
-        // ★ ブロックリストの取得
         if (isMe && profileData.blocked_user_ids && profileData.blocked_user_ids.length > 0) {
           const { data: blockedData } = await supabase.from('profiles').select('*').in('id', profileData.blocked_user_ids);
           if (blockedData) {
@@ -71,7 +75,7 @@ export default function UserProfileView({ currentUser, targetUserId, setCurrentV
       setLoading(false);
     };
     fetchUserData();
-  }, [targetUserId, isMe, currentUser]); // currentUserの更新を検知して再描画
+  }, [targetUserId, isMe, currentUser]);
 
   const startEdit = () => {
     if (!user) return;
@@ -111,13 +115,19 @@ export default function UserProfileView({ currentUser, targetUserId, setCurrentV
   }
 
   const userScenarios = allScenarios.filter(s => s.authorId === targetUserId);
+  
+  // ★追加：フレンドが現在参加している部屋のリストを取得
+  const friendRooms = isMe ? activeRooms.filter(room => 
+    room.joined_users && 
+    Object.keys(room.joined_users).some(uid => currentUser.friendIds?.includes(uid)) &&
+    room.status !== 'finished'
+  ) : [];
 
   return (
     <div className="flex-1 flex flex-col p-6 max-w-5xl mx-auto w-full min-h-0 overflow-y-auto custom-scrollbar">
       <header className="mb-6 flex justify-between items-center border-b border-slate-700 pb-4">
         <h2 className="text-2xl font-bold text-emerald-400">👤 ユーザープロフィール</h2>
         <div className="flex items-center gap-4">
-          {/* ★ 他人のページの場合にブロックボタンを表示 */}
           {!isMe && (
             currentUser.blockedUserIds?.includes(user.id) ? (
               <button onClick={() => unblockUser(user.id)} className="text-sm bg-slate-700 px-4 py-2 rounded font-bold hover:bg-slate-600 transition-colors shadow">ブロック解除</button>
@@ -193,7 +203,42 @@ export default function UserProfileView({ currentUser, targetUserId, setCurrentV
             )}
           </div>
 
-          {/* ★ ブロックリストの追加 */}
+          {/* ★ 追加：友達が現在プレイ中のセッション */}
+          {friendRooms.length > 0 && (
+            <div className="mb-8">
+              <h3 className="text-lg font-bold text-purple-400 mb-4 border-b border-slate-700 pb-2">🎮 友達が現在プレイ中のセッション</h3>
+              <div className="space-y-4">
+                {friendRooms.map(room => {
+                  const playingFriends = Object.keys(room.joined_users || {}).filter(uid => currentUser.friendIds?.includes(uid)).map(uid => {
+                    const f = friends.find(f => f.id === uid);
+                    return f ? f.handleName : "友達";
+                  });
+                  
+                  return (
+                    <div key={room.id} className="bg-slate-800 border border-purple-500/50 p-4 rounded-xl flex gap-4 items-center">
+                      <img src={room.scenario?.imageUrl || "https://images.unsplash.com/photo-1614729939124-03290b5609ce?auto=format&fit=crop&w=150&q=80"} className="w-16 h-16 object-cover rounded hidden sm:block" />
+                      <div className="flex-1">
+                        <h4 className="font-bold text-white text-md flex items-center gap-2">
+                          {room.privacy === 'secret' ? "🔒" : "🔓"} {room.scenario?.title}
+                        </h4>
+                        <p className="text-xs text-slate-400 mt-1">
+                          参加中の友達: <span className="text-purple-300 font-bold">{playingFriends.join(", ")}</span>
+                        </p>
+                      </div>
+                      {room.privacy === 'open' ? (
+                        <button onClick={() => executeSpectateWithAd(room)} className="text-xs bg-purple-600 hover:bg-purple-500 text-white px-4 py-2 rounded font-bold shadow-lg transition-colors flex-shrink-0">
+                          📺 広告を見て観戦する
+                        </button>
+                      ) : (
+                        <span className="text-xs text-slate-500 bg-slate-900 px-3 py-1.5 rounded border border-slate-700 flex-shrink-0">シークレット部屋</span>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+
           <div className="mb-8">
             <h3 className="text-lg font-bold text-red-400 mb-4 border-b border-slate-700 pb-2">🚫 ブロックリスト (あなたのみ表示)</h3>
             {blockedUsers.length === 0 ? (

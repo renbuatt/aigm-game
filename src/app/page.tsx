@@ -32,7 +32,7 @@ export default function Home() {
 
   const [currentUser, setCurrentUser] = useState<UserProfile | null>(null);
   const [targetUserId, setTargetUserId] = useState<string>(""); 
-  const [blockedMeIds, setBlockedMeIds] = useState<string[]>([]); // ★ 追加：自分をブロックしているユーザーID
+  const [blockedMeIds, setBlockedMeIds] = useState<string[]>([]); 
 
   const [scenarios, setScenarios] = useState<Scenario[]>([]);
   const [editingScenario, setEditingScenario] = useState<Scenario | null>(null);
@@ -84,7 +84,8 @@ export default function Home() {
   const [secretRoomIdSearch, setSecretRoomIdSearch] = useState("");
   const [searchedSecretRoom, setSearchedSecretRoom] = useState<Room | null>(null);
 
-  const [adModal, setAdModal] = useState<{ isOpen: boolean, step: number, scenario: Scenario | null }>({ isOpen: false, step: 0, scenario: null });
+  // ★ 広告モーダルの型を拡張（観戦機能を追加）
+  const [adModal, setAdModal] = useState<{ isOpen: boolean, step: number, scenario: Scenario | null, room: Room | null, type: 'trial' | 'spectate' }>({ isOpen: false, step: 0, scenario: null, room: null, type: 'trial' });
   
   const [unreadIndicators, setUnreadIndicators] = useState({ story: false, consult: false, gm: false });
   const chatTabRef = useRef<ChatTab>(chatTab);
@@ -95,7 +96,6 @@ export default function Home() {
   const createdScenarios = scenarios.filter(s => s.authorId === currentUser?.id);
   const availableRoomsRaw = rooms.filter(r => !r.scenario?.isBanned);
 
-  // ★ 追加：ブロック設定に基づく部屋のフィルタリングと警告表示の適用
   const availableRooms = availableRoomsRaw.map(room => {
     if (!currentUser) return room;
     const hostId = room.host_id;
@@ -137,7 +137,6 @@ export default function Home() {
     }
   };
 
-  // ★ 追加：ブロックする
   const blockUser = async (targetId: string) => {
     if (!currentUser) return;
     if (confirm("このユーザーをブロックしますか？\n（お互いに作成した部屋が見えなくなり、あなたが参加している部屋も相手から見えなくなります）")) {
@@ -151,7 +150,6 @@ export default function Home() {
     }
   };
 
-  // ★ 追加：ブロックを解除する
   const unblockUser = async (targetId: string) => {
     if (!currentUser) return;
     const newBlocked = (currentUser.blockedUserIds || []).filter(id => id !== targetId);
@@ -314,7 +312,6 @@ export default function Home() {
     setCurrentUser(profileData);
     await fetchNotifications(userId);
 
-    // ★ 追加：自分をブロックしているユーザーIDを取得する
     const { data: blockedMeData } = await supabase.from('profiles').select('id').contains('blocked_user_ids', [userId]);
     setBlockedMeIds(blockedMeData ? blockedMeData.map((d: any) => d.id) : []);
 
@@ -675,7 +672,7 @@ export default function Home() {
   const executeTrialPlay = async () => {
     if (!currentUser || !adModal.scenario) return;
     const scenario = adModal.scenario;
-    setAdModal({ isOpen: false, step: 0, scenario: null });
+    setAdModal({ isOpen: false, step: 0, scenario: null, room: null, type: 'trial' });
     
     const charId = scenario.presetCharacters[0]?.id;
     if (!charId) { alert("このシナリオにはプリセットキャラクターが設定されていないため、お試しプレイができません。"); return; }
@@ -880,14 +877,19 @@ export default function Home() {
     }
   };
 
-  const generateSceneImage = async () => {
+  // ★ 変更：引数なしのオプショナル関数として定義
+  const generateSceneImage = async (promptText?: string) => {
     if (!activeRoom || !myScene) return;
     setIsLoading(true);
     try {
-      const { data: memoryData } = await supabase.from('ai_memory').select('*').eq('room_id', activeRoom.id).order('created_at', { ascending: false }).limit(10);
-      const recentLogs = memoryData?.reverse().map(m => `${m.role === 'user' ? 'PL' : 'GM'}: ${m.content}`).join('\n') || "";
-      const autoPromptReq = ["あなたはTRPGの情景描写AIです。以下の直近のログから、現在の「場所、雰囲気、見えているもの」を1〜2文の簡潔な日本語で描写してください。キャラクターのセリフや行動ではなく、空間のビジュアルに焦点を当ててください。","【直近のログ】",recentLogs].join('\n');
-      const targetPrompt = await generateAITextWithPrompt(autoPromptReq);
+      let targetPrompt = promptText;
+      
+      if (!targetPrompt || !targetPrompt.trim()) {
+        const { data: memoryData } = await supabase.from('ai_memory').select('*').eq('room_id', activeRoom.id).order('created_at', { ascending: false }).limit(10);
+        const recentLogs = memoryData?.reverse().map(m => `${m.role === 'user' ? 'PL' : 'GM'}: ${m.content}`).join('\n') || "";
+        const autoPromptReq = ["あなたはTRPGの情景描写AIです。以下の直近のログから、現在の「場所、雰囲気、見えているもの」を1〜2文の簡潔な日本語で描写してください。キャラクターのセリフや行動ではなく、空間のビジュアルに焦点を当ててください。","【直近のログ】",recentLogs].join('\n');
+        targetPrompt = await generateAITextWithPrompt(autoPromptReq);
+      }
 
       const translationPrompt = ["以下の日本語の情景描写を、画像生成AI用のカンマ区切りの英語プロンプトに変換してください。","【絶対条件】","・文章ではなく、英単語のカンマ区切りで出力してください。","・不適切な画像が生成されるのを防ぐため、必ず最後に「SFW, fully clothed, masterpiece, high quality」を含めてください。","","情景描写：",targetPrompt].join('\n');
       let englishPrompt = "";
@@ -1314,8 +1316,8 @@ export default function Home() {
           "【設定されたプロローグ】: " + (activeRoom.scenario?.prologue || "特になし"),
           "この導入部において、必ずプレイヤー全員が最低1回はダイス判定を行わなければならない状況を作ってください。",
           "11. 【エピローグとエンディング（最重要）】目的を達成しても、いきなり [SCENARIO_END] を出力しないでください。目的達成後は必ず「【エピローグ】」と明記し、これまでの展開を踏まえて相応しい結末を動的に生成し、事後処理を行わせてください。エピローグ内で必ずプレイヤー全員に最後のダイス判定を行わせる状況を作り、PLがエピローグでの行動を終えたと判断できたターンの最後にのみ [SCENARIO_END] を出力してください。",
-          "12. 【所持アイテムの厳格な更新（超重要）】アイテムを入手・消費した場合は、必ず文章の最後に [INVENTORY_UPDATE: キャラクター名, アイテムA, アイテムB...] のタグを出力して、そのキャラの【最新の所持品リスト全体】をカンマ区切りで上書き登録してください。例：アイテムを拾ったら古いアイテムに加えて新しいアイテムも列挙すること。",
-          "13. 【ステータスの厳格な更新（超重要）】HPやSAN値が減少・変動した場合は、文章中で「HPが減少した」と描写するだけで済ませず、必ずAI出力の一番最後に【変動後の最新の値】を使って [STATUS_UPDATE: キャラ名, 最新HP, 最新SAN] のシステムタグを絶対に出力してください。これがないとシステムにダメージが反映されずゲームが壊れます。"
+          "12. 【所持アイテムの厳格な更新】アイテムを入手・消費した場合は、必ず文章の最後に [INVENTORY_UPDATE: キャラクター名, アイテムA, アイテムB...] のタグを出力してください。",
+          "13. 【ステータスの厳格な更新（超重要）】HPやSAN値が減少・変動した場合は、(HPが減少した)といった文章だけでなく、必ず文章の最後に【変動後の最新の値】を使って [STATUS_UPDATE: キャラ名, 最新HP, 最新SAN] のタグを出力してください。これがないとシステムに反映されません。"
         ];
 
         if (!isLastChapter) {
@@ -1437,6 +1439,8 @@ export default function Home() {
           updateProfile={updateProfile}
           blockUser={blockUser}
           unblockUser={unblockUser}
+          activeRooms={rooms}
+          executeSpectateWithAd={(room) => setAdModal({ isOpen: true, step: 1, scenario: null, room: room, type: 'spectate' })}
         />
       )}
 
@@ -1451,7 +1455,7 @@ export default function Home() {
 
       {currentView === "lobby" && currentUser && (
         <LobbyView 
-          currentUser={currentUser} handleLogout={handleLogout} setShowMailbox={setShowMailbox} unreadCount={unreadCount} secretRoomIdSearch={secretRoomIdSearch} setSecretRoomIdSearch={setSecretRoomIdSearch} rooms={rooms} searchedSecretRoom={searchedSecretRoom} setSearchedSecretRoom={setSearchedSecretRoom} executeJoinRoom={executeJoinRoom} availableRooms={availableRooms} spectateRoom={spectateRoom} setEditingScenario={setEditingScenario} setCurrentView={setCurrentView} createdScenarios={createdScenarios} deleteScenario={deleteScenario} setRoomConfigModal={setRoomConfigModal} fetchAdminData={fetchAdminData} startTrialPlay={(scenario) => setAdModal({ isOpen: true, step: 1, scenario })} availableScenarios={availableScenarios} openUserProfile={openUserProfile} setScenarioAppealTarget={setScenarioAppealTarget} playArchives={playArchives}
+          currentUser={currentUser} handleLogout={handleLogout} setShowMailbox={setShowMailbox} unreadCount={unreadCount} secretRoomIdSearch={secretRoomIdSearch} setSecretRoomIdSearch={setSecretRoomIdSearch} rooms={rooms} searchedSecretRoom={searchedSecretRoom} setSearchedSecretRoom={setSearchedSecretRoom} executeJoinRoom={executeJoinRoom} availableRooms={availableRooms} spectateRoom={spectateRoom} setEditingScenario={setEditingScenario} setCurrentView={setCurrentView} createdScenarios={createdScenarios} deleteScenario={deleteScenario} setRoomConfigModal={setRoomConfigModal} fetchAdminData={fetchAdminData} startTrialPlay={(scenario) => setAdModal({ isOpen: true, step: 1, scenario, room: null, type: 'trial' })} availableScenarios={availableScenarios} openUserProfile={openUserProfile} setScenarioAppealTarget={setScenarioAppealTarget} playArchives={playArchives}
         />
       )}
       
@@ -1459,7 +1463,7 @@ export default function Home() {
       
       {currentView === "game" && activeRoom && myScene && (
         <GameView 
-          activeRoom={activeRoom} myScene={myScene} currentUser={currentUser!} joinedCharacter={joinedCharacter} leaveGame={leaveGame} setReportTarget={setReportTarget as React.Dispatch<React.SetStateAction<{type: 'user' | 'scenario' | 'room', id: string, name: string, roomId?: string, scenarioId?: string, scenarioName?: string, availableUsers?: { id: string, name: string }[]; } | null>>} rollDice={rollDice} startGame={startGame} startSplitting={startSplitting} isSplitMode={isSplitMode} chatTab={chatTab} messages={messages} isLoading={isLoading} isScenarioEnded={isScenarioEnded} setCurrentView={setCurrentView} endGame={endGame} input={input} setInput={setInput} handleSend={handleSend} handleTabClick={handleTabClick} unreadIndicators={unreadIndicators} consultWithAI={consultWithAI} setConsultWithAI={setConsultWithAI} isChatDisabled={isChatDisabled} mergeTeam={mergeTeam} executeMergeAll={executeMergeAll} generateSceneImage={generateSceneImage} proposedTeams={proposedTeams} setProposedTeams={setProposedTeams} isGeneratingSplit={isGeneratingSplit} generateSplitProposal={generateSplitProposal} finishSplitting={finishSplitting} cancelSplitting={cancelSplitting} togglePauseRoom={togglePauseRoom} toggleAFK={toggleAFK} triggerAutoAction={triggerAutoAction} updateInventory={updateInventory} openRoomConfigModal={leaveGameAndCreateRoom} aiPlayersList={aiPlayersList} saveToArchive={saveToArchive}
+          activeRoom={activeRoom} myScene={myScene} currentUser={currentUser!} joinedCharacter={joinedCharacter} leaveGame={leaveGame} setReportTarget={setReportTarget as React.Dispatch<React.SetStateAction<{type: 'user' | 'scenario' | 'room', id: string, name: string, roomId?: string, scenarioId?: string, scenarioName?: string, availableUsers?: { id: string, name: string }[]} | null>>} rollDice={rollDice} startGame={startGame} startSplitting={startSplitting} isSplitMode={isSplitMode} chatTab={chatTab} messages={messages} isLoading={isLoading} isScenarioEnded={isScenarioEnded} setCurrentView={setCurrentView} endGame={endGame} input={input} setInput={setInput} handleSend={handleSend} handleTabClick={handleTabClick} unreadIndicators={unreadIndicators} consultWithAI={consultWithAI} setConsultWithAI={setConsultWithAI} isChatDisabled={isChatDisabled} mergeTeam={mergeTeam} executeMergeAll={executeMergeAll} generateSceneImage={generateSceneImage} proposedTeams={proposedTeams} setProposedTeams={setProposedTeams} isGeneratingSplit={isGeneratingSplit} generateSplitProposal={generateSplitProposal} finishSplitting={finishSplitting} cancelSplitting={cancelSplitting} togglePauseRoom={togglePauseRoom} toggleAFK={toggleAFK} triggerAutoAction={triggerAutoAction} updateInventory={updateInventory} openRoomConfigModal={leaveGameAndCreateRoom} aiPlayersList={aiPlayersList} saveToArchive={saveToArchive}
         />
       )}
       
@@ -1472,12 +1476,22 @@ export default function Home() {
       {adModal.isOpen && (
         <div className="fixed inset-0 bg-black/90 z-[80] flex items-center justify-center p-4">
           <div className="bg-slate-800 border border-pink-500/50 rounded-xl p-8 w-full max-w-sm shadow-2xl text-center space-y-6">
-            <h3 className="text-xl font-bold text-pink-400">📺 広告を視聴してプレイ</h3>
+            <h3 className="text-xl font-bold text-pink-400">📺 広告を視聴して{adModal.type === 'trial' ? "プレイ" : "観戦"}</h3>
             <div className="h-32 bg-slate-900 border border-slate-700 flex items-center justify-center rounded">
               <span className="text-slate-500 font-bold animate-pulse">動画広告が再生されています...<br/>({adModal.step}/3)</span>
             </div>
-            {adModal.step <= 3 ? <button onClick={() => { if(adModal.step === 3) executeTrialPlay(); else setAdModal({...adModal, step: adModal.step + 1}); }} className="w-full bg-pink-600 hover:bg-pink-500 py-3 rounded text-sm font-bold text-white shadow-lg">{adModal.step === 3 ? "お試しプレイを開始する！" : "次の広告へ進む"}</button> : null}
-            <button onClick={() => setAdModal({ isOpen: false, step: 0, scenario: null })} className="text-xs text-slate-400 hover:text-white underline">キャンセル</button>
+            {adModal.step <= 3 ? <button onClick={() => { 
+              if(adModal.step === 3) {
+                if (adModal.type === 'trial') executeTrialPlay();
+                else if (adModal.type === 'spectate' && adModal.room) {
+                  spectateRoom(adModal.room);
+                  setAdModal({ isOpen: false, step: 0, scenario: null, room: null, type: 'trial' });
+                }
+              } else {
+                setAdModal({...adModal, step: adModal.step + 1}); 
+              }
+            }} className="w-full bg-pink-600 hover:bg-pink-500 py-3 rounded text-sm font-bold text-white shadow-lg">{adModal.step === 3 ? (adModal.type === 'trial' ? "お試しプレイを開始する！" : "観戦を開始する！") : "次の広告へ進む"}</button> : null}
+            <button onClick={() => setAdModal({ isOpen: false, step: 0, scenario: null, room: null, type: 'trial' })} className="text-xs text-slate-400 hover:text-white underline">キャンセル</button>
           </div>
         </div>
       )}
