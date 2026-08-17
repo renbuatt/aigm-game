@@ -1,12 +1,12 @@
 import React, { useState, useEffect } from "react";
-import { ViewState, UserProfile, PlayArchive, Scenario } from "../../types";
+import { ViewState, UserProfile, PlayArchive, Scenario, Character } from "../../types";
 import { supabase } from "../../lib/supabase";
 
 type Props = {
   currentUser: UserProfile;
   targetUserId: string;
   setCurrentView: React.Dispatch<React.SetStateAction<ViewState>>;
-  executeExport: (title: string, messages: any[], type: 'chat' | 'summary' | 'novel', images?: string[]) => Promise<void>;
+  executeExport: (title: string, messages: any[], type: 'chat' | 'summary' | 'novel', options?: { archiveId?: string, modelName?: string, scenarioImage?: string, createdAt?: string, coPlayers?: string[], characters?: Character[] }) => Promise<void>;
   isExporting: boolean;
   allScenarios: Scenario[];
   updateProfile: (updates: Partial<UserProfile>) => Promise<void>;
@@ -47,7 +47,6 @@ export default function UserProfileView({ currentUser, targetUserId, setCurrentV
         }
       }
 
-      // ★ 履歴は最新5件のみ取得
       const { data: archiveData } = await supabase.from('play_archives').select('*').eq('user_id', targetUserId).order('created_at', { ascending: false }).limit(5);
       if (archiveData) {
         setArchives(archiveData.map((d: any) => ({
@@ -167,7 +166,6 @@ export default function UserProfileView({ currentUser, targetUserId, setCurrentV
       )}
 
       <div className="mb-8">
-        {/* ★ ボタンを削除し、純粋な履歴表示のみに変更 */}
         <h3 className="text-lg font-bold text-amber-400 mb-4 border-b border-slate-700 pb-2">📜 最近のプレイ履歴 (最大5件)</h3>
         {archives.length === 0 ? (
           <p className="text-sm text-slate-500 bg-slate-800 p-4 rounded text-center">プレイ履歴がありません。</p>
