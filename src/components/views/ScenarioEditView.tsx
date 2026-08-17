@@ -1,5 +1,5 @@
 import React, { useState } from "react";
-import { ViewState, Scenario } from "../../types";
+import { ViewState, Scenario, Character } from "../../types";
 
 type Props = {
   editingScenario: Scenario;
@@ -13,7 +13,6 @@ type Props = {
 export default function ScenarioEditView({ editingScenario, setEditingScenario, editingCharIndex, setEditingCharIndex, saveScenario, setCurrentView }: Props) {
   const [tab, setTab] = useState<'basic' | 'chars' | 'plot'>('basic');
   
-  // ★ チャプター管理用のState（内部的には plot をJSON化して保存・復元する）
   const initialChapters = (() => {
     try {
       const parsed = JSON.parse(editingScenario.plot);
@@ -49,13 +48,12 @@ export default function ScenarioEditView({ editingScenario, setEditingScenario, 
     setChapters(newChapters);
   };
 
-  // 保存時にチャプター情報をJSON文字列に戻して Scenario.plot にセットする
   const handleSave = () => {
     const finalPlotString = JSON.stringify(chapters);
     setEditingScenario(prev => prev ? { ...prev, plot: finalPlotString } : null);
     setTimeout(() => {
       saveScenario();
-    }, 100); // State反映待ち
+    }, 100);
   };
 
   return (
@@ -148,7 +146,6 @@ export default function ScenarioEditView({ editingScenario, setEditingScenario, 
               <textarea value={editingScenario.prologue} onChange={e=>setEditingScenario({...editingScenario, prologue: e.target.value})} className="w-full h-24 bg-slate-900 border border-emerald-900/50 rounded p-3 text-sm text-white focus:border-emerald-500" placeholder="探索者たちは古びた洋館の前に立っていた。扉は少しだけ開いている..."></textarea>
             </div>
 
-            {/* ★ チャプター別執筆エディタ */}
             <div className="bg-slate-800 p-6 rounded-xl border border-amber-700/50 shadow-lg">
               <div className="flex justify-between items-end mb-4 border-b border-slate-700 pb-2">
                 <div>
