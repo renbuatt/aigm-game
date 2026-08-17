@@ -84,7 +84,6 @@ export default function Home() {
   const [secretRoomIdSearch, setSecretRoomIdSearch] = useState("");
   const [searchedSecretRoom, setSearchedSecretRoom] = useState<Room | null>(null);
 
-  // ★ 広告モーダルの型を拡張（観戦機能を追加）
   const [adModal, setAdModal] = useState<{ isOpen: boolean, step: number, scenario: Scenario | null, room: Room | null, type: 'trial' | 'spectate' }>({ isOpen: false, step: 0, scenario: null, room: null, type: 'trial' });
   
   const [unreadIndicators, setUnreadIndicators] = useState({ story: false, consult: false, gm: false });
@@ -877,38 +876,6 @@ export default function Home() {
     }
   };
 
-  // ★ 変更：引数なしのオプショナル関数として定義
-  const generateSceneImage = async (promptText?: string) => {
-    if (!activeRoom || !myScene) return;
-    setIsLoading(true);
-    try {
-      let targetPrompt = promptText;
-      
-      if (!targetPrompt || !targetPrompt.trim()) {
-        const { data: memoryData } = await supabase.from('ai_memory').select('*').eq('room_id', activeRoom.id).order('created_at', { ascending: false }).limit(10);
-        const recentLogs = memoryData?.reverse().map(m => `${m.role === 'user' ? 'PL' : 'GM'}: ${m.content}`).join('\n') || "";
-        const autoPromptReq = ["あなたはTRPGの情景描写AIです。以下の直近のログから、現在の「場所、雰囲気、見えているもの」を1〜2文の簡潔な日本語で描写してください。キャラクターのセリフや行動ではなく、空間のビジュアルに焦点を当ててください。","【直近のログ】",recentLogs].join('\n');
-        targetPrompt = await generateAITextWithPrompt(autoPromptReq);
-      }
-
-      const translationPrompt = ["以下の日本語の情景描写を、画像生成AI用のカンマ区切りの英語プロンプトに変換してください。","【絶対条件】","・文章ではなく、英単語のカンマ区切りで出力してください。","・不適切な画像が生成されるのを防ぐため、必ず最後に「SFW, fully clothed, masterpiece, high quality」を含めてください。","","情景描写：",targetPrompt].join('\n');
-      let englishPrompt = "";
-      try { englishPrompt = await generateAITextWithPrompt(translationPrompt); } catch (err) { englishPrompt = `${targetPrompt}, SFW, fully clothed, masterpiece, high quality`; }
-      const prompt = encodeURIComponent(`${englishPrompt}, TRPG scene, cinematic lighting, dramatic atmosphere`);
-      const seed = Math.floor(Math.random() * 100000);
-      const url = `https://image.pollinations.ai/prompt/${prompt}?nologo=true&seed=${seed}&safe=true`;
-      const res = await fetch(url);
-      if (!res.ok) throw new Error("AIサーバーが混雑しています");
-      const blob = await res.blob();
-      const reader = new FileReader();
-      reader.onloadend = async () => {
-        const base64data = reader.result as string;
-        await pushMessage(activeRoom.id, { sender: "gm", text: `【ホストが情景画像を生成しました】\n「${targetPrompt}」`, type: "image", imageUrl: base64data, sceneId: myScene.id, channel: "story" });
-      };
-      reader.readAsDataURL(blob);
-    } catch (err: any) { alert("画像の生成に失敗しました（AIサーバー混雑エラー等）。\n少し時間をおいて再度お試しください。"); } finally { setIsLoading(false); }
-  };
-
   const executeExport = async (title: string, sourceMessages: Message[], type: 'chat' | 'summary' | 'novel', options?: { archiveId?: string, modelName?: string, viewPoint?: 'third' | 'first', myCharacterName?: string, scenarioImage?: string, createdAt?: string, coPlayers?: string[], characters?: Character[] }) => {
     const printWindow = window.open('', '_blank');
     if (!printWindow) { alert("ポップアップがブロックされました。ブラウザの設定でポップアップを許可してください。"); return; }
@@ -1299,11 +1266,12 @@ export default function Home() {
       const ruleSpec = ruleSpecLines.join('\n'); const gmStyle = gmStyleLines.join('\n');
       const diceBase = activeRoom.rule === 'dnd' ? '1d20' : activeRoom.rule === 'sw25' ? '2d6' : activeRoom.rule === 'storytelling' ? '1d6' : '1d100';
 
+      // ★ ボリュームとペース配分の指示を強化
       let roleInstructionLines: string[] = [];
       if (targetTab === "story") {
         roleInstructionLines = [
           "【重要：GMの絶対ルール】",
-          "1. PLたちが明確な「行動宣言」を出した時のみ物語を進行させてください。",
+          "1. PLたちが明確な「行動宣言」を出した時のみ物語を進行させてください。また、1回のレスポンスにおける情景描写やNPCのセリフのテキストボリュームを従来の1.5倍程度に増やし、よりリッチで読み応えのある描写を心がけてください。",
           `2. リスクを伴う行動には必ず判定（${diceBase}）を要求し、結果が出るまで描写を待機してください。`,
           "3. 【解法・ヒント・選択肢・次期目標の完全禁止（超重要）】「次は〜が残されています」「〜をしましょう」「（※〜があるかもしれません）」といった、タスクリストの提示、次期目標の誘導、具体的な選択肢、カッコ書きによるアドバイスやヒントは一切出力しないでください（初心者難易度を除く）。進行は完全にPLの自発的な行動に委ねてください。",
           "4. 【アイテムの厳格な管理（四次元ポケット禁止）】上記の【現在の全キャラクターの所持アイテム】に記載されていないアイテムを使おうとした場合は即座に却下してください。",
@@ -1311,13 +1279,13 @@ export default function Home() {
           "6. 誰かが行動した後は、必ず「〇〇さんはそう動きました。では、△△さんはどうしますか？」と他の人間PLに行動を促し、全員の行動が出揃うまで待機してください。",
           "7. 【AI相棒の自律行動と割合（超重要）】AI相棒のターンになったら、絶対に人間に「（AIキャラ名）はどうしますか？」と尋ねないでください。AI GM自身が彼らの行動を自律的に描写し、必要なら結果をシミュレートして「🎲 [名前]の〇〇判定 ➔ 出目: X 【成功/失敗】」と自己完結させてください。また、AI相棒はあくまでサポート役です。ダイスロールや重要な決断の頻度は【AI 2 : 人間PL 8】の割合になるよう控えめに行動させてください。",
           "8. 不自然な行動や間違ったアイテムの使用は容赦なく失敗扱い・状況悪化させてください。",
-          `9. 想定プレイ時間は「約${activeRoom.scenario?.playTime || 60}分」です。ペース配分を意識し、早すぎる場合は障害を追加してください。`,
+          `9. 想定プレイ時間は「約${activeRoom.scenario?.playTime || 60}分」です。すぐに目的を達成させず、探索や会話のターンを従来の1.5倍程度じっくりと長めにとるようペース配分を意識し、小さな障害や寄り道を多めに追加して物語を引っ張ってください。`,
           "10. 【プロローグ（導入）について】セッション開始直後の導入フェーズでは、設定されたプロローグ情報があればそれに従い、無ければ本編プロットから推測して自動生成してください。",
           "【設定されたプロローグ】: " + (activeRoom.scenario?.prologue || "特になし"),
           "この導入部において、必ずプレイヤー全員が最低1回はダイス判定を行わなければならない状況を作ってください。",
           "11. 【エピローグとエンディング（最重要）】目的を達成しても、いきなり [SCENARIO_END] を出力しないでください。目的達成後は必ず「【エピローグ】」と明記し、これまでの展開を踏まえて相応しい結末を動的に生成し、事後処理を行わせてください。エピローグ内で必ずプレイヤー全員に最後のダイス判定を行わせる状況を作り、PLがエピローグでの行動を終えたと判断できたターンの最後にのみ [SCENARIO_END] を出力してください。",
-          "12. 【所持アイテムの厳格な更新】アイテムを入手・消費した場合は、必ず文章の最後に [INVENTORY_UPDATE: キャラクター名, アイテムA, アイテムB...] のタグを出力してください。",
-          "13. 【ステータスの厳格な更新（超重要）】HPやSAN値が減少・変動した場合は、(HPが減少した)といった文章だけでなく、必ず文章の最後に【変動後の最新の値】を使って [STATUS_UPDATE: キャラ名, 最新HP, 最新SAN] のタグを出力してください。これがないとシステムに反映されません。"
+          "12. 【所持アイテムの厳格な更新（超重要）】アイテムを入手・消費した場合は、必ず文章の最後に [INVENTORY_UPDATE: キャラクター名, アイテムA, アイテムB...] のタグを出力して、そのキャラの【最新の所持品リスト全体】をカンマ区切りで上書き登録してください。例：アイテムを拾ったら古いアイテムに加えて新しいアイテムも列挙すること。",
+          "13. 【ステータスの厳格な更新（超重要）】HPやSAN値が減少・変動した場合は、文章中で「HPが減少した」と描写するだけで済ませず、必ずAI出力の一番最後に【変動後の最新の値】を使って [STATUS_UPDATE: キャラ名, 最新HP, 最新SAN] のシステムタグを絶対に出力してください。これがないとシステムにダメージが反映されずゲームが壊れます。"
         ];
 
         if (!isLastChapter) {
@@ -1327,10 +1295,10 @@ export default function Home() {
         if (activeRoom.is_trial) {
           roleInstructionLines.push(
             "【お試しプレイ専用指示（絶対厳守ルール）】",
-            "このセッションは約10分程度のお試し版です。以下のルールを絶対に守ってください。",
+            "このセッションは約15分程度のお試し版です。以下のルールを絶対に守ってください。",
             "1. 【ネタバレの完全禁止】物語の核心などのネタバレは一切行わないでください。",
             "2. 【ダイスロールの強制】必ずセッション内で1回はPLにダイス判定を行わせてください。",
-            "3. 【クリフハンガーでの強制終了】一番物語が面白く盛り上がってきた絶頂のタイミングを見計らって、プレイヤーの行動を待たずにバッサリと物語を強制終了させてください。",
+            "3. 【クリフハンガーでの強制終了】すぐに終了させるのではなく、世界観や探索を十分に楽しませてターン数を稼いだ後、一番物語が面白く盛り上がってきた絶頂のタイミングを見計らって、プレイヤーの行動を待たずにバッサリと物語を強制終了させてください。",
             "4. 終了の際は「――この先は本編でお楽しみください！」と期待を煽り、ターンの最後に必ず [SCENARIO_END] を出力してください。"
           );
         }
