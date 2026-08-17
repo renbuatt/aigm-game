@@ -90,7 +90,6 @@ export default function Home() {
   const prevMessagesLength = useRef(0);
   const [playArchives, setPlayArchives] = useState<PlayArchive[]>([]);
 
-  // ★修正箇所：自分が作ったシナリオは、BANされていても表示させる！
   const availableScenarios = scenarios.filter(s => !s.isBanned);
   const createdScenarios = scenarios.filter(s => s.authorId === currentUser?.id);
   const availableRooms = rooms.filter(r => !r.scenario?.isBanned);
@@ -855,6 +854,7 @@ export default function Home() {
     } catch (err: any) { alert("画像の生成に失敗しました（AIサーバー混雑エラー等）。\n少し時間をおいて再度お試しください。"); }
   };
 
+  // ★ 変更: プロンプトでキャラ紹介を要求し、それをもとにHTMLを組み立てる
   const executeExport = async (title: string, sourceMessages: Message[], type: 'chat' | 'summary' | 'novel', options?: { archiveId?: string, modelName?: string, scenarioImage?: string, createdAt?: string, coPlayers?: string[], characters?: Character[] }) => {
     const printWindow = window.open('', '_blank');
     if (!printWindow) { alert("ポップアップがブロックされました。ブラウザの設定でポップアップを許可してください。"); return; }
@@ -873,10 +873,13 @@ export default function Home() {
         .cover img { max-width: 80%; max-height: 50vh; object-fit: contain; border-radius: 8px; box-shadow: 0 4px 15px rgba(0,0,0,0.2); margin-bottom: 30px; }
         .cover h1 { font-size: 36px; margin-bottom: 20px; color: #2c3e50; }
         .cover .meta { font-size: 16px; color: #666; line-height: 1.6; }
-        .character-intro { display: flex; align-items: flex-start; gap: 20px; margin-bottom: 30px; border-bottom: 1px solid #eee; padding-bottom: 20px; }
-        .character-intro img { width: 120px; height: 120px; object-fit: cover; border-radius: 50%; box-shadow: 0 2px 8px rgba(0,0,0,0.1); }
-        .character-info h3 { margin: 0 0 5px 0; font-size: 20px; color: #2c3e50; }
-        .character-info p { margin: 0; color: #555; font-size: 14px; white-space: pre-wrap; line-height: 1.6; }
+        
+        .character-intro { display: flex; align-items: flex-start; gap: 20px; margin-bottom: 40px; }
+        .character-intro img { width: 140px; height: 140px; object-fit: cover; border-radius: 8px; box-shadow: 0 4px 10px rgba(0,0,0,0.15); flex-shrink: 0; }
+        .character-info h3 { margin: 0 0 10px 0; font-size: 22px; color: #2c3e50; border-bottom: 2px solid #10b981; padding-bottom: 5px; }
+        .character-info p { margin: 0; color: #444; font-size: 14px; white-space: pre-wrap; line-height: 1.7; }
+        .no-image { width: 140px; height: 140px; background: #eee; border-radius: 8px; display: flex; align-items: center; justify-content: center; color: #999; font-size: 12px; flex-shrink: 0; }
+
         .novel-body { white-space: pre-wrap; line-height: 1.9; color: #333; font-size: 15px; }
         .novel-image { text-align: center; margin: 40px 0; }
         .novel-image img { max-width: 100%; max-height: 400px; border-radius: 8px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); }
@@ -894,21 +897,32 @@ export default function Home() {
       </div>
     `;
 
-    const charactersHtml = options?.characters && options.characters.length > 0 ? `
-      <div class="page-break">
-        <h2 style="text-align: center; margin-bottom: 40px; font-size: 24px; color: #2c3e50;">登場キャラクター</h2>
-        ${options.characters.map(c => `
-          <div class="character-intro">
-            ${c.imageUrl ? `<img src="${c.imageUrl}" />` : `<div style="width:120px;height:120px;background:#eee;border-radius:50%;display:flex;align-items:center;justify-content:center;color:#999;font-size:12px;">No Image</div>`}
-            <div class="character-info">
-              <h3>${c.name} <span style="font-size:12px; font-weight:normal;">(${c.job})</span></h3>
-              <p><strong>【設定・性格】</strong><br/>${c.personality}</p>
-              <p style="font-size:12px; margin-top:5px; color:#888;">HP:${c.hp} / SAN:${c.san} / STR:${c.str} / DEX:${c.dex} / INT:${c.int} / CON:${c.con}</p>
-            </div>
-          </div>
-        `).join('')}
-      </div>
-    ` : '';
+    const generateCharsHtml = (introMap: Record<string, string> = {}) => {
+      if (!options?.characters || options.characters.length === 0) return '';
+      const chunkSize = 3;
+      const chunks = [];
+      for (let i = 0; i < options.characters.length; i += chunkSize) {
+        chunks.push(options.characters.slice(i, i + chunkSize));
+      }
+      return chunks.map((chunk, chunkIdx) => `
+        <div class="page-break">
+          ${chunkIdx === 0 ? '<h2 style="text-align: center; margin-bottom: 40px; font-size: 24px; color: #2c3e50;">登場キャラクター</h2>' : ''}
+          ${chunk.map(c => {
+            const introText = introMap[c.name] || c.personality || '情報なし';
+            const playerName = c.playerName ? c.playerName : 'AI相棒';
+            return `
+              <div class="character-intro">
+                ${c.imageUrl ? `<img src="${c.imageUrl}" />` : `<div class="no-image">No Image</div>`}
+                <div class="character-info">
+                  <h3>${c.name} <span style="font-size:14px; font-weight:normal; color:#666;">（PL: ${playerName}）</span></h3>
+                  <p><strong>【特徴・活躍】</strong><br/>${introText}</p>
+                </div>
+              </div>
+            `;
+          }).join('')}
+        </div>
+      `).join('');
+    };
 
     if (type === 'chat') {
       const chatHtml = targetMessages.map(m => {
@@ -925,7 +939,7 @@ export default function Home() {
         ${commonStyle}
         <div class="page">
           ${coverHtml}
-          ${charactersHtml}
+          ${generateCharsHtml()}
           <div class="page-break">
             <h2 style="text-align: center; margin-bottom: 40px; font-size: 24px; color: #2c3e50;">チャットログ</h2>
             ${chatHtml}
@@ -957,13 +971,30 @@ export default function Home() {
             "2. プレイヤー間の相談は魅力的な会話劇として昇華すること。",
             "3. ダイスロールの成否はドラマチックな演出に変換すること。",
             "4. 読者を惹きつける一つの完成された短編小説に仕上げること。",
-            "5. 【重要】チャットログ内に [IMAGE_ID: X] というマーカーがあった場合、小説の展開上それに対応するシーンの適切な段落の合間に、必ずそのまま `[IMAGE_ID: X]` という文字列を出力して画像を挿入する位置を指定すること。"
+            "5. 【重要】チャットログ内に [IMAGE_ID: X] というマーカーがあった場合、そのまま `[IMAGE_ID: X]` と出力すること。",
+            "6. 【超重要】本編の前に、必ず以下のマーカーを使って各キャラクターの紹介文（設定とチャットログでのプレイスタイルを統合した100文字程度の要約）を出力してください。",
+            "マーカーの形式： [CHAR_INTRO: キャラクター名] 紹介文",
+            "7. 全員分の紹介文を出力し終えたら、必ず [NOVEL_START] というマーカーを置き、そこから本編を書き始めてください。"
           ].join('\n');
       
       try {
         const generatedText = await generateAITextWithPrompt(prompt + "\n\n【チャットログ】\n" + logTextForAI);
         
+        let introMap: Record<string, string> = {};
         let finalNovelText = generatedText;
+
+        if (generatedText.includes('[NOVEL_START]')) {
+          const parts = generatedText.split('[NOVEL_START]');
+          const introPart = parts[0];
+          finalNovelText = parts[1].trim();
+
+          const introRegex = /\[CHAR_INTRO:\s*(.+?)\]([\s\S]*?)(?=\[CHAR_INTRO:|$)/g;
+          let m;
+          while ((m = introRegex.exec(introPart)) !== null) {
+            introMap[m[1].trim()] = m[2].trim();
+          }
+        }
+
         imagesList.forEach((imgUrl, idx) => {
           const imgTag = `</div><div class="novel-image"><img src="${imgUrl}" /></div><div class="novel-body">`;
           finalNovelText = finalNovelText.replace(new RegExp(`\\[IMAGE_ID:\\s*${idx + 1}\\]`, 'g'), imgTag);
@@ -973,7 +1004,7 @@ export default function Home() {
           ${commonStyle}
           <div class="page">
             ${coverHtml}
-            ${charactersHtml}
+            ${generateCharsHtml(introMap)}
             <div class="page-break">
               <h2 style="text-align: center; margin-bottom: 40px; font-size: 24px; color: #2c3e50;">本編</h2>
               <div class="novel-body">${finalNovelText}</div>
@@ -1005,8 +1036,18 @@ export default function Home() {
     const endIndex = messages.findIndex(m => m.text.includes('[SCENARIO_END]'));
     const baseMessages = endIndex !== -1 ? messages.slice(0, endIndex + 1) : messages;
 
+    // ★ HNを取得してキャラクターにマッピング
     const userIds = Object.keys(activeRoom.joined_users || {});
-    const coPlayers = allUsers.filter(u => userIds.includes(u.id) && u.id !== currentUser?.id).map(u => u.handleName);
+    const { data: profiles } = await supabase.from('profiles').select('id, handle_name').in('id', userIds);
+    const profileMap: Record<string, string> = {};
+    if (profiles) {
+      profiles.forEach(p => { profileMap[p.id] = p.handle_name; });
+    }
+
+    const charactersWithPlayers = activeRoom.scenario?.presetCharacters.map(c => {
+      const uid = Object.keys(activeRoom.joined_users || {}).find(k => activeRoom.joined_users![k] === c.id);
+      return { ...c, playerName: uid ? profileMap[uid] : 'AI相棒' };
+    }) || [];
 
     await executeExport(
       activeRoom.scenario?.title || "名称未設定", 
@@ -1015,8 +1056,8 @@ export default function Home() {
       {
         scenarioImage: activeRoom.scenario?.imageUrl,
         createdAt: new Date().toISOString(),
-        coPlayers: coPlayers,
-        characters: activeRoom.scenario?.presetCharacters
+        coPlayers: Object.values(profileMap).filter(name => name !== currentUser?.handleName),
+        characters: charactersWithPlayers
       }
     );
   };
@@ -1026,9 +1067,19 @@ export default function Home() {
     const endIndex = messages.findIndex(m => m.text.includes('[SCENARIO_END]'));
     const baseMessages = endIndex !== -1 ? messages.slice(0, endIndex + 1) : messages;
 
+    // ★ HNを取得してキャラクターにマッピングして保存
     const userIds = Object.keys(activeRoom.joined_users || {});
-    const { data: profiles } = await supabase.from('profiles').select('handle_name').in('id', userIds);
-    const coPlayers = profiles ? profiles.map(p => p.handle_name) : [];
+    const { data: profiles } = await supabase.from('profiles').select('id, handle_name').in('id', userIds);
+    const profileMap: Record<string, string> = {};
+    if (profiles) {
+      profiles.forEach(p => { profileMap[p.id] = p.handle_name; });
+    }
+    const coPlayers = Object.values(profileMap).filter(name => name !== currentUser?.handleName);
+
+    const charactersWithPlayers = activeRoom.scenario?.presetCharacters.map(c => {
+      const uid = Object.keys(activeRoom.joined_users || {}).find(k => activeRoom.joined_users![k] === c.id);
+      return { ...c, playerName: uid ? profileMap[uid] : 'AI相棒' };
+    }) || [];
 
     const archiveData = { 
       user_id: currentUser.id, 
@@ -1038,7 +1089,7 @@ export default function Home() {
       chat_logs: baseMessages,
       rule: activeRoom.rule,
       co_players: coPlayers,
-      characters: activeRoom.scenario?.presetCharacters || [] 
+      characters: charactersWithPlayers 
     };
     
     const { error } = await supabase.from('play_archives').insert(archiveData);

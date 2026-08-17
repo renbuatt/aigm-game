@@ -37,6 +37,7 @@ export type Character = {
   wis: number;
   cha: number;
   items?: string;
+  playerName?: string; // ★追加：プレイヤー名（HN）
 };
 
 export type Scenario = {
@@ -150,5 +151,5 @@ export type PlayArchive = {
   rule?: string;
   coPlayers?: string[];
   novels?: Record<string, string>;
-  characters?: Character[]; // ★追加
+  characters?: Character[];
 };
