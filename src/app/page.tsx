@@ -5,7 +5,7 @@ import { supabase } from "../lib/supabase";
 import { generateAIResponse, generateAITextWithPrompt } from "../lib/ai";
 import { 
   ViewState, UserProfile, Notification, BanAppeal, Report, 
-  Character, Scenario, Scene, Room, Message, ChatTab, PlayArchive 
+  Character, Scenario, Scene, Room, Message, ChatTab 
 } from "../types";
 
 import LoginView from "../components/views/LoginView";
@@ -119,7 +119,6 @@ export default function Home() {
     }
   };
 
-  // ★ 追加: プロフィール情報の更新
   const updateProfile = async (updates: Partial<UserProfile>) => {
     if (!currentUser) return;
     const { error } = await supabase.from('profiles').update({
@@ -911,11 +910,10 @@ export default function Home() {
       co_players: coPlayers 
     };
     
-    const { data, error } = await supabase.from('play_archives').insert(archiveData).select().single();
+    const { error } = await supabase.from('play_archives').insert(archiveData);
     if (error) { alert("書庫への保存に失敗しました: " + error.message); } 
     else {
       alert("プレイ履歴に保存しました！\nユーザーページからいつでも確認できます。");
-      setPlayArchives(prev => [{ id: data.id, userId: data.user_id, scenarioTitle: data.scenario_title, scenarioImage: data.scenario_image, characterName: data.character_name, chatLogs: data.chat_logs, createdAt: data.created_at, rule: data.rule, coPlayers: data.co_players }, ...prev]);
     }
   };
 
@@ -1124,7 +1122,7 @@ export default function Home() {
           executeExport={executeExport} 
           isExporting={isExporting} 
           allScenarios={scenarios} 
-          updateProfile={updateProfile} // ★ 編集用に追加
+          updateProfile={updateProfile}
         />
       )}
 
