@@ -833,6 +833,38 @@ export default function Home() {
     }
   };
 
+  // ★ 復活＆改良: 空欄でもAIが自動でプロンプトを推測して画像生成するように修正
+  const generateSceneImage = async (promptText?: string) => {
+    if (!activeRoom || !myScene) return;
+    setIsLoading(true);
+    try {
+      let targetPrompt = promptText;
+      
+      if (!targetPrompt || !targetPrompt.trim()) {
+        const { data: memoryData } = await supabase.from('ai_memory').select('*').eq('room_id', activeRoom.id).order('created_at', { ascending: false }).limit(10);
+        const recentLogs = memoryData?.reverse().map(m => `${m.role === 'user' ? 'PL' : 'GM'}: ${m.content}`).join('\n') || "";
+        const autoPromptReq = ["あなたはTRPGの情景描写AIです。以下の直近のログから、現在の「場所、雰囲気、見えているもの」を1〜2文の簡潔な日本語で描写してください。キャラクターのセリフや行動ではなく、空間のビジュアルに焦点を当ててください。","【直近のログ】",recentLogs].join('\n');
+        targetPrompt = await generateAITextWithPrompt(autoPromptReq);
+      }
+
+      const translationPrompt = ["以下の日本語の情景描写を、画像生成AI用のカンマ区切りの英語プロンプトに変換してください。","【絶対条件】","・文章ではなく、英単語のカンマ区切りで出力してください。","・不適切な画像が生成されるのを防ぐため、必ず最後に「SFW, fully clothed, masterpiece, high quality」を含めてください。","","情景描写：",targetPrompt].join('\n');
+      let englishPrompt = "";
+      try { englishPrompt = await generateAITextWithPrompt(translationPrompt); } catch (err) { englishPrompt = `${targetPrompt}, SFW, fully clothed, masterpiece, high quality`; }
+      const prompt = encodeURIComponent(`${englishPrompt}, TRPG scene, cinematic lighting, dramatic atmosphere`);
+      const seed = Math.floor(Math.random() * 100000);
+      const url = `https://image.pollinations.ai/prompt/${prompt}?nologo=true&seed=${seed}&safe=true`;
+      const res = await fetch(url);
+      if (!res.ok) throw new Error("AIサーバーが混雑しています");
+      const blob = await res.blob();
+      const reader = new FileReader();
+      reader.onloadend = async () => {
+        const base64data = reader.result as string;
+        await pushMessage(activeRoom.id, { sender: "gm", text: `【ホストが情景画像を生成しました】\n「${targetPrompt}」`, type: "image", imageUrl: base64data, sceneId: myScene.id, channel: "story" });
+      };
+      reader.readAsDataURL(blob);
+    } catch (err: any) { alert("画像の生成に失敗しました（AIサーバー混雑エラー等）。\n少し時間をおいて再度お試しください。"); } finally { setIsLoading(false); }
+  };
+
   const executeExport = async (title: string, sourceMessages: Message[], type: 'chat' | 'summary' | 'novel', options?: { archiveId?: string, modelName?: string, viewPoint?: 'third' | 'first', myCharacterName?: string, scenarioImage?: string, createdAt?: string, coPlayers?: string[], characters?: Character[] }) => {
     const printWindow = window.open('', '_blank');
     if (!printWindow) { alert("ポップアップがブロックされました。ブラウザの設定でポップアップを許可してください。"); return; }
@@ -1189,7 +1221,6 @@ export default function Home() {
 
       let scenarioPlotText = `【物語の全体構成（全${chapters.length}章）】\n${chapterProgress}\n\n【現在（第${currentChapIndex + 1}章）のプロット・台本】\n${currentChapter.content}`;
 
-      // ★ 難易度指示の強化（普通以上はヒント・誘導・選択肢を完全禁止）
       let difficultyInstruction = "";
       switch (activeRoom.difficulty) {
         case "beginner": difficultyInstruction = "【難易度：初心者】接待プレイです。困っていればヒントや選択肢を出しても構いません。"; break;
@@ -1239,7 +1270,7 @@ export default function Home() {
           "【設定されたプロローグ】: " + (activeRoom.scenario?.prologue || "特になし"),
           "この導入部において、必ずプレイヤー全員が最低1回はダイス判定を行わなければならない状況を作ってください。",
           "11. 【エピローグとエンディング（最重要）】目的を達成しても、いきなり [SCENARIO_END] を出力しないでください。目的達成後は必ず「【エピローグ】」と明記し、これまでの展開を踏まえて相応しい結末を動的に生成し、事後処理を行わせてください。エピローグ内で必ずプレイヤー全員に最後のダイス判定を行わせる状況を作り、PLがエピローグでの行動を終えたと判断できたターンの最後にのみ [SCENARIO_END] を出力してください。",
-          "12. 【所持アイテムの自動更新】探索等でアイテムを入手・消費した場合は、文章の最後に [INVENTORY_UPDATE: キャラクター名, アイテムA, アイテムB...] と出力してください。"
+          "12. 【所持アイテムの厳格な更新（超重要）】アイテムを入手・消費した場合は、必ず文章の最後に [INVENTORY_UPDATE: キャラクター名, アイテムA, アイテムB...] のタグを出力して、そのキャラの【最新の所持品リスト全体】をカンマ区切りで上書き登録してください。例：アイテムを拾ったら古いアイテムに加えて新しいアイテムも列挙すること。"
         ];
 
         if (!isLastChapter) {
@@ -1296,7 +1327,8 @@ export default function Home() {
          setAiPlayersList(prev => prev.map(p => p.name.replace(/\s+/g, '').includes(targetName) ? { ...p, hp: newHp, san: newSan } : p));
       }
 
-      const invRegex = /\[INVENTORY_UPDATE:\s*([^,]+),\s*(.+)\]/g;
+      // ★ 改良: INVENTORY_UPDATEの正規表現を安全なものに修正（後ろの]まで取得する）
+      const invRegex = /\[INVENTORY_UPDATE:\s*([^,]+),\s*([^\]]+)\]/g;
       let invMatch;
       let newInventories = { ...(activeRoom.inventories || {}) };
       let invUpdated = false;
