@@ -26,7 +26,7 @@ type Props = {
   availableScenarios: Scenario[];
   openUserProfile: (userId: string) => void;
   setScenarioAppealTarget: React.Dispatch<React.SetStateAction<Scenario | null>>;
-  playArchives: PlayArchive[]; // ★ 追加：クリア判定用
+  playArchives: PlayArchive[];
 };
 
 export default function LobbyView({
@@ -43,7 +43,6 @@ export default function LobbyView({
   const sortedTrials = [...trialScenarios].sort((a,b) => trialSort === 'popular' ? (b.ratingSum/b.ratingCount || 0) - (a.ratingSum/a.ratingCount || 0) : (a.id < b.id ? 1 : -1));
   const playableScenarios = availableScenarios.filter(s => s.isPlayableByOthers);
 
-  // ★ 追加：前提シナリオをクリアしているかチェック
   const isScenarioCleared = (scenarioId: string) => {
     return playArchives.some(a => a.scenarioId === scenarioId);
   };
@@ -105,13 +104,18 @@ export default function LobbyView({
                   const takenIds = Object.values(room.joined_users || {});
                   const availableChars = room.scenario?.presetCharacters.filter(c => !takenIds.includes(c.id)) || [];
                   
-                  // ★ 追加：前提シナリオのチェック
                   const reqId = room.scenario?.requiredScenarioId;
                   const hasClearRequired = reqId ? isScenarioCleared(reqId) : true;
                   const reqScenario = getRequiredScenario(reqId);
 
                   return (
-                    <div key={room.id} className="bg-slate-800 border border-slate-700 rounded-xl p-4 flex gap-4 hover:border-blue-500 relative">
+                    // ★ 変更：ブロック警告表示のスタイル
+                    <div key={room.id} className={`bg-slate-800 border rounded-xl p-4 flex gap-4 relative transition-colors ${room.isWarning ? 'border-red-500 shadow-[0_0_10px_rgba(239,68,68,0.5)]' : 'border-slate-700 hover:border-blue-500'}`}>
+                      {room.isWarning && (
+                        <div className="absolute top-0 right-0 bg-red-600 text-white text-[10px] font-bold px-3 py-1 rounded-bl-lg rounded-tr-lg">
+                          ⚠️ あなたをブロックしているユーザーが参加しています
+                        </div>
+                      )}
                       <img src={room.scenario?.imageUrl || NO_IMAGE_SCENARIO} className="w-24 h-24 object-cover rounded" />
                       <div className="flex-1">
                         <div className="flex justify-between items-start">
@@ -129,7 +133,6 @@ export default function LobbyView({
                         </div>
                         {room.host_message && <p className="text-xs text-slate-300 italic mb-2">「{room.host_message}」</p>}
                         
-                        {/* ★ 参加制御 */}
                         {!hasClearRequired && !isHost ? (
                           <div className="bg-red-900/30 border border-red-500/50 p-2 rounded mt-2">
                             <p className="text-xs text-red-300 font-bold mb-1">⚠️ 参加条件を満たしていません</p>
@@ -163,7 +166,6 @@ export default function LobbyView({
             <div className="h-[500px] overflow-y-auto space-y-4 pr-2 custom-scrollbar">
               {playableScenarios.length === 0 ? <p className="text-slate-400 text-sm p-4 text-center">公開されているシナリオはありません。</p> :
                 playableScenarios.map(s => {
-                  // ★ 追加：前提シナリオのチェック
                   const reqId = s.requiredScenarioId;
                   const hasClearRequired = reqId ? isScenarioCleared(reqId) : true;
                   const reqScenario = getRequiredScenario(reqId);
@@ -181,7 +183,6 @@ export default function LobbyView({
                           <span className="text-amber-400 font-bold">⭐ {s.ratingCount ? (s.ratingSum / s.ratingCount).toFixed(1) : "未評価"}</span>
                         </div>
                         
-                        {/* ★ 部屋作成の制御 */}
                         {!hasClearRequired ? (
                           <div className="bg-slate-900 border border-slate-700 p-2 rounded mt-2 text-center">
                             <p className="text-[10px] text-red-300 font-bold mb-1">※前提シナリオのクリアが必要です</p>

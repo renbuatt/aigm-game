@@ -10,12 +10,15 @@ type Props = {
   isExporting: boolean;
   allScenarios: Scenario[];
   updateProfile: (updates: Partial<UserProfile>) => Promise<void>;
+  blockUser: (targetId: string) => Promise<void>; // ★ 追加
+  unblockUser: (targetId: string) => Promise<void>; // ★ 追加
 };
 
-export default function UserProfileView({ currentUser, targetUserId, setCurrentView, allScenarios, updateProfile }: Props) {
+export default function UserProfileView({ currentUser, targetUserId, setCurrentView, allScenarios, updateProfile, blockUser, unblockUser }: Props) {
   const [user, setUser] = useState<UserProfile | null>(null);
   const [archives, setArchives] = useState<PlayArchive[]>([]);
   const [friends, setFriends] = useState<UserProfile[]>([]);
+  const [blockedUsers, setBlockedUsers] = useState<UserProfile[]>([]); // ★ 追加：ブロック一覧
   const [loading, setLoading] = useState(true);
 
   const [isEditing, setIsEditing] = useState(false);
@@ -34,7 +37,7 @@ export default function UserProfileView({ currentUser, targetUserId, setCurrentV
           id: profileData.id, handleName: profileData.handle_name, avatarUrl: profileData.avatar_url, bio: profileData.bio,
           discordId: profileData.discord_id, ratingSum: profileData.rating_sum || 0, ratingCount: profileData.rating_count || 0,
           isAdmin: profileData.is_admin, isTester: profileData.is_tester, isBanned: profileData.is_banned,
-          email: profileData.email, friendIds: profileData.friend_ids || []
+          email: profileData.email, friendIds: profileData.friend_ids || [], blockedUserIds: profileData.blocked_user_ids || []
         });
 
         if (isMe && profileData.friend_ids && profileData.friend_ids.length > 0) {
@@ -42,6 +45,16 @@ export default function UserProfileView({ currentUser, targetUserId, setCurrentV
           if (friendsData) {
             setFriends(friendsData.map((d:any) => ({
               id: d.id, handleName: d.handle_name, avatarUrl: d.avatar_url, bio: d.bio, discordId: d.discord_id, ratingSum: d.rating_sum, ratingCount: d.rating_count, isAdmin: d.is_admin, isTester: d.is_tester, isBanned: d.is_banned, email: d.email, friendIds: d.friend_ids
+            })));
+          }
+        }
+
+        // ★ ブロックリストの取得
+        if (isMe && profileData.blocked_user_ids && profileData.blocked_user_ids.length > 0) {
+          const { data: blockedData } = await supabase.from('profiles').select('*').in('id', profileData.blocked_user_ids);
+          if (blockedData) {
+            setBlockedUsers(blockedData.map((d:any) => ({
+              id: d.id, handleName: d.handle_name, avatarUrl: d.avatar_url, bio: d.bio, discordId: d.discord_id, ratingSum: d.rating_sum, ratingCount: d.rating_count, isAdmin: d.is_admin, isTester: d.is_tester, isBanned: d.is_banned, email: d.email
             })));
           }
         }
@@ -58,7 +71,7 @@ export default function UserProfileView({ currentUser, targetUserId, setCurrentV
       setLoading(false);
     };
     fetchUserData();
-  }, [targetUserId, isMe, currentUser]);
+  }, [targetUserId, isMe, currentUser]); // currentUserの更新を検知して再描画
 
   const startEdit = () => {
     if (!user) return;
@@ -88,6 +101,11 @@ export default function UserProfileView({ currentUser, targetUserId, setCurrentV
     setIsEditing(false);
   };
 
+  const handleUnblock = async (id: string) => {
+    await unblockUser(id);
+    setBlockedUsers(prev => prev.filter(u => u.id !== id));
+  };
+
   if (loading || !user) {
     return <div className="flex-1 flex items-center justify-center h-full"><div className="animate-pulse text-emerald-400 font-bold">読み込み中...</div></div>;
   }
@@ -98,7 +116,17 @@ export default function UserProfileView({ currentUser, targetUserId, setCurrentV
     <div className="flex-1 flex flex-col p-6 max-w-5xl mx-auto w-full min-h-0 overflow-y-auto custom-scrollbar">
       <header className="mb-6 flex justify-between items-center border-b border-slate-700 pb-4">
         <h2 className="text-2xl font-bold text-emerald-400">👤 ユーザープロフィール</h2>
-        <button onClick={() => setCurrentView("lobby")} className="text-sm bg-slate-700 px-4 py-2 rounded font-bold hover:bg-slate-600 transition-colors">ロビーに戻る</button>
+        <div className="flex items-center gap-4">
+          {/* ★ 他人のページの場合にブロックボタンを表示 */}
+          {!isMe && (
+            currentUser.blockedUserIds?.includes(user.id) ? (
+              <button onClick={() => unblockUser(user.id)} className="text-sm bg-slate-700 px-4 py-2 rounded font-bold hover:bg-slate-600 transition-colors shadow">ブロック解除</button>
+            ) : (
+              <button onClick={() => blockUser(user.id)} className="text-sm bg-red-900/50 text-red-300 border border-red-700/50 px-4 py-2 rounded font-bold hover:bg-red-800 transition-colors shadow">🚫 ブロックする</button>
+            )
+          )}
+          <button onClick={() => setCurrentView("lobby")} className="text-sm bg-slate-700 px-4 py-2 rounded font-bold hover:bg-slate-600 transition-colors">ロビーに戻る</button>
+        </div>
       </header>
 
       <div className="bg-slate-800 border border-slate-700 rounded-xl p-6 shadow-xl mb-6">
@@ -145,28 +173,49 @@ export default function UserProfileView({ currentUser, targetUserId, setCurrentV
       </div>
 
       {isMe && (
-        <div className="mb-8">
-          <h3 className="text-lg font-bold text-blue-400 mb-4 border-b border-slate-700 pb-2">🤝 友達リスト (あなたのみ表示)</h3>
-          {friends.length === 0 ? (
-            <p className="text-sm text-slate-500 bg-slate-800 p-4 rounded text-center">まだ友達がいません。セッション終了後に同じ部屋のプレイヤーを登録できます！</p>
-          ) : (
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-              {friends.map(f => (
-                <div key={f.id} className="bg-slate-800 border border-slate-700 p-3 rounded-lg flex items-center gap-3">
-                  <img src={f.avatarUrl} className="w-10 h-10 rounded-full object-cover" />
-                  <div className="flex-1 min-w-0">
-                    <p className="text-sm font-bold text-white truncate">{f.handleName}</p>
-                    <p className="text-[10px] text-slate-400 truncate">{f.bio}</p>
+        <>
+          <div className="mb-8">
+            <h3 className="text-lg font-bold text-blue-400 mb-4 border-b border-slate-700 pb-2">🤝 友達リスト (あなたのみ表示)</h3>
+            {friends.length === 0 ? (
+              <p className="text-sm text-slate-500 bg-slate-800 p-4 rounded text-center">まだ友達がいません。セッション終了後に同じ部屋のプレイヤーを登録できます！</p>
+            ) : (
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                {friends.map(f => (
+                  <div key={f.id} className="bg-slate-800 border border-slate-700 p-3 rounded-lg flex items-center gap-3">
+                    <img src={f.avatarUrl} className="w-10 h-10 rounded-full object-cover" />
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-bold text-white truncate">{f.handleName}</p>
+                      <p className="text-[10px] text-slate-400 truncate">{f.bio}</p>
+                    </div>
                   </div>
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
+                ))}
+              </div>
+            )}
+          </div>
+
+          {/* ★ ブロックリストの追加 */}
+          <div className="mb-8">
+            <h3 className="text-lg font-bold text-red-400 mb-4 border-b border-slate-700 pb-2">🚫 ブロックリスト (あなたのみ表示)</h3>
+            {blockedUsers.length === 0 ? (
+              <p className="text-sm text-slate-500 bg-slate-800 p-4 rounded text-center">ブロックしているユーザーはいません。</p>
+            ) : (
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                {blockedUsers.map(f => (
+                  <div key={f.id} className="bg-slate-800 border border-red-900/50 p-3 rounded-lg flex items-center gap-3">
+                    <img src={f.avatarUrl} className="w-10 h-10 rounded-full object-cover opacity-50" />
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-bold text-slate-300 truncate">{f.handleName}</p>
+                      <button onClick={() => handleUnblock(f.id)} className="text-[10px] bg-slate-700 px-2 py-1 mt-1 rounded hover:bg-slate-600 transition-colors">解除</button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        </>
       )}
 
       <div className="mb-8">
-        {/* ★ ここに書庫への導線を新設 */}
         <div className="flex justify-between items-center mb-4 border-b border-slate-700 pb-2">
           <h3 className="text-lg font-bold text-amber-400">📜 最近のプレイ履歴 (最大5件)</h3>
           <button onClick={() => setCurrentView("library")} className="text-xs bg-amber-600/20 text-amber-400 border border-amber-500/50 hover:bg-amber-600/40 px-3 py-1.5 rounded font-bold transition-colors">

@@ -32,6 +32,7 @@ export default function Home() {
 
   const [currentUser, setCurrentUser] = useState<UserProfile | null>(null);
   const [targetUserId, setTargetUserId] = useState<string>(""); 
+  const [blockedMeIds, setBlockedMeIds] = useState<string[]>([]); // ★ 追加：自分をブロックしているユーザーID
 
   const [scenarios, setScenarios] = useState<Scenario[]>([]);
   const [editingScenario, setEditingScenario] = useState<Scenario | null>(null);
@@ -92,7 +93,22 @@ export default function Home() {
 
   const availableScenarios = scenarios.filter(s => !s.isBanned);
   const createdScenarios = scenarios.filter(s => s.authorId === currentUser?.id);
-  const availableRooms = rooms.filter(r => !r.scenario?.isBanned);
+  const availableRoomsRaw = rooms.filter(r => !r.scenario?.isBanned);
+
+  // ★ 追加：ブロック設定に基づく部屋のフィルタリングと警告表示の適用
+  const availableRooms = availableRoomsRaw.map(room => {
+    if (!currentUser) return room;
+    const hostId = room.host_id;
+    const joinedUserIds = Object.keys(room.joined_users || {});
+    const myBlockedIds = currentUser.blockedUserIds || [];
+
+    if (myBlockedIds.includes(hostId)) return null;
+    if (joinedUserIds.some(id => myBlockedIds.includes(id))) return null;
+    if (blockedMeIds.includes(hostId)) return null;
+
+    const isWarning = joinedUserIds.some(id => blockedMeIds.includes(id));
+    return { ...room, isWarning };
+  }).filter(Boolean) as Room[];
 
   const defaultScene: Scene = { id: "scene_main", name: "メインルーム", memberIds: [] };
   const myScene = activeRoom?.scenes?.find(s => joinedCharacter && s.memberIds.includes(joinedCharacter.id)) || activeRoom?.scenes?.[0] || defaultScene;
@@ -118,6 +134,31 @@ export default function Home() {
       alert("友達に追加しました！");
     } else {
       alert("エラーが発生しました: " + error.message);
+    }
+  };
+
+  // ★ 追加：ブロックする
+  const blockUser = async (targetId: string) => {
+    if (!currentUser) return;
+    if (confirm("このユーザーをブロックしますか？\n（お互いに作成した部屋が見えなくなり、あなたが参加している部屋も相手から見えなくなります）")) {
+      const newBlocked = [...(currentUser.blockedUserIds || []), targetId];
+      const newFriends = (currentUser.friendIds || []).filter(id => id !== targetId);
+      const { error } = await supabase.from('profiles').update({ blocked_user_ids: newBlocked, friend_ids: newFriends }).eq('id', currentUser.id);
+      if (!error) {
+        setCurrentUser({ ...currentUser, blockedUserIds: newBlocked, friendIds: newFriends });
+        alert("ブロックしました。");
+      }
+    }
+  };
+
+  // ★ 追加：ブロックを解除する
+  const unblockUser = async (targetId: string) => {
+    if (!currentUser) return;
+    const newBlocked = (currentUser.blockedUserIds || []).filter(id => id !== targetId);
+    const { error } = await supabase.from('profiles').update({ blocked_user_ids: newBlocked }).eq('id', currentUser.id);
+    if (!error) {
+      setCurrentUser({ ...currentUser, blockedUserIds: newBlocked });
+      alert("ブロックを解除しました。");
     }
   };
 
@@ -225,7 +266,7 @@ export default function Home() {
         authorId: d.author_id, price: d.price || 500, playLimit: d.play_limit || 1, giftLimit: d.gift_limit || 1,
         purchasedTickets: d.purchased_tickets || {}, isBanned: d.is_banned || false, playTime: d.play_time || 60,
         isPlayableByOthers: d.is_playable_by_others || false, isTrialOk: d.is_trial_ok || false, itemVisibility: d.item_visibility || "none",
-        requiredScenarioId: d.required_scenario_id || "" // ★ 追加
+        requiredScenarioId: d.required_scenario_id || ""
       }));
       setScenarios(loadedScenarios);
     }
@@ -264,7 +305,7 @@ export default function Home() {
     }
 
     if (data) {
-      profileData = { id: data.id, handleName: data.handle_name, fullName: data.full_name, address: data.address, phone: data.phone, avatarUrl: data.avatar_url, bio: data.bio, discordId: data.discord_id, ratingSum: data.rating_sum || 0, ratingCount: data.rating_count || 0, isAdmin: data.is_admin || false, isTester: data.is_tester || false, isBanned: data.is_banned || false, email: data.email, friendIds: data.friend_ids || [] };
+      profileData = { id: data.id, handleName: data.handle_name, fullName: data.full_name, address: data.address, phone: data.phone, avatarUrl: data.avatar_url, bio: data.bio, discordId: data.discord_id, ratingSum: data.rating_sum || 0, ratingCount: data.rating_count || 0, isAdmin: data.is_admin || false, isTester: data.is_tester || false, isBanned: data.is_banned || false, email: data.email, friendIds: data.friend_ids || [], blockedUserIds: data.blocked_user_ids || [] };
       if (data.email !== emailStr) await supabase.from('profiles').update({ email: emailStr }).eq('id', userId);
     } 
 
@@ -272,6 +313,10 @@ export default function Home() {
 
     setCurrentUser(profileData);
     await fetchNotifications(userId);
+
+    // ★ 追加：自分をブロックしているユーザーIDを取得する
+    const { data: blockedMeData } = await supabase.from('profiles').select('id').contains('blocked_user_ids', [userId]);
+    setBlockedMeIds(blockedMeData ? blockedMeData.map((d: any) => d.id) : []);
 
     const { data: archiveData } = await supabase.from('play_archives').select('*').eq('user_id', userId).order('created_at', { ascending: false });
     if (archiveData) {
@@ -423,7 +468,7 @@ export default function Home() {
       rating_sum: editingScenario.ratingSum, rating_count: editingScenario.ratingCount, author_id: currentUser.id, purchased_tickets: editingScenario.purchasedTickets || {},
       price: editingScenario.price || 500, play_limit: editingScenario.playLimit || 1, gift_limit: editingScenario.giftLimit || 1, play_time: editingScenario.playTime || 60,
       is_playable_by_others: editingScenario.isPlayableByOthers || false, is_trial_ok: editingScenario.isTrialOk || false, item_visibility: editingScenario.itemVisibility || "none",
-      required_scenario_id: editingScenario.requiredScenarioId || "" // ★ 追加
+      required_scenario_id: editingScenario.requiredScenarioId || ""
     };
     if (editingScenario.id && !editingScenario.id.startsWith('s')) {
       const { error } = await supabase.from('scenarios').update(dbData).eq('id', editingScenario.id);
@@ -835,18 +880,14 @@ export default function Home() {
     }
   };
 
-  const generateSceneImage = async (promptText?: string) => {
+  const generateSceneImage = async () => {
     if (!activeRoom || !myScene) return;
     setIsLoading(true);
     try {
-      let targetPrompt = promptText;
-      
-      if (!targetPrompt || !targetPrompt.trim()) {
-        const { data: memoryData } = await supabase.from('ai_memory').select('*').eq('room_id', activeRoom.id).order('created_at', { ascending: false }).limit(10);
-        const recentLogs = memoryData?.reverse().map(m => `${m.role === 'user' ? 'PL' : 'GM'}: ${m.content}`).join('\n') || "";
-        const autoPromptReq = ["あなたはTRPGの情景描写AIです。以下の直近のログから、現在の「場所、雰囲気、見えているもの」を1〜2文の簡潔な日本語で描写してください。キャラクターのセリフや行動ではなく、空間のビジュアルに焦点を当ててください。","【直近のログ】",recentLogs].join('\n');
-        targetPrompt = await generateAITextWithPrompt(autoPromptReq);
-      }
+      const { data: memoryData } = await supabase.from('ai_memory').select('*').eq('room_id', activeRoom.id).order('created_at', { ascending: false }).limit(10);
+      const recentLogs = memoryData?.reverse().map(m => `${m.role === 'user' ? 'PL' : 'GM'}: ${m.content}`).join('\n') || "";
+      const autoPromptReq = ["あなたはTRPGの情景描写AIです。以下の直近のログから、現在の「場所、雰囲気、見えているもの」を1〜2文の簡潔な日本語で描写してください。キャラクターのセリフや行動ではなく、空間のビジュアルに焦点を当ててください。","【直近のログ】",recentLogs].join('\n');
+      const targetPrompt = await generateAITextWithPrompt(autoPromptReq);
 
       const translationPrompt = ["以下の日本語の情景描写を、画像生成AI用のカンマ区切りの英語プロンプトに変換してください。","【絶対条件】","・文章ではなく、英単語のカンマ区切りで出力してください。","・不適切な画像が生成されるのを防ぐため、必ず最後に「SFW, fully clothed, masterpiece, high quality」を含めてください。","","情景描写：",targetPrompt].join('\n');
       let englishPrompt = "";
@@ -1266,7 +1307,7 @@ export default function Home() {
           "4. 【アイテムの厳格な管理（四次元ポケット禁止）】上記の【現在の全キャラクターの所持アイテム】に記載されていないアイテムを使おうとした場合は即座に却下してください。",
           "5. 【ダイスの自己処理禁止】GM自身がダイスを振らないでください。",
           "6. 誰かが行動した後は、必ず「〇〇さんはそう動きました。では、△△さんはどうしますか？」と他の人間PLに行動を促し、全員の行動が出揃うまで待機してください。",
-          "7. 【AI相棒の自律ダイスロール】全員行動の際、AI相棒のターンになったら自律的にAI相棒の行動を宣言し、結果をシミュレートして「🎲 [名前]の〇〇判定 ➔ 出目: X 【成功/失敗】」と出力してください。",
+          "7. 【AI相棒の自律行動と割合（超重要）】AI相棒のターンになったら、絶対に人間に「（AIキャラ名）はどうしますか？」と尋ねないでください。AI GM自身が彼らの行動を自律的に描写し、必要なら結果をシミュレートして「🎲 [名前]の〇〇判定 ➔ 出目: X 【成功/失敗】」と自己完結させてください。また、AI相棒はあくまでサポート役です。ダイスロールや重要な決断の頻度は【AI 2 : 人間PL 8】の割合になるよう控えめに行動させてください。",
           "8. 不自然な行動や間違ったアイテムの使用は容赦なく失敗扱い・状況悪化させてください。",
           `9. 想定プレイ時間は「約${activeRoom.scenario?.playTime || 60}分」です。ペース配分を意識し、早すぎる場合は障害を追加してください。`,
           "10. 【プロローグ（導入）について】セッション開始直後の導入フェーズでは、設定されたプロローグ情報があればそれに従い、無ければ本編プロットから推測して自動生成してください。",
@@ -1394,6 +1435,8 @@ export default function Home() {
           isExporting={isExporting} 
           allScenarios={scenarios} 
           updateProfile={updateProfile}
+          blockUser={blockUser}
+          unblockUser={unblockUser}
         />
       )}
 
@@ -1416,7 +1459,7 @@ export default function Home() {
       
       {currentView === "game" && activeRoom && myScene && (
         <GameView 
-          activeRoom={activeRoom} myScene={myScene} currentUser={currentUser!} joinedCharacter={joinedCharacter} leaveGame={leaveGame} setReportTarget={setReportTarget as React.Dispatch<React.SetStateAction<{type: 'user' | 'scenario' | 'room', id: string, name: string, roomId?: string, scenarioId?: string, scenarioName?: string, availableUsers?: { id: string, name: string }[]} | null>>} rollDice={rollDice} startGame={startGame} startSplitting={startSplitting} isSplitMode={isSplitMode} chatTab={chatTab} messages={messages} isLoading={isLoading} isScenarioEnded={isScenarioEnded} setCurrentView={setCurrentView} endGame={endGame} input={input} setInput={setInput} handleSend={handleSend} handleTabClick={handleTabClick} unreadIndicators={unreadIndicators} consultWithAI={consultWithAI} setConsultWithAI={setConsultWithAI} isChatDisabled={isChatDisabled} mergeTeam={mergeTeam} executeMergeAll={executeMergeAll} generateSceneImage={generateSceneImage} proposedTeams={proposedTeams} setProposedTeams={setProposedTeams} isGeneratingSplit={isGeneratingSplit} generateSplitProposal={generateSplitProposal} finishSplitting={finishSplitting} cancelSplitting={cancelSplitting} togglePauseRoom={togglePauseRoom} toggleAFK={toggleAFK} triggerAutoAction={triggerAutoAction} updateInventory={updateInventory} openRoomConfigModal={leaveGameAndCreateRoom} aiPlayersList={aiPlayersList} saveToArchive={saveToArchive}
+          activeRoom={activeRoom} myScene={myScene} currentUser={currentUser!} joinedCharacter={joinedCharacter} leaveGame={leaveGame} setReportTarget={setReportTarget as React.Dispatch<React.SetStateAction<{type: 'user' | 'scenario' | 'room', id: string, name: string, roomId?: string, scenarioId?: string, scenarioName?: string, availableUsers?: { id: string, name: string }[]; } | null>>} rollDice={rollDice} startGame={startGame} startSplitting={startSplitting} isSplitMode={isSplitMode} chatTab={chatTab} messages={messages} isLoading={isLoading} isScenarioEnded={isScenarioEnded} setCurrentView={setCurrentView} endGame={endGame} input={input} setInput={setInput} handleSend={handleSend} handleTabClick={handleTabClick} unreadIndicators={unreadIndicators} consultWithAI={consultWithAI} setConsultWithAI={setConsultWithAI} isChatDisabled={isChatDisabled} mergeTeam={mergeTeam} executeMergeAll={executeMergeAll} generateSceneImage={generateSceneImage} proposedTeams={proposedTeams} setProposedTeams={setProposedTeams} isGeneratingSplit={isGeneratingSplit} generateSplitProposal={generateSplitProposal} finishSplitting={finishSplitting} cancelSplitting={cancelSplitting} togglePauseRoom={togglePauseRoom} toggleAFK={toggleAFK} triggerAutoAction={triggerAutoAction} updateInventory={updateInventory} openRoomConfigModal={leaveGameAndCreateRoom} aiPlayersList={aiPlayersList} saveToArchive={saveToArchive}
         />
       )}
       
