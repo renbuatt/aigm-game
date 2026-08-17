@@ -37,7 +37,7 @@ export type Character = {
   wis: number;
   cha: number;
   items?: string;
-  playerName?: string; // ★追加：プレイヤー名（HN）
+  playerName?: string;
 };
 
 export type Scenario = {
@@ -64,6 +64,7 @@ export type Scenario = {
   isPlayableByOthers?: boolean;
   isTrialOk?: boolean;
   itemVisibility?: "all" | "self" | "none";
+  requiredScenarioId?: string; // ★ 追加：前提シナリオID
 };
 
 export type Scene = {
@@ -143,6 +144,7 @@ export type Report = {
 export type PlayArchive = {
   id: string;
   userId: string;
+  scenarioId?: string; // ★ 追加：クリアしたシナリオのID
   scenarioTitle: string;
   scenarioImage: string;
   characterName: string;

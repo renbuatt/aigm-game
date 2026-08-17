@@ -1,5 +1,5 @@
 import React, { useState } from "react";
-import { ViewState, UserProfile, Room, Scenario, RoomDifficulty, GameRule } from "../../types";
+import { ViewState, UserProfile, Room, Scenario, RoomDifficulty, GameRule, PlayArchive } from "../../types";
 
 const NO_IMAGE_SCENARIO = "https://images.unsplash.com/photo-1614729939124-03290b5609ce?auto=format&fit=crop&w=400&q=80";
 
@@ -25,14 +25,15 @@ type Props = {
   startTrialPlay: (scenario: Scenario) => void;
   availableScenarios: Scenario[];
   openUserProfile: (userId: string) => void;
-  setScenarioAppealTarget: React.Dispatch<React.SetStateAction<Scenario | null>>; // ★ 追加：再審査申請用
+  setScenarioAppealTarget: React.Dispatch<React.SetStateAction<Scenario | null>>;
+  playArchives: PlayArchive[]; // ★ 追加：クリア判定用
 };
 
 export default function LobbyView({
   currentUser, handleLogout, setShowMailbox, unreadCount, secretRoomIdSearch, setSecretRoomIdSearch,
   rooms, searchedSecretRoom, setSearchedSecretRoom, executeJoinRoom, availableRooms,
   spectateRoom, setEditingScenario, setCurrentView, createdScenarios, deleteScenario, setRoomConfigModal,
-  fetchAdminData, startTrialPlay, availableScenarios, openUserProfile, setScenarioAppealTarget
+  fetchAdminData, startTrialPlay, availableScenarios, openUserProfile, setScenarioAppealTarget, playArchives
 }: Props) {
   
   const [lobbyTab, setLobbyTab] = useState<'rooms' | 'scenarios' | 'trials'>('rooms');
@@ -41,6 +42,16 @@ export default function LobbyView({
   const trialScenarios = availableScenarios.filter(s => s.isTrialOk);
   const sortedTrials = [...trialScenarios].sort((a,b) => trialSort === 'popular' ? (b.ratingSum/b.ratingCount || 0) - (a.ratingSum/a.ratingCount || 0) : (a.id < b.id ? 1 : -1));
   const playableScenarios = availableScenarios.filter(s => s.isPlayableByOthers);
+
+  // ★ 追加：前提シナリオをクリアしているかチェック
+  const isScenarioCleared = (scenarioId: string) => {
+    return playArchives.some(a => a.scenarioId === scenarioId);
+  };
+
+  const getRequiredScenario = (reqId?: string) => {
+    if (!reqId) return null;
+    return availableScenarios.find(s => s.id === reqId);
+  };
 
   return (
     <div className="flex-1 flex flex-col p-6 max-w-7xl mx-auto w-full min-h-0 overflow-y-auto custom-scrollbar">
@@ -93,6 +104,11 @@ export default function LobbyView({
                   const isHost = room.host_id === currentUser.id;
                   const takenIds = Object.values(room.joined_users || {});
                   const availableChars = room.scenario?.presetCharacters.filter(c => !takenIds.includes(c.id)) || [];
+                  
+                  // ★ 追加：前提シナリオのチェック
+                  const reqId = room.scenario?.requiredScenarioId;
+                  const hasClearRequired = reqId ? isScenarioCleared(reqId) : true;
+                  const reqScenario = getRequiredScenario(reqId);
 
                   return (
                     <div key={room.id} className="bg-slate-800 border border-slate-700 rounded-xl p-4 flex gap-4 hover:border-blue-500 relative">
@@ -113,19 +129,28 @@ export default function LobbyView({
                         </div>
                         {room.host_message && <p className="text-xs text-slate-300 italic mb-2">「{room.host_message}」</p>}
                         
-                        <div className="flex gap-2">
-                          {availableChars.length > 0 ? (
-                            <select className="bg-slate-900 border border-slate-700 rounded p-1 text-xs text-white flex-1" onChange={(e) => executeJoinRoom(room, e.target.value)} value="">
-                              <option value="" disabled>キャラクターを選択して参加...</option>
-                              {availableChars.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
-                            </select>
-                          ) : (
-                            <span className="text-xs text-red-400 font-bold bg-slate-900 p-1.5 rounded flex-1 text-center">満員です</span>
-                          )}
-                          {room.privacy === 'open' && (
-                            <button onClick={() => spectateRoom(room)} className="bg-slate-700 hover:bg-slate-600 text-white text-xs px-3 rounded font-bold">👁️ 観戦</button>
-                          )}
-                        </div>
+                        {/* ★ 参加制御 */}
+                        {!hasClearRequired && !isHost ? (
+                          <div className="bg-red-900/30 border border-red-500/50 p-2 rounded mt-2">
+                            <p className="text-xs text-red-300 font-bold mb-1">⚠️ 参加条件を満たしていません</p>
+                            <p className="text-[10px] text-slate-400">前提シナリオ『{reqScenario?.title || '不明なシナリオ'}』をクリアする必要があります。</p>
+                          </div>
+                        ) : (
+                          <div className="flex gap-2">
+                            {availableChars.length > 0 ? (
+                              <select className="bg-slate-900 border border-slate-700 rounded p-1 text-xs text-white flex-1" onChange={(e) => executeJoinRoom(room, e.target.value)} value="">
+                                <option value="" disabled>キャラクターを選択して参加...</option>
+                                {availableChars.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+                              </select>
+                            ) : (
+                              <span className="text-xs text-red-400 font-bold bg-slate-900 p-1.5 rounded flex-1 text-center">満員です</span>
+                            )}
+                            {room.privacy === 'open' && (
+                              <button onClick={() => spectateRoom(room)} className="bg-slate-700 hover:bg-slate-600 text-white text-xs px-3 rounded font-bold">👁️ 観戦</button>
+                            )}
+                          </div>
+                        )}
+
                       </div>
                     </div>
                   )
@@ -137,21 +162,46 @@ export default function LobbyView({
           {lobbyTab === 'scenarios' && (
             <div className="h-[500px] overflow-y-auto space-y-4 pr-2 custom-scrollbar">
               {playableScenarios.length === 0 ? <p className="text-slate-400 text-sm p-4 text-center">公開されているシナリオはありません。</p> :
-                playableScenarios.map(s => (
-                  <div key={s.id} className="bg-slate-800 border border-slate-700 rounded-xl p-4 flex gap-4 hover:border-emerald-500 transition-colors">
-                    <img src={s.imageUrl || NO_IMAGE_SCENARIO} className="w-24 h-24 object-cover rounded" />
-                    <div className="flex-1">
-                      <h3 className="text-lg font-bold text-white mb-1">{s.title}</h3>
-                      <div className="text-xs text-slate-400 mb-2 flex gap-3">
-                        <span className="text-emerald-400">目安: {s.playTime || 60}分</span>
-                        <span className="text-amber-400 font-bold">⭐ {s.ratingCount ? (s.ratingSum / s.ratingCount).toFixed(1) : "未評価"}</span>
+                playableScenarios.map(s => {
+                  // ★ 追加：前提シナリオのチェック
+                  const reqId = s.requiredScenarioId;
+                  const hasClearRequired = reqId ? isScenarioCleared(reqId) : true;
+                  const reqScenario = getRequiredScenario(reqId);
+
+                  return (
+                    <div key={s.id} className="bg-slate-800 border border-slate-700 rounded-xl p-4 flex gap-4 hover:border-emerald-500 transition-colors">
+                      <img src={s.imageUrl || NO_IMAGE_SCENARIO} className="w-24 h-24 object-cover rounded" />
+                      <div className="flex-1">
+                        <h3 className="text-lg font-bold text-white mb-1 flex items-center gap-2">
+                          {s.title}
+                          {reqId && <span className="text-[10px] bg-indigo-600 px-2 py-0.5 rounded">続編</span>}
+                        </h3>
+                        <div className="text-xs text-slate-400 mb-2 flex gap-3">
+                          <span className="text-emerald-400">目安: {s.playTime || 60}分</span>
+                          <span className="text-amber-400 font-bold">⭐ {s.ratingCount ? (s.ratingSum / s.ratingCount).toFixed(1) : "未評価"}</span>
+                        </div>
+                        
+                        {/* ★ 部屋作成の制御 */}
+                        {!hasClearRequired ? (
+                          <div className="bg-slate-900 border border-slate-700 p-2 rounded mt-2 text-center">
+                            <p className="text-[10px] text-red-300 font-bold mb-1">※前提シナリオのクリアが必要です</p>
+                            {reqScenario ? (
+                              <button onClick={() => setRoomConfigModal({ scenario: reqScenario, charId: "", privacy: "open", message: "", difficulty: "normal", rule: "coc_jp", itemVisibility: reqScenario.itemVisibility || "none" })} className="text-xs bg-indigo-600 hover:bg-indigo-500 text-white px-3 py-1 rounded shadow">
+                                前提シナリオ「{reqScenario.title}」を遊ぶ
+                              </button>
+                            ) : (
+                              <p className="text-[10px] text-slate-500">前提シナリオが現在非公開です。</p>
+                            )}
+                          </div>
+                        ) : (
+                          <button onClick={() => setRoomConfigModal({ scenario: s, charId: "", privacy: "open", message: "", difficulty: "normal", rule: "coc_jp", itemVisibility: s.itemVisibility || "none" })} className="w-full bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold py-2 rounded shadow mt-2">
+                            このシナリオで部屋を作成する
+                          </button>
+                        )}
                       </div>
-                      <button onClick={() => setRoomConfigModal({ scenario: s, charId: "", privacy: "open", message: "", difficulty: "normal", rule: "coc_jp", itemVisibility: s.itemVisibility || "none" })} className="w-full bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold py-2 rounded shadow mt-2">
-                        このシナリオで部屋を作成する
-                      </button>
                     </div>
-                  </div>
-                ))
+                  )
+                })
               }
             </div>
           )}
@@ -229,7 +279,6 @@ export default function LobbyView({
                           <div className="flex gap-2 mt-2 items-center">
                             <button onClick={() => { setEditingScenario(s); setCurrentView("scenarioEdit"); }} className="text-[10px] bg-slate-700 px-2 py-1 rounded text-white hover:bg-slate-600">編集</button>
                             <button onClick={() => deleteScenario(s.id)} className="text-[10px] bg-red-900/50 px-2 py-1 rounded text-red-300 hover:bg-red-800/80">削除</button>
-                            {/* ★ 追加: BANされている場合は「再審査申請」ボタンを表示 */}
                             {s.isBanned && (
                               <button onClick={() => setScenarioAppealTarget(s)} className="text-[10px] bg-amber-900/50 px-2 py-1 rounded text-amber-300 hover:bg-amber-800/80 border border-amber-700/50">再審査申請</button>
                             )}

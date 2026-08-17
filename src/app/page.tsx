@@ -224,7 +224,8 @@ export default function Home() {
         ratingSum: d.rating_sum || 0, ratingCount: d.rating_count || 0,
         authorId: d.author_id, price: d.price || 500, playLimit: d.play_limit || 1, giftLimit: d.gift_limit || 1,
         purchasedTickets: d.purchased_tickets || {}, isBanned: d.is_banned || false, playTime: d.play_time || 60,
-        isPlayableByOthers: d.is_playable_by_others || false, isTrialOk: d.is_trial_ok || false, itemVisibility: d.item_visibility || "none"
+        isPlayableByOthers: d.is_playable_by_others || false, isTrialOk: d.is_trial_ok || false, itemVisibility: d.item_visibility || "none",
+        requiredScenarioId: d.required_scenario_id || "" // ★ 追加
       }));
       setScenarios(loadedScenarios);
     }
@@ -275,7 +276,7 @@ export default function Home() {
     const { data: archiveData } = await supabase.from('play_archives').select('*').eq('user_id', userId).order('created_at', { ascending: false });
     if (archiveData) {
       setPlayArchives(archiveData.map((d: any) => ({
-        id: d.id, userId: d.user_id, scenarioTitle: d.scenario_title, scenarioImage: d.scenario_image,
+        id: d.id, userId: d.user_id, scenarioId: d.scenario_id, scenarioTitle: d.scenario_title, scenarioImage: d.scenario_image,
         characterName: d.character_name, chatLogs: d.chat_logs, createdAt: d.created_at, rule: d.rule, coPlayers: d.co_players, novels: d.novels || {}, characters: d.characters || []
       })));
     }
@@ -421,7 +422,8 @@ export default function Home() {
       image_url: editingScenario.imageUrl || "", preset_characters: editingScenario.presetCharacters,
       rating_sum: editingScenario.ratingSum, rating_count: editingScenario.ratingCount, author_id: currentUser.id, purchased_tickets: editingScenario.purchasedTickets || {},
       price: editingScenario.price || 500, play_limit: editingScenario.playLimit || 1, gift_limit: editingScenario.giftLimit || 1, play_time: editingScenario.playTime || 60,
-      is_playable_by_others: editingScenario.isPlayableByOthers || false, is_trial_ok: editingScenario.isTrialOk || false, item_visibility: editingScenario.itemVisibility || "none"
+      is_playable_by_others: editingScenario.isPlayableByOthers || false, is_trial_ok: editingScenario.isTrialOk || false, item_visibility: editingScenario.itemVisibility || "none",
+      required_scenario_id: editingScenario.requiredScenarioId || "" // ★ 追加
     };
     if (editingScenario.id && !editingScenario.id.startsWith('s')) {
       const { error } = await supabase.from('scenarios').update(dbData).eq('id', editingScenario.id);
@@ -1126,7 +1128,6 @@ export default function Home() {
       characters: charactersWithPlayers 
     };
     
-    // ★ 修正: 保存完了後にステートを即座に更新し、強制的に書庫へ遷移させる
     const { data, error } = await supabase.from('play_archives').insert(archiveData).select().single();
     if (error) { alert("書庫への保存に失敗しました: " + error.message); } 
     else {
@@ -1223,7 +1224,6 @@ export default function Home() {
 
       let scenarioPlotText = `【物語の全体構成（全${chapters.length}章）】\n${chapterProgress}\n\n【現在（第${currentChapIndex + 1}章）のプロット・台本】\n${currentChapter.content}`;
 
-      // ★ 改良: 難易度指示の強化とAI自律化の徹底
       let difficultyInstruction = "";
       switch (activeRoom.difficulty) {
         case "beginner": difficultyInstruction = "【難易度：初心者】接待プレイです。困っていればヒントや選択肢を出しても構いません。"; break;
@@ -1266,14 +1266,14 @@ export default function Home() {
           "4. 【アイテムの厳格な管理（四次元ポケット禁止）】上記の【現在の全キャラクターの所持アイテム】に記載されていないアイテムを使おうとした場合は即座に却下してください。",
           "5. 【ダイスの自己処理禁止】GM自身がダイスを振らないでください。",
           "6. 誰かが行動した後は、必ず「〇〇さんはそう動きました。では、△△さんはどうしますか？」と他の人間PLに行動を促し、全員の行動が出揃うまで待機してください。",
-          "7. 【AI相棒への質問禁止と割合（超重要）】AI相棒のターンになったら、絶対に人間に「（AIキャラ名）はどうしますか？」と尋ねないでください。AI GM自身がAI相棒の行動を自律的に描写し、自己完結させてください。また、AI相棒はあくまでサポート役です。ダイスロールや重要な決断の頻度は【AI 2 : 人間PL 8】の割合になるよう極力控えめに行動させてください。",
+          "7. 【AI相棒の自律ダイスロール】全員行動の際、AI相棒のターンになったら自律的にAI相棒の行動を宣言し、結果をシミュレートして「🎲 [名前]の〇〇判定 ➔ 出目: X 【成功/失敗】」と出力してください。",
           "8. 不自然な行動や間違ったアイテムの使用は容赦なく失敗扱い・状況悪化させてください。",
           `9. 想定プレイ時間は「約${activeRoom.scenario?.playTime || 60}分」です。ペース配分を意識し、早すぎる場合は障害を追加してください。`,
           "10. 【プロローグ（導入）について】セッション開始直後の導入フェーズでは、設定されたプロローグ情報があればそれに従い、無ければ本編プロットから推測して自動生成してください。",
           "【設定されたプロローグ】: " + (activeRoom.scenario?.prologue || "特になし"),
           "この導入部において、必ずプレイヤー全員が最低1回はダイス判定を行わなければならない状況を作ってください。",
           "11. 【エピローグとエンディング（最重要）】目的を達成しても、いきなり [SCENARIO_END] を出力しないでください。目的達成後は必ず「【エピローグ】」と明記し、これまでの展開を踏まえて相応しい結末を動的に生成し、事後処理を行わせてください。エピローグ内で必ずプレイヤー全員に最後のダイス判定を行わせる状況を作り、PLがエピローグでの行動を終えたと判断できたターンの最後にのみ [SCENARIO_END] を出力してください。",
-          "12. 【所持アイテムの厳格な更新】アイテムを入手・消費した場合は、必ず文章の最後に [INVENTORY_UPDATE: キャラクター名, アイテムA, アイテムB...] のタグを出力してください。",
+          "12. 【所持アイテムの厳格な更新（超重要）】アイテムを入手・消費した場合は、必ず文章の最後に [INVENTORY_UPDATE: キャラクター名, アイテムA, アイテムB...] のタグを出力して、そのキャラの【最新の所持品リスト全体】をカンマ区切りで上書き登録してください。例：アイテムを拾ったら古いアイテムに加えて新しいアイテムも列挙すること。",
           "13. 【ステータスの厳格な更新（超重要）】HPやSAN値が減少・変動した場合は、文章中で「HPが減少した」と描写するだけで済ませず、必ずAI出力の一番最後に【変動後の最新の値】を使って [STATUS_UPDATE: キャラ名, 最新HP, 最新SAN] のシステムタグを絶対に出力してください。これがないとシステムにダメージが反映されずゲームが壊れます。"
         ];
 
@@ -1408,11 +1408,11 @@ export default function Home() {
 
       {currentView === "lobby" && currentUser && (
         <LobbyView 
-          currentUser={currentUser} handleLogout={handleLogout} setShowMailbox={setShowMailbox} unreadCount={unreadCount} secretRoomIdSearch={secretRoomIdSearch} setSecretRoomIdSearch={setSecretRoomIdSearch} rooms={rooms} searchedSecretRoom={searchedSecretRoom} setSearchedSecretRoom={setSearchedSecretRoom} executeJoinRoom={executeJoinRoom} availableRooms={availableRooms} spectateRoom={spectateRoom} setEditingScenario={setEditingScenario} setCurrentView={setCurrentView} createdScenarios={createdScenarios} deleteScenario={deleteScenario} setRoomConfigModal={setRoomConfigModal} fetchAdminData={fetchAdminData} startTrialPlay={(scenario) => setAdModal({ isOpen: true, step: 1, scenario })} availableScenarios={availableScenarios} openUserProfile={openUserProfile} setScenarioAppealTarget={setScenarioAppealTarget}
+          currentUser={currentUser} handleLogout={handleLogout} setShowMailbox={setShowMailbox} unreadCount={unreadCount} secretRoomIdSearch={secretRoomIdSearch} setSecretRoomIdSearch={setSecretRoomIdSearch} rooms={rooms} searchedSecretRoom={searchedSecretRoom} setSearchedSecretRoom={setSearchedSecretRoom} executeJoinRoom={executeJoinRoom} availableRooms={availableRooms} spectateRoom={spectateRoom} setEditingScenario={setEditingScenario} setCurrentView={setCurrentView} createdScenarios={createdScenarios} deleteScenario={deleteScenario} setRoomConfigModal={setRoomConfigModal} fetchAdminData={fetchAdminData} startTrialPlay={(scenario) => setAdModal({ isOpen: true, step: 1, scenario })} availableScenarios={availableScenarios} openUserProfile={openUserProfile} setScenarioAppealTarget={setScenarioAppealTarget} playArchives={playArchives}
         />
       )}
       
-      {currentView === "scenarioEdit" && editingScenario && <ScenarioEditView editingScenario={editingScenario} setEditingScenario={setEditingScenario} editingCharIndex={editingCharIndex} setEditingCharIndex={setEditingCharIndex} saveScenario={saveScenario} setCurrentView={setCurrentView} />}
+      {currentView === "scenarioEdit" && editingScenario && <ScenarioEditView editingScenario={editingScenario} setEditingScenario={setEditingScenario} editingCharIndex={editingCharIndex} setEditingCharIndex={setEditingCharIndex} saveScenario={saveScenario} setCurrentView={setCurrentView} allScenarios={scenarios} />}
       
       {currentView === "game" && activeRoom && myScene && (
         <GameView 

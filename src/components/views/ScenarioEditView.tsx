@@ -1,6 +1,6 @@
 import React, { useState } from "react";
 import { ViewState, Scenario, Character } from "../../types";
-import { generateAITextWithPrompt } from "../../lib/ai"; // ★AI翻訳用に追加
+import { generateAITextWithPrompt } from "../../lib/ai"; 
 
 type Props = {
   editingScenario: Scenario;
@@ -9,12 +9,12 @@ type Props = {
   setEditingCharIndex: React.Dispatch<React.SetStateAction<number | null>>;
   saveScenario: () => Promise<void>;
   setCurrentView: React.Dispatch<React.SetStateAction<ViewState>>;
+  allScenarios: Scenario[]; // ★追加：前提シナリオ選択用
 };
 
-export default function ScenarioEditView({ editingScenario, setEditingScenario, editingCharIndex, setEditingCharIndex, saveScenario, setCurrentView }: Props) {
+export default function ScenarioEditView({ editingScenario, setEditingScenario, editingCharIndex, setEditingCharIndex, saveScenario, setCurrentView, allScenarios }: Props) {
   const [tab, setTab] = useState<'basic' | 'chars' | 'plot'>('basic');
   
-  // 画像生成用のState
   const [isGeneratingImg, setIsGeneratingImg] = useState(false);
   const [coverPrompt, setCoverPrompt] = useState("");
   const [charPrompt, setCharPrompt] = useState("");
@@ -62,7 +62,6 @@ export default function ScenarioEditView({ editingScenario, setEditingScenario, 
     }, 100);
   };
 
-  // ★ 画像のファイルアップロード処理
   const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>, callback: (base64: string) => void) => {
     const file = e.target.files?.[0];
     if (file) {
@@ -76,7 +75,6 @@ export default function ScenarioEditView({ editingScenario, setEditingScenario, 
     }
   };
 
-  // ★ Pollinations AI による画像生成処理
   const handleAIGenerate = async (promptText: string, callback: (base64: string) => void) => {
     if (!promptText.trim()) { alert("画像生成用のプロンプト（描写）を入力してください。"); return; }
     setIsGeneratingImg(true);
@@ -101,6 +99,9 @@ export default function ScenarioEditView({ editingScenario, setEditingScenario, 
       setIsGeneratingImg(false);
     }
   };
+
+  // 自分のシナリオ（編集中のものは除く）を前提シナリオの候補とする
+  const availableRequiredScenarios = allScenarios.filter(s => s.id !== editingScenario.id);
 
   return (
     <div className="flex-1 flex flex-col p-6 max-w-5xl mx-auto w-full min-h-0 overflow-y-auto custom-scrollbar">
@@ -142,7 +143,22 @@ export default function ScenarioEditView({ editingScenario, setEditingScenario, 
                 </div>
               </div>
 
-              {/* ★ カバー画像設定枠をリッチ化 */}
+              {/* ★ 追加: 続編設定（前提シナリオ） */}
+              <div className="mt-4 pt-4 border-t border-slate-700">
+                <label className="text-xs text-amber-400 block mb-1 font-bold">🔗 前提シナリオ（続編にする場合）</label>
+                <p className="text-[10px] text-slate-400 mb-2">指定したシナリオを過去にクリアしたプレイヤーのみが、このシナリオの部屋を立てたり参加したりできるようになります。</p>
+                <select 
+                  value={editingScenario.requiredScenarioId || ""} 
+                  onChange={e => setEditingScenario({...editingScenario, requiredScenarioId: e.target.value})}
+                  className="w-full bg-slate-900 border border-slate-700 rounded p-3 text-sm text-white focus:border-amber-500"
+                >
+                  <option value="">なし（誰でも遊べる独立したシナリオ）</option>
+                  {availableRequiredScenarios.map(s => (
+                    <option key={s.id} value={s.id}>{s.title}</option>
+                  ))}
+                </select>
+              </div>
+
               <div className="mt-4 border-t border-slate-700 pt-4">
                 <label className="text-xs text-slate-400 block mb-2">シナリオのカバー画像 (パッケージ)</label>
                 <div className="flex flex-col md:flex-row gap-4 items-start">
@@ -289,7 +305,6 @@ export default function ScenarioEditView({ editingScenario, setEditingScenario, 
                 <h3 className="text-blue-400 font-bold mb-4">キャラクター詳細編集</h3>
                 
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  {/* ★ キャラ画像設定枠をリッチ化 */}
                   <div className="md:col-span-2 border-b border-slate-700 pb-4 mb-2">
                     <label className="text-xs text-slate-400 block mb-2">キャラクター画像</label>
                     <div className="flex flex-col md:flex-row gap-4 items-center md:items-start">
