@@ -1,4 +1,5 @@
-export type ViewState = "login" | "signup" | "lobby" | "game" | "evaluation" | "admin" | "banned" | "maintenance" | "scenarioEdit" | "mypage";
+// 1行目を以下のように書き換えてください（"onboarding" を追加）
+export type ViewState = "login" | "signup" | "onboarding" | "lobby" | "game" | "evaluation" | "admin" | "banned" | "maintenance" | "scenarioEdit" | "mypage";
 
 export type RoomDifficulty = "beginner" | "easy" | "normal" | "hard" | "pro" | "oni";
 export type GameRule = "dnd" | "coc_en" | "coc_jp" | "sw25" | "storytelling";

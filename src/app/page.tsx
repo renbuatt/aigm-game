@@ -10,6 +10,7 @@ import {
 
 import LoginView from "../components/views/LoginView";
 import SignupView from "../components/views/SignupView";
+import OnboardingView from "../components/views/OnboardingView"; // ★ 追加
 import BannedView from "../components/views/BannedView";
 import MaintenanceView from "../components/views/MaintenanceView";
 import EvaluationView from "../components/views/EvaluationView";
@@ -215,16 +216,26 @@ export default function Home() {
   };
 
   const fetchProfile = async (userId: string, emailStr: string, currentMaintenance: boolean, roomsData: Room[]) => {
-    let profileData: UserProfile;
+    let profileData: UserProfile | null = null;
     const { data } = await supabase.from('profiles').select('*').eq('id', userId).single();
+    
+    // ★ 必須項目が埋まっているかチェック（Google連携で飛んできた人の対策）
+    const isProfileComplete = data && data.full_name && data.address && data.phone;
+
+    if (!isProfileComplete) {
+      // 未完了ならオンボーディングへ飛ばす
+      setEmail(emailStr); // Googleのメアドを表示用にセット
+      setCurrentView("onboarding");
+      return;
+    }
+
     if (data) {
       profileData = { id: data.id, handleName: data.handle_name, fullName: data.full_name, address: data.address, phone: data.phone, avatarUrl: data.avatar_url, bio: data.bio, discordId: data.discord_id, ratingSum: data.rating_sum || 0, ratingCount: data.rating_count || 0, isAdmin: data.is_admin || false, isTester: data.is_tester || false, isBanned: data.is_banned || false, email: data.email };
       if (data.email !== emailStr) await supabase.from('profiles').update({ email: emailStr }).eq('id', userId);
-    } else {
-      const newProfile = { id: userId, handle_name: emailStr.split("@")[0], full_name: "", address: "", phone: "", avatar_url: DEFAULT_AVATAR, bio: "よろしくお願いします。", discord_id: "", rating_sum: 0, rating_count: 0, is_admin: false, is_tester: false, is_banned: false, email: emailStr };
-      await supabase.from('profiles').insert(newProfile);
-      profileData = { id: userId, handleName: newProfile.handle_name, fullName: "", address: "", phone: "", avatarUrl: newProfile.avatar_url, bio: newProfile.bio, discordId: newProfile.discord_id, ratingSum: 0, ratingCount: 0, isAdmin: false, isTester: false, isBanned: false, email: emailStr };
-    }
+    } 
+
+    if (!profileData) return;
+
     setCurrentUser(profileData);
     await fetchNotifications(userId);
 
@@ -264,7 +275,11 @@ export default function Home() {
       setIsMaintenance(currentMaintenance);
       const { formattedRooms } = await fetchData();
       const { data: { session } } = await supabase.auth.getSession();
-      if (session?.user) await fetchProfile(session.user.id, session.user.email || "", currentMaintenance, formattedRooms);
+      
+      // Googleログイン等でリダイレクトされてきた場合もここを通る
+      if (session?.user) {
+        await fetchProfile(session.user.id, session.user.email || "", currentMaintenance, formattedRooms);
+      }
     };
     initApp();
   }, []);
@@ -298,6 +313,25 @@ export default function Home() {
         const { formattedRooms } = await fetchData();
         await fetchProfile(data.user.id, email, isMaintenance, formattedRooms);
       }
+    } catch (error: any) { alert("登録エラー: " + error.message); } finally { setAuthLoading(false); }
+  };
+
+  // ★ Googleログイン後などのプロフィール初期設定
+  const handleProfileSetup = async (name: string, addr: string, phone: string) => {
+    setAuthLoading(true);
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session?.user) throw new Error("セッションが見つかりません。");
+      
+      const { error: upsertError } = await supabase.from('profiles').upsert({
+        id: session.user.id, handle_name: name.split(" ")[0] || session.user.email?.split("@")[0], full_name: name, address: addr, phone: phone,
+        avatar_url: DEFAULT_AVATAR, bio: "よろしくお願いします。", email: session.user.email
+      });
+      if (upsertError) throw upsertError;
+      
+      alert("登録が完了しました！");
+      const { formattedRooms } = await fetchData();
+      await fetchProfile(session.user.id, session.user.email || "", isMaintenance, formattedRooms);
     } catch (error: any) { alert("登録エラー: " + error.message); } finally { setAuthLoading(false); }
   };
 
@@ -1055,6 +1089,9 @@ export default function Home() {
       {currentView === "login" && <LoginView email={email} setEmail={setEmail} password={password} setPassword={setPassword} authLoading={authLoading} handleEmailAuth={handleEmailAuth} handleGoogleAuth={handleGoogleAuth} setCurrentView={setCurrentView} isMaintenance={isMaintenance} />}
       {currentView === "signup" && <SignupView email={email} setEmail={setEmail} password={password} setPassword={setPassword} authLoading={authLoading} handleEmailSignUp={handleEmailSignUp} handleGoogleAuth={handleGoogleAuth} setCurrentView={setCurrentView} isMaintenance={isMaintenance} />}
       
+      {/* ★ ここに追加した OnboardingView を配置！ */}
+      {currentView === "onboarding" && <OnboardingView authLoading={authLoading} handleProfileSetup={handleProfileSetup} handleLogout={handleLogout} email={email} />}
+
       {currentView === "lobby" && currentUser && (
         <LobbyView 
           currentUser={currentUser} handleLogout={handleLogout} setShowMailbox={setShowMailbox} unreadCount={unreadCount} secretRoomIdSearch={secretRoomIdSearch} setSecretRoomIdSearch={setSecretRoomIdSearch} rooms={rooms} searchedSecretRoom={searchedSecretRoom} setSearchedSecretRoom={setSearchedSecretRoom} executeJoinRoom={executeJoinRoom} availableRooms={availableRooms} spectateRoom={spectateRoom} setEditingScenario={setEditingScenario} setCurrentView={setCurrentView} createdScenarios={createdScenarios} deleteScenario={deleteScenario} setRoomConfigModal={setRoomConfigModal} fetchAdminData={fetchAdminData} startTrialPlay={(scenario) => setAdModal({ isOpen: true, step: 1, scenario })} availableScenarios={availableScenarios} 
