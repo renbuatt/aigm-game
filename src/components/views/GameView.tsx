@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from "react";
 import { ViewState, UserProfile, Room, Character, Scene, Message, ChatTab, Scenario } from "../../types";
-import { supabase } from "../../lib/supabase"; // ★ユーザー名取得用に追加
+import { supabase } from "../../lib/supabase"; 
 
 const DEFAULT_AVATAR = "https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&w=150&q=80";
 
@@ -69,11 +69,10 @@ export default function GameView({
   
   const [isGeneratingImg, setIsGeneratingImg] = useState(false);
   const [showSummaryModal, setShowSummaryModal] = useState(false);
-  const [playerNames, setPlayerNames] = useState<Record<string, string>>({}); // ★参加者のユーザー名保管用
+  const [playerNames, setPlayerNames] = useState<Record<string, string>>({});
   
   const chatContainerRef = useRef<HTMLDivElement>(null);
 
-  // ★ 参加者のユーザー名（HN）をDBから取得する処理
   useEffect(() => {
     const fetchNames = async () => {
       if (!activeRoom?.joined_users) return;
@@ -232,7 +231,7 @@ export default function GameView({
               </button>
             )}
             <button onClick={() => setShowSummaryModal(true)} className="text-xs bg-slate-700 hover:bg-slate-600 text-slate-300 px-3 py-1.5 rounded font-bold shadow">📖 あらすじ</button>
-            <button onClick={saveToArchive} className="text-xs bg-amber-700 hover:bg-amber-600 text-amber-100 px-3 py-1.5 rounded font-bold shadow transition-colors">👑 書庫に保存</button>
+            {/* 書庫に保存ボタンを削除しました */}
           </div>
           
           <div className="flex flex-col items-end">
@@ -275,7 +274,6 @@ export default function GameView({
           </div>
         </div>
 
-        {/* ★ 変更：キャラ名の横に参加者一覧リストを並べる */}
         <div className="flex flex-wrap items-center gap-3 justify-between w-full border-t border-slate-700/50 pt-2 mt-1">
           <div className="flex flex-wrap items-center gap-3">
             <span className="text-sm font-bold text-white flex items-center gap-2">
