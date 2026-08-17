@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef } from "react";
 import { ViewState, UserProfile, Room, Character, Scene, Message, ChatTab, Scenario } from "../../types";
+import { supabase } from "../../lib/supabase"; // ★ユーザー名取得用に追加
 
 const DEFAULT_AVATAR = "https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&w=150&q=80";
 
@@ -38,7 +39,7 @@ type Props = {
   isChatDisabled: boolean;
   mergeTeam: () => Promise<void>;
   executeMergeAll: () => Promise<void>;
-  generateSceneImage: (promptText?: string) => Promise<void>; // ★ オプショナルに変更
+  generateSceneImage: (promptText?: string) => Promise<void>;
   proposedTeams: {id: string, action: string, members: string[], leader: string}[];
   setProposedTeams: React.Dispatch<React.SetStateAction<{id: string, action: string, members: string[], leader: string}[]>>;
   isGeneratingSplit: boolean;
@@ -51,7 +52,7 @@ type Props = {
   updateInventory: (newItems: string) => Promise<void>;
   openRoomConfigModal?: (scenario: Scenario) => void; 
   aiPlayersList: Character[];
-  saveToArchive: () => Promise<void>; // ★ 追加
+  saveToArchive: () => Promise<void>;
 };
 
 export default function GameView({
@@ -68,8 +69,25 @@ export default function GameView({
   
   const [isGeneratingImg, setIsGeneratingImg] = useState(false);
   const [showSummaryModal, setShowSummaryModal] = useState(false);
+  const [playerNames, setPlayerNames] = useState<Record<string, string>>({}); // ★参加者のユーザー名保管用
   
   const chatContainerRef = useRef<HTMLDivElement>(null);
+
+  // ★ 参加者のユーザー名（HN）をDBから取得する処理
+  useEffect(() => {
+    const fetchNames = async () => {
+      if (!activeRoom?.joined_users) return;
+      const uids = Object.keys(activeRoom.joined_users);
+      if (uids.length === 0) return;
+      const { data } = await supabase.from('profiles').select('id, handle_name').in('id', uids);
+      if (data) {
+        const map: Record<string, string> = {};
+        data.forEach(p => { map[p.id] = p.handle_name; });
+        setPlayerNames(map);
+      }
+    };
+    fetchNames();
+  }, [activeRoom?.joined_users]);
 
   useEffect(() => {
     if (chatContainerRef.current) {
@@ -86,11 +104,10 @@ export default function GameView({
     }
   }, [messages, activeRoom.status, activeRoom.is_paused, isHost, isScenarioEnded, triggerAutoAction]);
 
-  // ★ ダイアログなしで即座に自動生成する
   const handleGenerateImage = async () => {
     if (imageCount >= 3 || isGeneratingImg) return;
     setIsGeneratingImg(true);
-    await generateSceneImage(""); // 空文字を渡すとAIが裏で自動推測する
+    await generateSceneImage(""); 
     setIsGeneratingImg(false);
   };
 
@@ -215,7 +232,6 @@ export default function GameView({
               </button>
             )}
             <button onClick={() => setShowSummaryModal(true)} className="text-xs bg-slate-700 hover:bg-slate-600 text-slate-300 px-3 py-1.5 rounded font-bold shadow">📖 あらすじ</button>
-            {/* ★ 履歴から書庫に追加するボタン */}
             <button onClick={saveToArchive} className="text-xs bg-amber-700 hover:bg-amber-600 text-amber-100 px-3 py-1.5 rounded font-bold shadow transition-colors">👑 書庫に保存</button>
           </div>
           
@@ -259,13 +275,34 @@ export default function GameView({
           </div>
         </div>
 
-        <div className="flex flex-wrap items-center gap-1 justify-between w-full border-t border-slate-700/50 pt-2 mt-1">
-          <span className="text-sm font-bold text-white flex items-center gap-2">
-            {joinedCharacter ? joinedCharacter.name : "👁️ 観戦者"}
-            {isSplitMode && myScene.id !== 'scene_main' && <span className="text-[10px] bg-indigo-600 px-2 py-0.5 rounded-full">{myScene.name} 班</span>}
-          </span>
-          <div className="flex flex-wrap items-center gap-1 justify-end">
+        {/* ★ 変更：キャラ名の横に参加者一覧リストを並べる */}
+        <div className="flex flex-wrap items-center gap-3 justify-between w-full border-t border-slate-700/50 pt-2 mt-1">
+          <div className="flex flex-wrap items-center gap-3">
+            <span className="text-sm font-bold text-white flex items-center gap-2">
+              {joinedCharacter ? joinedCharacter.name : "👁️ 観戦者"}
+              {isSplitMode && myScene.id !== 'scene_main' && <span className="text-[10px] bg-indigo-600 px-2 py-0.5 rounded-full">{myScene.name} 班</span>}
+            </span>
             
+            <div className="flex flex-wrap items-center gap-1.5 border-l border-slate-600 pl-3">
+              {Object.entries(activeRoom.joined_users || {}).map(([uid, cid]) => {
+                const char = activeRoom.scenario?.presetCharacters.find((pc: Character) => pc.id === cid);
+                if (!char) return null;
+                const pName = playerNames[uid] || (uid === activeRoom.host_id ? activeRoom.host_name : (uid === currentUser?.id ? currentUser?.handleName : "PL"));
+                return (
+                  <span key={uid} className="text-[10px] bg-slate-800 border border-slate-600 px-1.5 py-0.5 rounded text-slate-300 shadow-sm">
+                    {pName} / {char.name}
+                  </span>
+                );
+              })}
+              {aiPlayersList.map(char => (
+                <span key={char.id} className="text-[10px] bg-indigo-900/30 border border-indigo-700/50 px-1.5 py-0.5 rounded text-indigo-300 shadow-sm">
+                  AI相棒 / {char.name}
+                </span>
+              ))}
+            </div>
+          </div>
+
+          <div className="flex flex-wrap items-center gap-1 justify-end">
             {joinedCharacter && visibility !== 'none' && (
                <div className="relative group flex items-center mr-2">
                  <button className="bg-amber-800/80 hover:bg-amber-700 text-amber-100 border border-amber-500/50 text-[10px] px-2 py-1.5 rounded font-bold shadow-lg flex items-center">
