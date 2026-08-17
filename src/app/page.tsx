@@ -854,7 +854,6 @@ export default function Home() {
     } catch (err: any) { alert("画像の生成に失敗しました（AIサーバー混雑エラー等）。\n少し時間をおいて再度お試しください。"); }
   };
 
-  // ★ 改良: 視点指示を含んだプロンプト
   const executeExport = async (title: string, sourceMessages: Message[], type: 'chat' | 'summary' | 'novel', options?: { archiveId?: string, modelName?: string, viewPoint?: 'third' | 'first', myCharacterName?: string, scenarioImage?: string, createdAt?: string, coPlayers?: string[], characters?: Character[] }) => {
     const printWindow = window.open('', '_blank');
     if (!printWindow) { alert("ポップアップがブロックされました。ブラウザの設定でポップアップを許可してください。"); return; }
@@ -897,19 +896,40 @@ export default function Home() {
       </div>
     `;
 
+    // ★ 古いデータの救済措置を含めたキャラクターHTML生成ロジック
     const generateCharsHtml = (introMap: Record<string, string> = {}) => {
-      if (!options?.characters || options.characters.length === 0) return '';
+      let charsToRender = options?.characters;
+
+      // 古いアーカイブ等でキャラクター情報がない場合は、AIが抽出した introMap からダミーを構築する
+      if (!charsToRender || charsToRender.length === 0) {
+        const extractedNames = Object.keys(introMap);
+        if (extractedNames.length === 0) return ''; // 万が一AIが紹介文を作らなかった場合はスキップ
+        charsToRender = extractedNames.map(name => ({
+          id: name,
+          name: name,
+          job: '探索者',
+          personality: introMap[name],
+          imageUrl: '',
+          hp: 0, san: 0, str: 0, dex: 0, int: 0, con: 0, wis: 0, cha: 0,
+          playerName: 'プレイヤー' // HNが不明なため仮置き
+        }));
+      }
+
       const chunkSize = 3;
       const chunks = [];
-      for (let i = 0; i < options.characters.length; i += chunkSize) {
-        chunks.push(options.characters.slice(i, i + chunkSize));
+      for (let i = 0; i < charsToRender.length; i += chunkSize) {
+        chunks.push(charsToRender.slice(i, i + chunkSize));
       }
+      
       return chunks.map((chunk, chunkIdx) => `
         <div class="page-break">
           ${chunkIdx === 0 ? '<h2 style="text-align: center; margin-bottom: 40px; font-size: 24px; color: #2c3e50;">登場キャラクター</h2>' : ''}
           ${chunk.map(c => {
-            const introText = introMap[c.name] || c.personality || '情報なし';
+            // AIの出力と実際のキャラ名が少し違ってもマッチするように検索
+            const matchedKey = Object.keys(introMap).find(k => k.includes(c.name) || c.name.includes(k));
+            const introText = matchedKey ? introMap[matchedKey] : (c.personality || '情報なし');
             const playerName = c.playerName ? c.playerName : 'AI相棒';
+            
             return `
               <div class="character-intro">
                 ${c.imageUrl ? `<img src="${c.imageUrl}" />` : `<div class="no-image">No Image</div>`}
@@ -935,6 +955,7 @@ export default function Home() {
         return `<div style="margin-bottom: 12px; border-bottom: 1px dashed #eee; padding-bottom: 8px;"><strong style="color: #2c3e50;">${senderName}</strong><br><span style="white-space: pre-wrap; color: #34495e;">${text}</span></div>`;
       }).join('');
       
+      // チャットログ出力時は introMap は空のまま（元の設定を使用）
       contentHtml = `
         ${commonStyle}
         <div class="page">
@@ -965,6 +986,10 @@ export default function Home() {
         ? `1. 単調な事実の羅列を避け、五感を刺激する情景描写と心理描写を大幅に肉付けすること。また、【${options.myCharacterName}】の視点（一人称）で物語を描写すること。`
         : `1. 単調な事実の羅列を避け、五感を刺激する情景描写と心理描写を大幅に肉付けすること。神の視点（第三者視点）で物語を描写すること。`;
 
+      // 過去データの救済用：登場キャラクターの名前をログから無理やり抽出してAIに紹介文を作らせる
+      const uniqueCharNames = Array.from(new Set(targetMessages.filter(m => m.sender === 'player' || m.sender === 'ai_player').map(m => m.charName).filter(Boolean)));
+      const charNamesStr = uniqueCharNames.length > 0 ? `登場キャラクター（${uniqueCharNames.join('、')}）` : '各キャラクター';
+
       const prompt = type === 'summary' 
         ? ["以下のTRPGセッションのチャットログを読み込み、物語のあらすじ・結末として分かりやすく要約してください。","※ログには「GMへの行動宣言」と「キャラクター同士の相談・会話」が含まれています。キャラクター同士の相談内容も物語の展開として要約に含めてください。"].join('\n')
         : [
@@ -976,7 +1001,7 @@ export default function Home() {
             "3. ダイスロールの成否はドラマチックな演出に変換すること。",
             "4. 読者を惹きつける一つの完成された短編小説に仕上げること。",
             "5. 【重要】チャットログ内に [IMAGE_ID: X] というマーカーがあった場合、そのまま `[IMAGE_ID: X]` と出力すること。",
-            "6. 【超重要】本編の前に、必ず以下のマーカーを使って各キャラクターの紹介文（設定とチャットログでのプレイスタイルを統合した100文字程度の要約）を出力してください。",
+            `6. 【超重要】本編の前に、必ず以下のマーカーを使って${charNamesStr}の紹介文（設定とチャットログでのプレイスタイルを統合した100文字程度の要約）を全員分出力してください。`,
             "マーカーの形式： [CHAR_INTRO: キャラクター名] 紹介文",
             "7. 全員分の紹介文を出力し終えたら、必ず [NOVEL_START] というマーカーを置き、そこから本編を書き始めてください。"
           ].join('\n');
