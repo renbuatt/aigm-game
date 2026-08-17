@@ -10,7 +10,7 @@ import {
 
 import LoginView from "../components/views/LoginView";
 import SignupView from "../components/views/SignupView";
-import OnboardingView from "../components/views/OnboardingView"; // ★ 追加
+import OnboardingView from "../components/views/OnboardingView";
 import BannedView from "../components/views/BannedView";
 import MaintenanceView from "../components/views/MaintenanceView";
 import EvaluationView from "../components/views/EvaluationView";
@@ -18,7 +18,7 @@ import AdminView from "../components/views/AdminView";
 import ScenarioEditView from "../components/views/ScenarioEditView";
 import LobbyView from "../components/views/LobbyView";
 import GameView from "../components/views/GameView";
-import MyPageView from "../components/views/MyPageView";
+import UserProfileView from "../components/views/UserProfileView"; // ★ 変更
 
 const NO_IMAGE_SCENARIO = "https://images.unsplash.com/photo-1614729939124-03290b5609ce?auto=format&fit=crop&w=400&q=80";
 const DEFAULT_AVATAR = "https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&w=150&q=80";
@@ -30,8 +30,7 @@ export default function Home() {
   const [authLoading, setAuthLoading] = useState(false);
 
   const [currentUser, setCurrentUser] = useState<UserProfile | null>(null);
-  const [isEditingProfile, setIsEditingProfile] = useState(false);
-  const [editProfileData, setEditProfileData] = useState<UserProfile | null>(null);
+  const [targetUserId, setTargetUserId] = useState<string>(""); // ★ 追加: プロフィール表示用
 
   const [scenarios, setScenarios] = useState<Scenario[]>([]);
   const [editingScenario, setEditingScenario] = useState<Scenario | null>(null);
@@ -60,8 +59,6 @@ export default function Home() {
   const [allUsers, setAllUsers] = useState<UserProfile[]>([]);
   const [myNotifications, setMyNotifications] = useState<Notification[]>([]);
   const [showMailbox, setShowMailbox] = useState(false);
-  
-  const [playArchives, setPlayArchives] = useState<PlayArchive[]>([]);
 
   const [banTargetUser, setBanTargetUser] = useState<UserProfile | null>(null);
   const [banReason, setBanReason] = useState("");
@@ -93,7 +90,6 @@ export default function Home() {
 
   const availableScenarios = scenarios.filter(s => !s.isBanned);
   const createdScenarios = availableScenarios.filter(s => s.authorId === currentUser?.id);
-  const purchasedScenarios = availableScenarios.filter(s => s.authorId !== currentUser?.id && s.purchasedTickets && currentUser && s.purchasedTickets[currentUser.id] > 0);
   const availableRooms = rooms.filter(r => !r.scenario?.isBanned);
 
   const defaultScene: Scene = { id: "scene_main", name: "メインルーム", memberIds: [] };
@@ -101,6 +97,29 @@ export default function Home() {
   const isSplitMode = activeRoom ? (activeRoom.scenes?.length > 1) : false;
 
   const isScenarioEnded = messages.some(m => m.text.includes('[SCENARIO_END]')) || activeRoom?.status === 'finished';
+
+  // ★ 追加: ユーザープロフィールを開く
+  const openUserProfile = (userId: string) => {
+    setTargetUserId(userId);
+    setCurrentView("userProfile");
+  };
+
+  // ★ 追加: フレンド追加処理
+  const addFriend = async (targetId: string) => {
+    if (!currentUser) return;
+    if (currentUser.friendIds?.includes(targetId)) {
+      alert("既に友達に登録されています。");
+      return;
+    }
+    const newFriends = [...(currentUser.friendIds || []), targetId];
+    const { error } = await supabase.from('profiles').update({ friend_ids: newFriends }).eq('id', currentUser.id);
+    if (!error) {
+      setCurrentUser({ ...currentUser, friendIds: newFriends });
+      alert("友達に追加しました！");
+    } else {
+      alert("エラーが発生しました: " + error.message);
+    }
+  };
 
   useEffect(() => {
     if (typeof window !== "undefined" && typeof (window as any).gtag === "function") {
@@ -219,18 +238,16 @@ export default function Home() {
     let profileData: UserProfile | null = null;
     const { data } = await supabase.from('profiles').select('*').eq('id', userId).single();
     
-    // ★ 必須項目が埋まっているかチェック（Google連携で飛んできた人の対策）
     const isProfileComplete = data && data.full_name && data.address && data.phone;
 
     if (!isProfileComplete) {
-      // 未完了ならオンボーディングへ飛ばす
-      setEmail(emailStr); // Googleのメアドを表示用にセット
+      setEmail(emailStr); 
       setCurrentView("onboarding");
       return;
     }
 
     if (data) {
-      profileData = { id: data.id, handleName: data.handle_name, fullName: data.full_name, address: data.address, phone: data.phone, avatarUrl: data.avatar_url, bio: data.bio, discordId: data.discord_id, ratingSum: data.rating_sum || 0, ratingCount: data.rating_count || 0, isAdmin: data.is_admin || false, isTester: data.is_tester || false, isBanned: data.is_banned || false, email: data.email };
+      profileData = { id: data.id, handleName: data.handle_name, fullName: data.full_name, address: data.address, phone: data.phone, avatarUrl: data.avatar_url, bio: data.bio, discordId: data.discord_id, ratingSum: data.rating_sum || 0, ratingCount: data.rating_count || 0, isAdmin: data.is_admin || false, isTester: data.is_tester || false, isBanned: data.is_banned || false, email: data.email, friendIds: data.friend_ids || [] };
       if (data.email !== emailStr) await supabase.from('profiles').update({ email: emailStr }).eq('id', userId);
     } 
 
@@ -238,14 +255,6 @@ export default function Home() {
 
     setCurrentUser(profileData);
     await fetchNotifications(userId);
-
-    const { data: archiveData } = await supabase.from('play_archives').select('*').eq('user_id', userId).order('created_at', { ascending: false });
-    if (archiveData) {
-      setPlayArchives(archiveData.map((d: any) => ({
-        id: d.id, userId: d.user_id, scenarioTitle: d.scenario_title, scenarioImage: d.scenario_image,
-        characterName: d.character_name, chatLogs: d.chat_logs, createdAt: d.created_at
-      })));
-    }
 
     if (!profileData.isBanned && (!currentMaintenance || profileData.isAdmin || profileData.isTester)) {
       const activeMyRoom = roomsData.find(r => (r.status === 'playing' || r.status === 'splitting' || r.status === 'recruiting') && r.joined_users && r.joined_users[userId]);
@@ -276,7 +285,6 @@ export default function Home() {
       const { formattedRooms } = await fetchData();
       const { data: { session } } = await supabase.auth.getSession();
       
-      // Googleログイン等でリダイレクトされてきた場合もここを通る
       if (session?.user) {
         await fetchProfile(session.user.id, session.user.email || "", currentMaintenance, formattedRooms);
       }
@@ -316,7 +324,6 @@ export default function Home() {
     } catch (error: any) { alert("登録エラー: " + error.message); } finally { setAuthLoading(false); }
   };
 
-  // ★ Googleログイン後などのプロフィール初期設定
   const handleProfileSetup = async (name: string, addr: string, phone: string) => {
     setAuthLoading(true);
     try {
@@ -875,12 +882,27 @@ export default function Home() {
     if (!currentUser || !activeRoom || !joinedCharacter) return;
     const endIndex = messages.findIndex(m => m.text.includes('[SCENARIO_END]'));
     const baseMessages = endIndex !== -1 ? messages.slice(0, endIndex + 1) : messages;
-    const archiveData = { user_id: currentUser.id, scenario_title: activeRoom.scenario?.title || "不明なシナリオ", scenario_image: activeRoom.scenario?.imageUrl || "", character_name: joinedCharacter.name, chatLogs: baseMessages };
+
+    // ★ プレイ履歴に参加したユーザー名を保存する処理を追加
+    const userIds = Object.keys(activeRoom.joined_users || {});
+    const { data: profiles } = await supabase.from('profiles').select('handle_name').in('id', userIds);
+    const coPlayers = profiles ? profiles.map(p => p.handle_name) : [];
+
+    const archiveData = { 
+      user_id: currentUser.id, 
+      scenario_title: activeRoom.scenario?.title || "不明なシナリオ", 
+      scenario_image: activeRoom.scenario?.imageUrl || "", 
+      character_name: joinedCharacter.name, 
+      chat_logs: baseMessages,
+      rule: activeRoom.rule,
+      co_players: coPlayers 
+    };
+    
     const { data, error } = await supabase.from('play_archives').insert(archiveData).select().single();
     if (error) { alert("書庫への保存に失敗しました: " + error.message); } 
     else {
-      alert("マイページ（プレイ書庫）に保存しました！\nロビー画面の「マイページ」から確認できます。");
-      setPlayArchives(prev => [{ id: data.id, userId: data.user_id, scenarioTitle: data.scenario_title, scenarioImage: data.scenario_image, characterName: data.character_name, chatLogs: data.chat_logs, createdAt: data.created_at }, ...prev]);
+      alert("プレイ履歴に保存しました！\nユーザーページからいつでも確認できます。");
+      setPlayArchives(prev => [{ id: data.id, userId: data.user_id, scenarioTitle: data.scenario_title, scenarioImage: data.scenario_image, characterName: data.character_name, chatLogs: data.chat_logs, createdAt: data.created_at, rule: data.rule, coPlayers: data.co_players }, ...prev]);
     }
   };
 
@@ -1081,7 +1103,18 @@ export default function Home() {
 
   return (
     <main className="h-screen w-full bg-slate-900 text-slate-100 flex flex-col font-sans overflow-hidden">
-      {currentView === "mypage" && currentUser && <MyPageView currentUser={currentUser} playArchives={playArchives} setCurrentView={setCurrentView} executeExport={executeExport} isExporting={isExporting} />}
+      {/* ★ MyPageView を UserProfileView に差し替えました */}
+      {currentView === "userProfile" && currentUser && (
+        <UserProfileView 
+          currentUser={currentUser} 
+          targetUserId={targetUserId} 
+          setCurrentView={setCurrentView} 
+          executeExport={executeExport} 
+          isExporting={isExporting} 
+          allScenarios={scenarios} 
+        />
+      )}
+
       {currentView === "admin" && currentUser?.isAdmin && <AdminView isMaintenance={isMaintenance} toggleMaintenance={toggleMaintenance} reports={reports} allUsers={allUsers} scenarios={scenarios} resolveReport={resolveReport} setBanTargetUser={setBanTargetUser} setBanReason={setBanReason} setBanTargetScenario={setBanTargetScenario} setScenarioBanReason={setScenarioBanReason} unbanScenarioFromAppeal={unbanScenarioFromAppeal} userSearchQuery={userSearchQuery} setUserSearchQuery={setUserSearchQuery} toggleAdminStatus={toggleAdminStatus} scenarioSearchQuery={scenarioSearchQuery} setScenarioSearchQuery={setScenarioSearchQuery} setCurrentView={setCurrentView} executeCreateTester={executeCreateTester} />}
       {currentView === "banned" && <BannedView handleLogout={handleLogout} />}
       {currentView === "maintenance" && <MaintenanceView handleLogout={handleLogout} />}
@@ -1089,12 +1122,11 @@ export default function Home() {
       {currentView === "login" && <LoginView email={email} setEmail={setEmail} password={password} setPassword={setPassword} authLoading={authLoading} handleEmailAuth={handleEmailAuth} handleGoogleAuth={handleGoogleAuth} setCurrentView={setCurrentView} isMaintenance={isMaintenance} />}
       {currentView === "signup" && <SignupView email={email} setEmail={setEmail} password={password} setPassword={setPassword} authLoading={authLoading} handleEmailSignUp={handleEmailSignUp} handleGoogleAuth={handleGoogleAuth} setCurrentView={setCurrentView} isMaintenance={isMaintenance} />}
       
-      {/* ★ ここに追加した OnboardingView を配置！ */}
       {currentView === "onboarding" && <OnboardingView authLoading={authLoading} handleProfileSetup={handleProfileSetup} handleLogout={handleLogout} email={email} />}
 
       {currentView === "lobby" && currentUser && (
         <LobbyView 
-          currentUser={currentUser} handleLogout={handleLogout} setShowMailbox={setShowMailbox} unreadCount={unreadCount} secretRoomIdSearch={secretRoomIdSearch} setSecretRoomIdSearch={setSecretRoomIdSearch} rooms={rooms} searchedSecretRoom={searchedSecretRoom} setSearchedSecretRoom={setSearchedSecretRoom} executeJoinRoom={executeJoinRoom} availableRooms={availableRooms} spectateRoom={spectateRoom} setEditingScenario={setEditingScenario} setCurrentView={setCurrentView} createdScenarios={createdScenarios} deleteScenario={deleteScenario} setRoomConfigModal={setRoomConfigModal} fetchAdminData={fetchAdminData} startTrialPlay={(scenario) => setAdModal({ isOpen: true, step: 1, scenario })} availableScenarios={availableScenarios} 
+          currentUser={currentUser} handleLogout={handleLogout} setShowMailbox={setShowMailbox} unreadCount={unreadCount} secretRoomIdSearch={secretRoomIdSearch} setSecretRoomIdSearch={setSecretRoomIdSearch} rooms={rooms} searchedSecretRoom={searchedSecretRoom} setSearchedSecretRoom={setSearchedSecretRoom} executeJoinRoom={executeJoinRoom} availableRooms={availableRooms} spectateRoom={spectateRoom} setEditingScenario={setEditingScenario} setCurrentView={setCurrentView} createdScenarios={createdScenarios} deleteScenario={deleteScenario} setRoomConfigModal={setRoomConfigModal} fetchAdminData={fetchAdminData} startTrialPlay={(scenario) => setAdModal({ isOpen: true, step: 1, scenario })} availableScenarios={availableScenarios} openUserProfile={openUserProfile}
         />
       )}
       
@@ -1106,7 +1138,11 @@ export default function Home() {
         />
       )}
       
-      {currentView === "evaluation" && activeRoom && <EvaluationView activeRoom={activeRoom} messages={messages} ratingScenario={ratingScenario} setRatingScenario={setRatingScenario} ratingGM={ratingGM} setRatingGM={setRatingGM} submitEvaluation={submitEvaluation} exportToPDF={exportToPDF} isExporting={isExporting} saveToArchive={saveToArchive} />}
+      {currentView === "evaluation" && activeRoom && (
+        <EvaluationView 
+          activeRoom={activeRoom} messages={messages} ratingScenario={ratingScenario} setRatingScenario={setRatingScenario} ratingGM={ratingGM} setRatingGM={setRatingGM} submitEvaluation={submitEvaluation} exportToPDF={exportToPDF} isExporting={isExporting} saveToArchive={saveToArchive} currentUser={currentUser!} addFriend={addFriend} openUserProfile={openUserProfile}
+        />
+      )}
 
       {adModal.isOpen && (
         <div className="fixed inset-0 bg-black/90 z-[80] flex items-center justify-center p-4">

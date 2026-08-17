@@ -3,7 +3,7 @@ export default function TokushohoPage() {
     <div className="min-h-screen bg-slate-900 text-slate-200 p-6 md:p-12">
       <div className="max-w-3xl mx-auto bg-slate-800 p-8 rounded-xl shadow-2xl whitespace-pre-wrap leading-relaxed text-sm">
         <h1 className="text-2xl font-bold mb-6 text-emerald-400 border-b border-slate-600 pb-4">特定商取引法に基づく表記</h1>
-        【販売事業者】
+        {`【販売事業者】
 五輪警備保障株式会社
 
 【運営統括責任者】
@@ -31,7 +31,7 @@ export default function TokushohoPage() {
 デジタル役務の性質上、購入手続き完了後のキャンセル、返品、返金は一切お受けできません。
 
 【動作環境】
-本サービスをご利用いただくために必要な動作環境は、各プレイページに表示しております。
+本サービスをご利用いただくために必要な動作環境は、各プレイページに表示しております。`}
       </div>
     </div>
   );
