@@ -238,7 +238,7 @@ export default function Home() {
         current_summary: r.current_summary || "", difficulty: r.difficulty || "normal", rule: r.rule || "coc_jp",
         is_paused: r.is_paused || false, afk_users: r.afk_users || [], is_trial: r.is_trial || false,
         item_visibility: r.item_visibility || "none", inventories: r.inventories || {},
-        current_chapter_index: r.current_chapter_index || 0 // ★ チャプター情報の読み込み
+        current_chapter_index: r.current_chapter_index || 0
       })).filter(r => r.scenario) as Room[];
       setRooms(formattedRooms);
     }
@@ -611,7 +611,7 @@ export default function Home() {
       scenario_id: scenario.id, host_name: currentUser.handleName, host_id: currentUser.id, status: "recruiting", scenes: initialScenes,
       privacy: privacy, host_message: message, joined_users: { [currentUser.id]: charId }, current_summary: "", difficulty: difficulty, rule: rule,
       is_paused: false, afk_users: [], is_trial: false, item_visibility: itemVisibility, inventories: initialInventories,
-      current_chapter_index: 0 // ★ チャプター管理を0章からスタート
+      current_chapter_index: 0
     }).select().single();
     
     if (error) { alert("データベースエラーが発生しました: " + error.message); return; }
@@ -642,7 +642,7 @@ export default function Home() {
       scenario_id: scenario.id, host_name: currentUser.handleName, host_id: currentUser.id, status: "recruiting", scenes: initialScenes,
       privacy: 'secret', host_message: "お試しプレイ", joined_users: { [currentUser.id]: charId }, current_summary: "", difficulty: "normal", rule: "coc_jp",
       is_paused: false, afk_users: [], is_trial: true, item_visibility: "none", inventories: initialInventories,
-      current_chapter_index: 0 // ★ チャプター管理を0章からスタート
+      current_chapter_index: 0
     }).select().single();
     
     if (error) { alert("データベースエラーが発生しました: " + error.message); return; }
@@ -997,7 +997,7 @@ export default function Home() {
       }
       const inventoryText = inventoryTextLines.join('\n');
 
-      // ★ 追加: チャプター管理ロジック
+      // ★ 追加・改良: チャプター管理ロジック
       let chapters: {title: string, content: string}[] = [];
       try {
         const parsed = JSON.parse(activeRoom.scenario?.plot || "");
@@ -1010,7 +1010,14 @@ export default function Home() {
       const currentChapter = chapters[currentChapIndex] || chapters[chapters.length - 1];
       const isLastChapter = currentChapIndex >= chapters.length - 1;
 
-      let scenarioPlotText = `【現在のチャプター: ${currentChapter.title}】\n${currentChapter.content}`;
+      // ★ 改良: AIに「物語の全体構成（マップ）」を教え、構造崩壊を防ぐ！
+      const chapterProgress = chapters.map((c, idx) => {
+        if (idx < currentChapIndex) return `[クリア済] 第${idx + 1}章: ${c.title}`;
+        if (idx === currentChapIndex) return `[★現在進行中] 第${idx + 1}章: ${c.title}`;
+        return `[未到達（ネタバレ厳禁）] 第${idx + 1}章: ${c.title}`;
+      }).join('\n');
+
+      let scenarioPlotText = `【物語の全体構成（全${chapters.length}章）】\n${chapterProgress}\n\n【現在（第${currentChapIndex + 1}章）のプロット・台本】\n${currentChapter.content}`;
 
       let difficultyInstruction = "";
       switch (activeRoom.difficulty) {
@@ -1064,7 +1071,6 @@ export default function Home() {
           "12. 【所持アイテムの自動更新】探索等でアイテムを入手・消費した場合は、文章の最後に [INVENTORY_UPDATE: キャラクター名, アイテムA, アイテムB...] と出力してください。"
         ];
 
-        // ★ 追加: チャプター進行指示
         if (!isLastChapter) {
            roleInstructionLines.push("13. 【チャプター進行（超重要）】現在のチャプターの目的が完全に達成された場合、必ず出力の最後に [CHAPTER_CLEAR] というタグを出力してください。");
         }
@@ -1134,7 +1140,6 @@ export default function Home() {
          setActiveRoom(prev => prev ? { ...prev, inventories: newInventories } : null);
       }
 
-      // ★ 追加: チャプタークリア処理
       let cleanAiText = aiText.replace(/\[SPLIT_PROPOSAL:.*?\]/g, '').replace(/\[STATUS_UPDATE:.*?\]/g, '').replace(/\[INVENTORY_UPDATE:.*?\]/g, '').trim();
       let isChapterCleared = false;
       if (cleanAiText.includes('[CHAPTER_CLEAR]')) {
@@ -1146,14 +1151,12 @@ export default function Home() {
       const msgSender = targetTab === "consult" ? "ai_player" : "gm";
       await pushMessage(activeRoom.id, { sender: msgSender, text: cleanAiText, type: targetTab === "gm" ? "ooc" : "ic", sceneId: myScene?.id, charName: targetTab === "consult" ? "AI相棒" : "AI GM", channel: targetTab });
 
-      // ★ 追加: チャプタークリアのシステムメッセージとDB更新
       if (isChapterCleared && !isLastChapter) {
          const nextIndex = currentChapIndex + 1;
          await supabase.from('rooms').update({ current_chapter_index: nextIndex }).eq('id', activeRoom.id);
          setActiveRoom(prev => prev ? { ...prev, current_chapter_index: nextIndex } : null);
          await pushMessage(activeRoom.id, { sender: "system", text: `【システム】チャプター「${currentChapter.title}」をクリアしました！\n物語は次章「${chapters[nextIndex].title}」へ進行します...`, type: "system", sceneId: myScene?.id, channel: "system" }, false);
          
-         // 新チャプター用のダミーコンテキストを追加して要約を引き継がせる
          await supabase.from('ai_memory').insert({ room_id: activeRoom.id, role: 'user', content: `【システム情報：第${nextIndex+1}章（${chapters[nextIndex].title}）に突入しました。これまでの状況を踏まえ、次の展開を描写してください】` });
       }
 
