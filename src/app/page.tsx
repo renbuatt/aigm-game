@@ -876,7 +876,7 @@ export default function Home() {
       <style>
         body { font-family: 'Hiragino Kaku Gothic ProN', 'Meiryo', sans-serif; color: #333; margin: 0; padding: 0; background: #f9f9f9; }
         .page { background: #fff; max-width: 800px; margin: 20px auto; padding: 60px; box-shadow: 0 0 10px rgba(0,0,0,0.1); border-radius: 8px; }
-        .page-break { page-break-before: always; margin-top: 40px; padding-top: 40px; border-top: 2px dashed #ccc; }
+        .page-break { page-break-before: always; break-before: page; margin-top: 40px; padding-top: 40px; border-top: 2px dashed #ccc; }
         @media print { body { background: #fff; } .page { box-shadow: none; margin: 0; padding: 0; } .page-break { border-top: none; padding-top: 0; margin-top: 0; } }
         .cover { display: flex; flex-direction: column; align-items: center; justify-content: center; min-height: 80vh; text-align: center; }
         .cover img { max-width: 80%; max-height: 50vh; object-fit: contain; border-radius: 8px; box-shadow: 0 4px 15px rgba(0,0,0,0.2); margin-bottom: 30px; }
@@ -1126,12 +1126,13 @@ export default function Home() {
       characters: charactersWithPlayers 
     };
     
-    // ★ 修正：select().single() を追加し、保存成功時に state の playArchives を更新
+    // ★ 修正: 保存完了後にステートを即座に更新し、強制的に書庫へ遷移させる
     const { data, error } = await supabase.from('play_archives').insert(archiveData).select().single();
     if (error) { alert("書庫への保存に失敗しました: " + error.message); } 
     else {
       setPlayArchives(prev => [data, ...prev]);
-      alert("プレイ履歴に保存しました！\nユーザーページからいつでも確認できます。");
+      alert("プレイ履歴を書庫に保存しました！");
+      setCurrentView("library"); 
     }
   };
 
@@ -1222,7 +1223,7 @@ export default function Home() {
 
       let scenarioPlotText = `【物語の全体構成（全${chapters.length}章）】\n${chapterProgress}\n\n【現在（第${currentChapIndex + 1}章）のプロット・台本】\n${currentChapter.content}`;
 
-      // ★ 改良: 難易度指示の強化（タスクリストの提示を完全禁止）
+      // ★ 改良: 難易度指示の強化とAI自律化の徹底
       let difficultyInstruction = "";
       switch (activeRoom.difficulty) {
         case "beginner": difficultyInstruction = "【難易度：初心者】接待プレイです。困っていればヒントや選択肢を出しても構いません。"; break;
@@ -1265,7 +1266,7 @@ export default function Home() {
           "4. 【アイテムの厳格な管理（四次元ポケット禁止）】上記の【現在の全キャラクターの所持アイテム】に記載されていないアイテムを使おうとした場合は即座に却下してください。",
           "5. 【ダイスの自己処理禁止】GM自身がダイスを振らないでください。",
           "6. 誰かが行動した後は、必ず「〇〇さんはそう動きました。では、△△さんはどうしますか？」と他の人間PLに行動を促し、全員の行動が出揃うまで待機してください。",
-          "7. 【AI相棒の自律行動と割合（超重要）】AI相棒のターンになったら、人間に「どうしますか？」と尋ねるのではなく、AI GM自身が彼らの行動を自律的に描写し、必要なら結果をシミュレートして「🎲 [名前]の〇〇判定 ➔ 出目: X 【成功/失敗】」と自己完結させてください。また、AI相棒はあくまでサポート役です。ダイスロールや重要な決断の頻度は【AI 2 : 人間PL 8】の割合になるよう控えめに行動させてください。",
+          "7. 【AI相棒への質問禁止と割合（超重要）】AI相棒のターンになったら、絶対に人間に「（AIキャラ名）はどうしますか？」と尋ねないでください。AI GM自身がAI相棒の行動を自律的に描写し、自己完結させてください。また、AI相棒はあくまでサポート役です。ダイスロールや重要な決断の頻度は【AI 2 : 人間PL 8】の割合になるよう極力控えめに行動させてください。",
           "8. 不自然な行動や間違ったアイテムの使用は容赦なく失敗扱い・状況悪化させてください。",
           `9. 想定プレイ時間は「約${activeRoom.scenario?.playTime || 60}分」です。ペース配分を意識し、早すぎる場合は障害を追加してください。`,
           "10. 【プロローグ（導入）について】セッション開始直後の導入フェーズでは、設定されたプロローグ情報があればそれに従い、無ければ本編プロットから推測して自動生成してください。",
@@ -1273,7 +1274,7 @@ export default function Home() {
           "この導入部において、必ずプレイヤー全員が最低1回はダイス判定を行わなければならない状況を作ってください。",
           "11. 【エピローグとエンディング（最重要）】目的を達成しても、いきなり [SCENARIO_END] を出力しないでください。目的達成後は必ず「【エピローグ】」と明記し、これまでの展開を踏まえて相応しい結末を動的に生成し、事後処理を行わせてください。エピローグ内で必ずプレイヤー全員に最後のダイス判定を行わせる状況を作り、PLがエピローグでの行動を終えたと判断できたターンの最後にのみ [SCENARIO_END] を出力してください。",
           "12. 【所持アイテムの厳格な更新】アイテムを入手・消費した場合は、必ず文章の最後に [INVENTORY_UPDATE: キャラクター名, アイテムA, アイテムB...] のタグを出力してください。",
-          "13. 【ステータスの厳格な更新（超重要）】HPやSAN値が減少・変動した場合は、(HPが減少した)といった文章だけでなく、必ず文章の最後に【変動後の最新の値】を使って [STATUS_UPDATE: キャラ名, 最新HP, 最新SAN] のタグを出力してください。これがないとシステムに反映されません。"
+          "13. 【ステータスの厳格な更新（超重要）】HPやSAN値が減少・変動した場合は、文章中で「HPが減少した」と描写するだけで済ませず、必ずAI出力の一番最後に【変動後の最新の値】を使って [STATUS_UPDATE: キャラ名, 最新HP, 最新SAN] のシステムタグを絶対に出力してください。これがないとシステムにダメージが反映されずゲームが壊れます。"
         ];
 
         if (!isLastChapter) {
@@ -1415,7 +1416,7 @@ export default function Home() {
       
       {currentView === "game" && activeRoom && myScene && (
         <GameView 
-          activeRoom={activeRoom} myScene={myScene} currentUser={currentUser!} joinedCharacter={joinedCharacter} leaveGame={leaveGame} setReportTarget={setReportTarget as React.Dispatch<React.SetStateAction<{type: 'user' | 'scenario' | 'room', id: string, name: string, roomId?: string, scenarioId?: string, scenarioName?: string, availableUsers?: { id: string, name: string }[]} | null>>} rollDice={rollDice} startGame={startGame} startSplitting={startSplitting} isSplitMode={isSplitMode} chatTab={chatTab} messages={messages} isLoading={isLoading} isScenarioEnded={isScenarioEnded} setCurrentView={setCurrentView} endGame={endGame} input={input} setInput={setInput} handleSend={handleSend} handleTabClick={handleTabClick} unreadIndicators={unreadIndicators} consultWithAI={consultWithAI} setConsultWithAI={setConsultWithAI} isChatDisabled={isChatDisabled} mergeTeam={mergeTeam} executeMergeAll={executeMergeAll} generateSceneImage={generateSceneImage} proposedTeams={proposedTeams} setProposedTeams={setProposedTeams} isGeneratingSplit={isGeneratingSplit} generateSplitProposal={generateSplitProposal} finishSplitting={finishSplitting} cancelSplitting={cancelSplitting} togglePauseRoom={togglePauseRoom} toggleAFK={toggleAFK} triggerAutoAction={triggerAutoAction} updateInventory={updateInventory} openRoomConfigModal={leaveGameAndCreateRoom} aiPlayersList={aiPlayersList} 
+          activeRoom={activeRoom} myScene={myScene} currentUser={currentUser!} joinedCharacter={joinedCharacter} leaveGame={leaveGame} setReportTarget={setReportTarget as React.Dispatch<React.SetStateAction<{type: 'user' | 'scenario' | 'room', id: string, name: string, roomId?: string, scenarioId?: string, scenarioName?: string, availableUsers?: { id: string, name: string }[]} | null>>} rollDice={rollDice} startGame={startGame} startSplitting={startSplitting} isSplitMode={isSplitMode} chatTab={chatTab} messages={messages} isLoading={isLoading} isScenarioEnded={isScenarioEnded} setCurrentView={setCurrentView} endGame={endGame} input={input} setInput={setInput} handleSend={handleSend} handleTabClick={handleTabClick} unreadIndicators={unreadIndicators} consultWithAI={consultWithAI} setConsultWithAI={setConsultWithAI} isChatDisabled={isChatDisabled} mergeTeam={mergeTeam} executeMergeAll={executeMergeAll} generateSceneImage={generateSceneImage} proposedTeams={proposedTeams} setProposedTeams={setProposedTeams} isGeneratingSplit={isGeneratingSplit} generateSplitProposal={generateSplitProposal} finishSplitting={finishSplitting} cancelSplitting={cancelSplitting} togglePauseRoom={togglePauseRoom} toggleAFK={toggleAFK} triggerAutoAction={triggerAutoAction} updateInventory={updateInventory} openRoomConfigModal={leaveGameAndCreateRoom} aiPlayersList={aiPlayersList} saveToArchive={saveToArchive}
         />
       )}
       

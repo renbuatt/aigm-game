@@ -38,7 +38,7 @@ type Props = {
   isChatDisabled: boolean;
   mergeTeam: () => Promise<void>;
   executeMergeAll: () => Promise<void>;
-  generateSceneImage: (promptText: string) => Promise<void>;
+  generateSceneImage: (promptText?: string) => Promise<void>; // ★ オプショナルに変更
   proposedTeams: {id: string, action: string, members: string[], leader: string}[];
   setProposedTeams: React.Dispatch<React.SetStateAction<{id: string, action: string, members: string[], leader: string}[]>>;
   isGeneratingSplit: boolean;
@@ -51,6 +51,7 @@ type Props = {
   updateInventory: (newItems: string) => Promise<void>;
   openRoomConfigModal?: (scenario: Scenario) => void; 
   aiPlayersList: Character[];
+  saveToArchive: () => Promise<void>; // ★ 追加
 };
 
 export default function GameView({
@@ -59,14 +60,12 @@ export default function GameView({
   setCurrentView, endGame, input, setInput, handleSend, handleTabClick, unreadIndicators,
   consultWithAI, setConsultWithAI, isChatDisabled, mergeTeam, executeMergeAll, generateSceneImage,
   proposedTeams, setProposedTeams, isGeneratingSplit, generateSplitProposal, finishSplitting, cancelSplitting,
-  togglePauseRoom, toggleAFK, triggerAutoAction, updateInventory, openRoomConfigModal, aiPlayersList
+  togglePauseRoom, toggleAFK, triggerAutoAction, updateInventory, openRoomConfigModal, aiPlayersList, saveToArchive
 }: Props) {
   const isRecruiting = activeRoom.status === 'recruiting';
   const isHost = currentUser?.id === activeRoom.host_id || currentUser?.handleName === activeRoom.host_name;
   const imageCount = messages.filter(m => m.type === 'image').length;
   
-  const [showImagePromptModal, setShowImagePromptModal] = useState(false);
-  const [imagePromptText, setImagePromptText] = useState("");
   const [isGeneratingImg, setIsGeneratingImg] = useState(false);
   const [showSummaryModal, setShowSummaryModal] = useState(false);
   
@@ -87,13 +86,12 @@ export default function GameView({
     }
   }, [messages, activeRoom.status, activeRoom.is_paused, isHost, isScenarioEnded, triggerAutoAction]);
 
+  // ★ ダイアログなしで即座に自動生成する
   const handleGenerateImage = async () => {
-    if (!imagePromptText.trim() || imageCount >= 3) return;
+    if (imageCount >= 3 || isGeneratingImg) return;
     setIsGeneratingImg(true);
-    await generateSceneImage(imagePromptText);
+    await generateSceneImage(""); // 空文字を渡すとAIが裏で自動推測する
     setIsGeneratingImg(false);
-    setShowImagePromptModal(false);
-    setImagePromptText("");
   };
 
   const rule = activeRoom.rule || "coc_jp";
@@ -103,7 +101,6 @@ export default function GameView({
   return (
     <div className="flex-1 flex flex-col max-w-5xl mx-auto w-full p-4 min-h-0 relative">
       
-      {/* ★ お試しプレイ 又は 観戦モード の場合に表示されるバナー広告 */}
       {(activeRoom.is_trial || !joinedCharacter) && (
         <div className="w-full bg-slate-800 border border-slate-700 rounded-lg p-2 mb-3 flex items-center justify-center text-xs text-slate-500 font-bold shadow-sm cursor-pointer hover:bg-slate-700 transition-colors">
           <span>【スポンサー広告】ここにバナー広告が表示されます</span>
@@ -207,29 +204,6 @@ export default function GameView({
         </div>
       )}
 
-      {showImagePromptModal && (
-        <div className="absolute inset-0 bg-black/80 z-50 flex items-center justify-center p-4">
-          <div className="bg-slate-800 border border-purple-500/50 rounded-xl p-6 w-full max-w-lg shadow-2xl">
-            <h3 className="text-xl font-bold text-purple-400 mb-4">🖼️ 情景画像を生成 (残り {3 - imageCount}回)</h3>
-            <div className="mb-4">
-              <label className="text-xs text-slate-400 block mb-1">現在の状況を説明してください（日本語でOK）</label>
-              <textarea 
-                value={imagePromptText} 
-                onChange={e => setImagePromptText(e.target.value)} 
-                placeholder="例：薄暗い廃病院の廊下。壁には血文字が書かれており、奥から這い寄る影が見える。"
-                className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white h-24"
-              />
-            </div>
-            <div className="flex gap-4">
-              <button onClick={() => setShowImagePromptModal(false)} className="flex-1 bg-slate-700 hover:bg-slate-600 py-3 rounded text-sm font-bold text-white">キャンセル</button>
-              <button onClick={handleGenerateImage} disabled={!imagePromptText.trim() || isGeneratingImg} className="flex-1 bg-purple-600 hover:bg-purple-500 py-3 rounded text-sm font-bold text-white shadow-lg disabled:opacity-50">
-                {isGeneratingImg ? "⏳ 生成中..." : "生成して皆に共有する"}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
       <header className="bg-slate-800 border border-slate-700 rounded-xl p-3 mb-3 shadow-md flex flex-col gap-2">
         <div className="flex justify-between items-start">
           <div className="flex items-center gap-2">
@@ -241,6 +215,8 @@ export default function GameView({
               </button>
             )}
             <button onClick={() => setShowSummaryModal(true)} className="text-xs bg-slate-700 hover:bg-slate-600 text-slate-300 px-3 py-1.5 rounded font-bold shadow">📖 あらすじ</button>
+            {/* ★ 履歴から書庫に追加するボタン */}
+            <button onClick={saveToArchive} className="text-xs bg-amber-700 hover:bg-amber-600 text-amber-100 px-3 py-1.5 rounded font-bold shadow transition-colors">👑 書庫に保存</button>
           </div>
           
           <div className="flex flex-col items-end">
@@ -364,7 +340,9 @@ export default function GameView({
             {isHost && activeRoom.status === "playing" && !isScenarioEnded && !activeRoom.is_trial && (
                <>
                  {imageCount < 3 && (
-                   <button onClick={() => setShowImagePromptModal(true)} className="bg-purple-700 hover:bg-purple-600 text-white text-[10px] font-bold px-3 py-1.5 rounded shadow-lg ml-2">🖼️ 情景生成</button>
+                   <button onClick={handleGenerateImage} disabled={isGeneratingImg} className="bg-purple-700 hover:bg-purple-600 disabled:bg-slate-600 text-white text-[10px] font-bold px-3 py-1.5 rounded shadow-lg ml-2 transition">
+                     {isGeneratingImg ? "⏳ 生成中..." : "🖼️ 情景生成"}
+                   </button>
                  )}
                  {isSplitMode ? (
                    <button onClick={executeMergeAll} className="bg-indigo-700 hover:bg-indigo-600 text-white text-[10px] font-bold px-3 py-1.5 rounded shadow-lg ml-2">🚪 全員合流</button>
