@@ -24,13 +24,14 @@ type Props = {
   fetchAdminData: () => Promise<void>;
   startTrialPlay: (scenario: Scenario) => void;
   availableScenarios: Scenario[];
+  openUserProfile: (userId: string) => void; // ★追加
 };
 
 export default function LobbyView({
   currentUser, handleLogout, setShowMailbox, unreadCount, secretRoomIdSearch, setSecretRoomIdSearch,
   rooms, searchedSecretRoom, setSearchedSecretRoom, executeJoinRoom, availableRooms,
   spectateRoom, setEditingScenario, setCurrentView, createdScenarios, deleteScenario, setRoomConfigModal,
-  fetchAdminData, startTrialPlay, availableScenarios
+  fetchAdminData, startTrialPlay, availableScenarios, openUserProfile
 }: Props) {
   
   const [lobbyTab, setLobbyTab] = useState<'rooms' | 'scenarios' | 'trials'>('rooms');
@@ -45,9 +46,6 @@ export default function LobbyView({
       <header className="mb-6 flex justify-between items-end border-b border-slate-700 pb-4">
         <div><h1 className="text-3xl font-extrabold text-emerald-400 mb-1">AI GM MORPG Lobby</h1></div>
         <div className="flex items-center gap-4">
-          <button onClick={() => setCurrentView("mypage")} className="bg-amber-600/20 text-amber-400 border border-amber-500/50 hover:bg-amber-600/40 px-3 py-1.5 rounded font-bold text-xs flex items-center gap-1 transition-colors">
-            <span className="text-base">👑</span> プレイ書庫 (Premium)
-          </button>
           <button onClick={() => setShowMailbox(true)} className="relative text-slate-300 hover:text-white p-2 text-xl">
             ✉️{unreadCount > 0 && <span className="absolute top-0 right-0 bg-red-500 text-white text-[9px] px-1.5 rounded-full">{unreadCount}</span>}
           </button>
@@ -75,27 +73,6 @@ export default function LobbyView({
               </div>
 
               <div className="h-[500px] overflow-y-auto space-y-4 pr-2 border border-slate-700/50 p-2 rounded-lg bg-slate-900/50 custom-scrollbar">
-                {searchedSecretRoom && (
-                  <div className="bg-indigo-900/40 border border-indigo-500/50 rounded-xl p-4 flex gap-4 mb-4 relative">
-                    <span className="absolute top-[-10px] left-4 bg-indigo-500 text-white text-[10px] px-2 py-0.5 rounded-full">検索結果</span>
-                    <img src={searchedSecretRoom.scenario?.imageUrl || NO_IMAGE_SCENARIO} className="w-24 h-24 object-cover rounded" />
-                    <div className="flex-1">
-                      <h3 className="text-lg font-bold text-white mb-1">{searchedSecretRoom.scenario?.title}</h3>
-                      <div className="text-xs text-slate-400 mb-2 flex items-center gap-2">
-                        <span>ホスト: {searchedSecretRoom.host_name}</span>
-                        <span className="text-amber-400 font-bold ml-2">⭐ {searchedSecretRoom.scenario?.ratingCount ? (searchedSecretRoom.scenario.ratingSum / searchedSecretRoom.scenario.ratingCount).toFixed(1) : "未評価"}</span>
-                      </div>
-                      <div className="flex gap-2">
-                        <select className="bg-slate-900 border border-slate-700 rounded p-1 text-xs text-white flex-1" onChange={(e) => executeJoinRoom(searchedSecretRoom, e.target.value)} value="">
-                          <option value="" disabled>参加するキャラクターを選択...</option>
-                          {searchedSecretRoom.scenario?.presetCharacters.filter(c => !Object.values(searchedSecretRoom.joined_users || {}).includes(c.id)).map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
-                        </select>
-                        <button onClick={()=>setSearchedSecretRoom(null)} className="text-xs bg-slate-700 px-3 py-1 rounded">閉じる</button>
-                      </div>
-                    </div>
-                  </div>
-                )}
-
                 {availableRooms.filter(r => r.privacy === 'open' || r.host_id === currentUser.id).length === 0 ? <p className="text-slate-400 text-sm p-4 text-center">現在募集中のセッションはありません。</p> : 
                   availableRooms.filter(r => r.privacy === 'open' || r.host_id === currentUser.id).map((room) => {
                   const isHost = room.host_id === currentUser.id;
@@ -110,19 +87,14 @@ export default function LobbyView({
                           <h3 className="text-lg font-bold text-white mb-1 flex items-center gap-2">
                             {room.privacy === 'secret' ? "🔒" : "🔓"} {room.scenario?.title}
                             {isHost && <span className="text-[10px] bg-amber-600 text-white px-2 py-0.5 rounded ml-auto">あなたがホスト</span>}
-                            {isHost && room.privacy === 'secret' && <span className="text-[10px] text-slate-400 select-all" title="友達に共有">ID: {room.id}</span>}
                           </h3>
                         </div>
                         <div className="text-xs text-slate-400 mb-2 flex items-center gap-2">
-                          <span>ホスト: {room.host_name}</span>
+                          <span>ホスト: <span className="underline cursor-pointer hover:text-blue-300 transition-colors" onClick={() => openUserProfile(room.host_id)}>{room.host_name}</span></span>
                           <span className="text-amber-400 font-bold ml-2">⭐ {room.scenario?.ratingCount ? (room.scenario.ratingSum / room.scenario.ratingCount).toFixed(1) : "未評価"}</span>
                           <span className={`px-1.5 py-0.5 rounded text-white ${room.difficulty === 'beginner' ? 'bg-pink-500' : room.difficulty === 'easy' ? 'bg-green-600' : room.difficulty === 'normal' ? 'bg-blue-600' : room.difficulty === 'hard' ? 'bg-orange-600' : room.difficulty === 'pro' ? 'bg-red-600' : 'bg-purple-600'}`}>
                             {room.difficulty === 'beginner' ? '⬜ 初心者' : room.difficulty === 'easy' ? '🟩 簡単' : room.difficulty === 'normal' ? '🟦 普通' : room.difficulty === 'hard' ? '🟧 難しい' : room.difficulty === 'pro' ? '🟥 プロ' : '🟪 鬼'}
                           </span>
-                          <span className="px-1.5 py-0.5 rounded text-white bg-slate-700 border border-slate-500">
-                            {room.rule === 'dnd' ? '🟥 D&D' : room.rule === 'coc_en' ? '🟦 CoC海外版' : room.rule === 'sw25' ? '🟨 SW2.5' : room.rule === 'storytelling' ? '🟪 ストテリ' : '🟩 CoC日本卓'}
-                          </span>
-                          {room.item_visibility !== 'none' && <span className="px-1.5 py-0.5 rounded text-amber-200 bg-amber-900/50 border border-amber-700">🎒 アイテム有</span>}
                         </div>
                         {room.host_message && <p className="text-xs text-slate-300 italic mb-2">「{room.host_message}」</p>}
                         
@@ -173,10 +145,6 @@ export default function LobbyView({
             <>
               <div className="flex justify-between items-end mb-2">
                 <p className="text-xs text-pink-300">広告視聴で導入部(約10分)を無料でAIと遊べます。</p>
-                <div className="flex bg-slate-800 rounded overflow-hidden text-xs">
-                  <button onClick={()=>setTrialSort('new')} className={`px-3 py-1 ${trialSort==='new'?'bg-pink-600 text-white':'text-slate-400 hover:bg-slate-700'}`}>新着順</button>
-                  <button onClick={()=>setTrialSort('popular')} className={`px-3 py-1 ${trialSort==='popular'?'bg-pink-600 text-white':'text-slate-400 hover:bg-slate-700'}`}>人気順</button>
-                </div>
               </div>
               <div className="h-[460px] overflow-y-auto space-y-4 pr-2 custom-scrollbar">
                 {sortedTrials.length === 0 ? <p className="text-slate-400 text-sm p-4 text-center">お試しプレイ可能なシナリオはありません。</p> :
@@ -202,18 +170,22 @@ export default function LobbyView({
         </div>
 
         <div className="space-y-6">
+          {/* ★画像のようにクリックしてマイページへ飛べるようにしました */}
           <div className="bg-slate-800 border border-slate-700 rounded-xl p-4 shadow-lg">
-            <div className="flex justify-between items-center mb-3">
+            <div className="flex justify-between items-center mb-3 border-b border-slate-700 pb-2">
               <h2 className="text-sm font-bold text-blue-400">👤 プレイヤー情報</h2>
               {currentUser.isAdmin && (
                 <button onClick={async () => { await fetchAdminData(); setCurrentView("admin"); }} className="text-[10px] bg-red-900/50 hover:bg-red-800 text-red-300 px-3 py-1 rounded font-bold border border-red-700/50 transition-colors">⚙️ 管理画面</button>
               )}
             </div>
-            <div className="flex gap-4 items-center">
-              <img src={currentUser.avatarUrl} className="w-12 h-12 rounded-full object-cover" />
+            <div 
+              onClick={() => openUserProfile(currentUser.id)} 
+              className="flex gap-4 items-center p-2 rounded-lg cursor-pointer hover:bg-slate-700 transition-colors"
+            >
+              <img src={currentUser.avatarUrl} className="w-14 h-14 rounded-full object-cover shadow" />
               <div>
-                <p className="font-bold text-white flex items-center gap-1">{currentUser.handleName}</p>
-                <p className="text-[10px] text-slate-500 select-all mt-1">ID: {currentUser.id}</p>
+                <p className="text-lg font-bold text-white flex items-center gap-1">{currentUser.handleName}</p>
+                <p className="text-[10px] text-slate-500 mt-1">ID: {currentUser.id}</p>
               </div>
             </div>
           </div>
@@ -259,7 +231,6 @@ export default function LobbyView({
         </div>
       </div>
 
-      {/* ★ 法務関連リンク用フッター */}
       <footer className="mt-auto pt-4 border-t border-slate-800 flex flex-col md:flex-row justify-center items-center gap-4 text-xs text-slate-500 pb-2 flex-shrink-0">
         <a href="/terms" target="_blank" className="hover:text-white transition-colors">利用規約</a>
         <a href="/privacy" target="_blank" className="hover:text-white transition-colors">プライバシーポリシー</a>

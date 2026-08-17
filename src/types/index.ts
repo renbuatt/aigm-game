@@ -1,5 +1,4 @@
-// 1行目を以下のように書き換えてください（"onboarding" を追加）
-export type ViewState = "login" | "signup" | "onboarding" | "lobby" | "game" | "evaluation" | "admin" | "banned" | "maintenance" | "scenarioEdit" | "mypage";
+export type ViewState = "login" | "signup" | "onboarding" | "lobby" | "game" | "evaluation" | "admin" | "banned" | "maintenance" | "scenarioEdit" | "mypage" | "userProfile";
 
 export type RoomDifficulty = "beginner" | "easy" | "normal" | "hard" | "pro" | "oni";
 export type GameRule = "dnd" | "coc_en" | "coc_jp" | "sw25" | "storytelling";
@@ -19,6 +18,7 @@ export type UserProfile = {
   isTester: boolean;
   isBanned: boolean;
   email: string;
+  friendIds?: string[]; // ★追加
 };
 
 export type Character = {
@@ -146,4 +146,6 @@ export type PlayArchive = {
   characterName: string;
   chatLogs: Message[];
   createdAt: string;
+  rule?: string; // ★追加
+  coPlayers?: string[]; // ★追加
 };
