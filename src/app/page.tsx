@@ -115,6 +115,11 @@ export default function Home() {
 
   const isScenarioEnded = messages.some(m => m.text.includes('[SCENARIO_END]')) || activeRoom?.status === 'finished';
 
+  const handleOpenRoomConfig = (scenario: Scenario) => {
+    setRoomConfigModal({ scenario, charId: "", privacy: "open", message: "", difficulty: "normal", rule: "coc_jp", itemVisibility: "all" });
+    setCurrentView("lobby");
+  };
+
   const openUserProfile = (userId: string) => {
     setTargetUserId(userId);
     setCurrentView("userProfile");
@@ -876,6 +881,7 @@ export default function Home() {
     }
   };
 
+  // ★ 復活＆改良: 空欄でもAIが自動でプロンプトを推測して画像生成するように修正
   const generateSceneImage = async (promptText?: string) => {
     if (!activeRoom || !myScene) return;
     setIsLoading(true);
@@ -1140,7 +1146,8 @@ export default function Home() {
     );
   };
 
-  const saveToArchive = async () => {
+  // ★ 修正：保存の引数に「silent（裏で保存するかどうか）」を追加
+  const saveToArchive = async (silent: boolean = false) => {
     if (!currentUser || !activeRoom || !joinedCharacter) return;
     const endIndex = messages.findIndex(m => m.text.includes('[SCENARIO_END]'));
     const baseMessages = endIndex !== -1 ? messages.slice(0, endIndex + 1) : messages;
@@ -1158,9 +1165,12 @@ export default function Home() {
       return { ...c, playerName: uid ? profileMap[uid] : 'AI相棒' };
     }) || [];
 
+    // ★ 修正：体験版ならタイトルに【体験版】を付与
+    const archiveTitle = activeRoom.is_trial ? `【体験版】${activeRoom.scenario?.title || "不明なシナリオ"}` : activeRoom.scenario?.title || "不明なシナリオ";
+
     const archiveData = { 
       user_id: currentUser.id, 
-      scenario_title: activeRoom.scenario?.title || "不明なシナリオ", 
+      scenario_title: archiveTitle, 
       scenario_image: activeRoom.scenario?.imageUrl || "", 
       character_name: joinedCharacter.name, 
       chat_logs: baseMessages,
@@ -1170,11 +1180,14 @@ export default function Home() {
     };
     
     const { data, error } = await supabase.from('play_archives').insert(archiveData).select().single();
-    if (error) { alert("書庫への保存に失敗しました: " + error.message); } 
-    else {
+    if (error) { 
+      if(!silent) alert("書庫への保存に失敗しました: " + error.message); 
+    } else {
       setPlayArchives(prev => [data, ...prev]);
-      alert("プレイ履歴を書庫に保存しました！");
-      setCurrentView("library"); 
+      if(!silent) {
+        alert("プレイ履歴を書庫に保存しました！");
+        setCurrentView("library"); 
+      }
     }
   };
 
@@ -1199,6 +1212,11 @@ export default function Home() {
     }
     setActiveRoom(null); setJoinedCharacter(null); setAiPlayersList([]); setMessages([]); setCurrentView("lobby");
     setRoomConfigModal({ scenario, charId: "", privacy: "open", message: "", difficulty: "normal", rule: "coc_jp", itemVisibility: "all" });
+  };
+
+  const handleOpenRoomConfig = (scenario: Scenario) => {
+    setRoomConfigModal({ scenario, charId: "", privacy: "open", message: "", difficulty: "normal", rule: "coc_jp", itemVisibility: "all" });
+    setCurrentView("lobby");
   };
 
   const callAIGM = async (extraUserContext?: string, targetTab: ChatTab = "story", isStarting: boolean = false) => {
@@ -1299,7 +1317,6 @@ export default function Home() {
 
       let roleInstructionLines: string[] = [];
       if (targetTab === "story") {
-        // ★ お試しプレイ用に専用の調整を反映
         roleInstructionLines = [
           "【重要：GMの絶対ルール】",
           "1. PLたちが明確な「行動宣言」を出した時のみ物語を進行させてください。また、1回のレスポンスにおける情景描写やNPCのセリフのテキストボリュームを従来の1.5倍程度に増やし、よりリッチで読み応えのある描写を心がけてください。",
@@ -1324,7 +1341,6 @@ export default function Home() {
         }
 
         if (activeRoom.is_trial) {
-          // ★体験版専用の進行度・ターン数調整
           roleInstructionLines.push(
             "【お試しプレイ専用指示（絶対厳守ルール）】",
             "このセッションは体験版（お試しプレイ）です。以下のルールを絶対に守ってください。",
@@ -1426,6 +1442,8 @@ export default function Home() {
           setCurrentView={setCurrentView} 
           executeExport={executeExport} 
           isExporting={isExporting} 
+          allScenarios={scenarios}
+          openRoomConfigModal={handleOpenRoomConfig}
         />
       )}
 
@@ -1442,6 +1460,7 @@ export default function Home() {
           unblockUser={unblockUser}
           activeRooms={rooms}
           executeSpectateWithAd={(room) => setAdModal({ isOpen: true, step: 1, scenario: null, room: room, type: 'spectate' })}
+          openRoomConfigModal={handleOpenRoomConfig}
         />
       )}
 
@@ -1464,13 +1483,13 @@ export default function Home() {
       
       {currentView === "game" && activeRoom && myScene && (
         <GameView 
-          activeRoom={activeRoom} myScene={myScene} currentUser={currentUser!} joinedCharacter={joinedCharacter} leaveGame={leaveGame} setReportTarget={setReportTarget as React.Dispatch<React.SetStateAction<{type: 'user' | 'scenario' | 'room', id: string, name: string, roomId?: string, scenarioId?: string, scenarioName?: string, availableUsers?: { id: string, name: string }[]} | null>>} rollDice={rollDice} startGame={startGame} startSplitting={startSplitting} isSplitMode={isSplitMode} chatTab={chatTab} messages={messages} isLoading={isLoading} isScenarioEnded={isScenarioEnded} setCurrentView={setCurrentView} endGame={endGame} input={input} setInput={setInput} handleSend={handleSend} handleTabClick={handleTabClick} unreadIndicators={unreadIndicators} consultWithAI={consultWithAI} setConsultWithAI={setConsultWithAI} isChatDisabled={isChatDisabled} mergeTeam={mergeTeam} executeMergeAll={executeMergeAll} generateSceneImage={generateSceneImage} proposedTeams={proposedTeams} setProposedTeams={setProposedTeams} isGeneratingSplit={isGeneratingSplit} generateSplitProposal={generateSplitProposal} finishSplitting={finishSplitting} cancelSplitting={cancelSplitting} togglePauseRoom={togglePauseRoom} toggleAFK={toggleAFK} triggerAutoAction={triggerAutoAction} updateInventory={updateInventory} openRoomConfigModal={leaveGameAndCreateRoom} aiPlayersList={aiPlayersList} saveToArchive={saveToArchive}
+          activeRoom={activeRoom} myScene={myScene} currentUser={currentUser!} joinedCharacter={joinedCharacter} leaveGame={leaveGame} setReportTarget={setReportTarget as React.Dispatch<React.SetStateAction<{type: 'user' | 'scenario' | 'room', id: string, name: string, roomId?: string, scenarioId?: string, scenarioName?: string, availableUsers?: { id: string, name: string }[]} | null>>} rollDice={rollDice} startGame={startGame} startSplitting={startSplitting} isSplitMode={isSplitMode} chatTab={chatTab} messages={messages} isLoading={isLoading} isScenarioEnded={isScenarioEnded} setCurrentView={setCurrentView} endGame={endGame} input={input} setInput={setInput} handleSend={handleSend} handleTabClick={handleTabClick} unreadIndicators={unreadIndicators} consultWithAI={consultWithAI} setConsultWithAI={setConsultWithAI} isChatDisabled={isChatDisabled} mergeTeam={mergeTeam} executeMergeAll={executeMergeAll} generateSceneImage={generateSceneImage} proposedTeams={proposedTeams} setProposedTeams={setProposedTeams} isGeneratingSplit={isGeneratingSplit} generateSplitProposal={generateSplitProposal} finishSplitting={finishSplitting} cancelSplitting={cancelSplitting} togglePauseRoom={togglePauseRoom} toggleAFK={toggleAFK} triggerAutoAction={triggerAutoAction} updateInventory={updateInventory} aiPlayersList={aiPlayersList} saveToArchive={saveToArchive}
         />
       )}
       
       {currentView === "evaluation" && activeRoom && (
         <EvaluationView 
-          activeRoom={activeRoom} messages={messages} ratingScenario={ratingScenario} setRatingScenario={setRatingScenario} ratingGM={ratingGM} setRatingGM={setRatingGM} submitEvaluation={submitEvaluation} exportToPDF={exportToPDF} isExporting={isExporting} saveToArchive={saveToArchive} currentUser={currentUser!} addFriend={addFriend} openUserProfile={openUserProfile}
+          activeRoom={activeRoom} messages={messages} ratingScenario={ratingScenario} setRatingScenario={setRatingScenario} ratingGM={ratingGM} setRatingGM={setRatingGM} submitEvaluation={submitEvaluation} exportToPDF={exportToPDF} isExporting={isExporting} saveToArchive={saveToArchive} currentUser={currentUser!} addFriend={addFriend} openUserProfile={openUserProfile} openRoomConfigModal={handleOpenRoomConfig}
         />
       )}
 

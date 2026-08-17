@@ -12,13 +12,14 @@ type Props = {
   updateProfile: (updates: Partial<UserProfile>) => Promise<void>;
   blockUser: (targetId: string) => Promise<void>;
   unblockUser: (targetId: string) => Promise<void>;
-  activeRooms: Room[]; // ★追加：現在進行中のすべての部屋データ
-  executeSpectateWithAd: (room: Room) => void; // ★追加：広告付き観戦の実行
+  activeRooms: Room[]; 
+  executeSpectateWithAd: (room: Room) => void;
+  openRoomConfigModal: (scenario: Scenario) => void;
 };
 
 export default function UserProfileView({ 
   currentUser, targetUserId, setCurrentView, allScenarios, updateProfile, 
-  blockUser, unblockUser, activeRooms, executeSpectateWithAd 
+  blockUser, unblockUser, activeRooms, executeSpectateWithAd, openRoomConfigModal
 }: Props) {
   const [user, setUser] = useState<UserProfile | null>(null);
   const [archives, setArchives] = useState<PlayArchive[]>([]);
@@ -67,7 +68,7 @@ export default function UserProfileView({
       const { data: archiveData } = await supabase.from('play_archives').select('*').eq('user_id', targetUserId).order('created_at', { ascending: false }).limit(5);
       if (archiveData) {
         setArchives(archiveData.map((d: any) => ({
-          id: d.id, userId: d.user_id, scenarioTitle: d.scenario_title, scenarioImage: d.scenario_image,
+          id: d.id, userId: d.user_id, scenarioId: d.scenario_id, scenarioTitle: d.scenario_title, scenarioImage: d.scenario_image,
           characterName: d.character_name, chatLogs: d.chat_logs, createdAt: d.created_at,
           rule: d.rule, coPlayers: d.co_players
         })));
@@ -116,7 +117,6 @@ export default function UserProfileView({
 
   const userScenarios = allScenarios.filter(s => s.authorId === targetUserId);
   
-  // ★追加：フレンドが現在参加している部屋のリストを取得
   const friendRooms = isMe ? activeRooms.filter(room => 
     room.joined_users && 
     Object.keys(room.joined_users).some(uid => currentUser.friendIds?.includes(uid)) &&
@@ -203,7 +203,6 @@ export default function UserProfileView({
             )}
           </div>
 
-          {/* ★ 追加：友達が現在プレイ中のセッション */}
           {friendRooms.length > 0 && (
             <div className="mb-8">
               <h3 className="text-lg font-bold text-purple-400 mb-4 border-b border-slate-700 pb-2">🎮 友達が現在プレイ中のセッション</h3>
@@ -272,19 +271,31 @@ export default function UserProfileView({
           <p className="text-sm text-slate-500 bg-slate-800 p-4 rounded text-center">プレイ履歴がありません。</p>
         ) : (
           <div className="space-y-4">
-            {archives.map(a => (
-              <div key={a.id} className="bg-slate-800 border border-slate-700 p-4 rounded-xl flex flex-col sm:flex-row gap-4">
-                <img src={a.scenarioImage || "https://images.unsplash.com/photo-1614729939124-03290b5609ce?auto=format&fit=crop&w=150&q=80"} className="w-16 h-16 object-cover rounded hidden sm:block" />
-                <div className="flex-1">
-                  <h4 className="font-bold text-white text-lg">{a.scenarioTitle}</h4>
-                  <div className="mt-2 text-xs text-slate-400 flex flex-wrap gap-x-4 gap-y-1">
-                    <span>📅 {new Date(a.createdAt).toLocaleString()}</span>
-                    <span>🎲 {a.rule === 'coc_jp' ? 'CoC日本卓' : a.rule === 'dnd' ? 'D&D' : a.rule === 'sw25' ? 'SW2.5' : a.rule === 'storytelling' ? 'ストテリ' : a.rule === 'coc_en' ? 'CoC海外版' : '不明'}</span>
-                    <span>👤 参加HN: {a.coPlayers && a.coPlayers.length > 0 ? a.coPlayers.join(", ") : "ソロプレイ"}</span>
+            {archives.map(a => {
+              const originScenario = allScenarios.find(s => s.id === a.scenarioId);
+              const canPlay = originScenario && (!originScenario.isBanned) && (originScenario.isPlayableByOthers || originScenario.authorId === currentUser.id);
+
+              return (
+                <div key={a.id} className="bg-slate-800 border border-slate-700 p-4 rounded-xl flex flex-col sm:flex-row gap-4">
+                  <img src={a.scenarioImage || "https://images.unsplash.com/photo-1614729939124-03290b5609ce?auto=format&fit=crop&w=150&q=80"} className="w-16 h-16 object-cover rounded hidden sm:block" />
+                  <div className="flex-1">
+                    <h4 className="font-bold text-white text-lg">{a.scenarioTitle}</h4>
+                    <div className="mt-2 text-xs text-slate-400 flex flex-wrap gap-x-4 gap-y-1">
+                      <span>📅 {new Date(a.createdAt).toLocaleString()}</span>
+                      <span>🎲 {a.rule === 'coc_jp' ? 'CoC日本卓' : a.rule === 'dnd' ? 'D&D' : a.rule === 'sw25' ? 'SW2.5' : a.rule === 'storytelling' ? 'ストテリ' : a.rule === 'coc_en' ? 'CoC海外版' : '不明'}</span>
+                      <span>👤 参加HN: {a.coPlayers && a.coPlayers.length > 0 ? a.coPlayers.join(", ") : "ソロプレイ"}</span>
+                    </div>
+                    {canPlay && (
+                      <div className="mt-3 pt-3 border-t border-slate-700">
+                        <button onClick={() => openRoomConfigModal(originScenario)} className="text-[10px] bg-blue-600 hover:bg-blue-500 text-white px-3 py-1.5 rounded font-bold shadow transition-colors">
+                          ✨ このシナリオの部屋を作る
+                        </button>
+                      </div>
+                    )}
                   </div>
                 </div>
-              </div>
-            ))}
+              )
+            })}
           </div>
         )}
       </div>

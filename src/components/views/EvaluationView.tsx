@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from "react";
-import { Room, Message, UserProfile } from "../../types";
+import { Room, Message, UserProfile, Scenario } from "../../types";
 import { supabase } from "../../lib/supabase";
 
 type Props = {
@@ -10,17 +10,18 @@ type Props = {
   ratingGM: number;
   setRatingGM: React.Dispatch<React.SetStateAction<number>>;
   submitEvaluation: () => Promise<void>;
-  exportToPDF: (type: 'chat' | 'summary' | 'novel', viewPoint?: 'third' | 'first') => Promise<void>; // ★ 引数変更
+  exportToPDF: (type: 'chat' | 'summary' | 'novel', viewPoint?: 'third' | 'first') => Promise<void>; 
   isExporting: boolean;
-  saveToArchive: () => Promise<void>;
+  saveToArchive: (silent?: boolean) => Promise<void>; // ★サイレント保存に対応
   currentUser: UserProfile;
   addFriend: (targetId: string) => Promise<void>;
   openUserProfile: (userId: string) => void;
+  openRoomConfigModal?: (scenario: Scenario) => void; // ★追加
 };
 
 export default function EvaluationView({
   activeRoom, messages, ratingScenario, setRatingScenario, ratingGM, setRatingGM,
-  submitEvaluation, exportToPDF, isExporting, saveToArchive, currentUser, addFriend, openUserProfile
+  submitEvaluation, exportToPDF, isExporting, saveToArchive, currentUser, addFriend, openUserProfile, openRoomConfigModal
 }: Props) {
   const [coPlayers, setCoPlayers] = useState<UserProfile[]>([]);
 
@@ -64,27 +65,41 @@ export default function EvaluationView({
           </div>
         </div>
 
-        <div className="bg-slate-900 border border-slate-700 p-6 rounded-xl space-y-4">
-          <h3 className="text-sm font-bold text-emerald-400 mb-2 border-b border-slate-700 pb-2">💾 セッションの記録を保存</h3>
-          
-          {/* ★ ボタンを3つ（ログ・第三者・自分視点）に分割 */}
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-            <button onClick={() => exportToPDF('chat')} disabled={isExporting} className="bg-slate-700 hover:bg-slate-600 px-4 py-3 rounded-lg text-xs font-bold text-white shadow transition flex items-center justify-center gap-2">
-              💬 ログPDF出力
-            </button>
-            <button onClick={() => exportToPDF('novel', 'third')} disabled={isExporting} className="bg-indigo-700 hover:bg-indigo-600 px-4 py-3 rounded-lg text-xs font-bold text-white shadow transition flex items-center justify-center gap-2 disabled:opacity-50">
-              {isExporting ? "⏳ 執筆中..." : "📖 小説(第三者視点)"}
-            </button>
-            <button onClick={() => exportToPDF('novel', 'first')} disabled={isExporting} className="bg-blue-700 hover:bg-blue-600 px-4 py-3 rounded-lg text-xs font-bold text-white shadow transition flex items-center justify-center gap-2 disabled:opacity-50">
-              {isExporting ? "⏳ 執筆中..." : "📖 小説(自分視点)"}
-            </button>
+        {/* ★ 体験版かどうかで表示を切り替え */}
+        {activeRoom.is_trial ? (
+          <div className="bg-slate-900 border border-pink-500/50 p-6 rounded-xl space-y-4 text-center">
+            <h3 className="text-sm font-bold text-pink-400 mb-2 border-b border-slate-700 pb-2">🌟 体験版クリア！</h3>
+            <p className="text-xs text-slate-300">お試しプレイお疲れ様でした！プレイ履歴は自動的に保存されます。<br/>以下のボタンから、そのまま本編のセッションを作成して続きを遊ぶことができます。</p>
+            {activeRoom.scenario && openRoomConfigModal && (
+              <button onClick={async () => {
+                 await saveToArchive(true); // 裏でサイレント保存
+                 openRoomConfigModal(activeRoom.scenario!);
+              }} className="w-full bg-emerald-600 hover:bg-emerald-500 text-white font-bold py-4 rounded-xl shadow-lg transition-transform active:scale-95 text-sm mt-4">
+                ✨ そのまま本編の部屋を作成する
+              </button>
+            )}
           </div>
+        ) : (
+          <div className="bg-slate-900 border border-slate-700 p-6 rounded-xl space-y-4">
+            <h3 className="text-sm font-bold text-emerald-400 mb-2 border-b border-slate-700 pb-2">💾 セッションの記録を保存</h3>
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+              <button onClick={() => exportToPDF('chat')} disabled={isExporting} className="bg-slate-700 hover:bg-slate-600 px-4 py-3 rounded-lg text-xs font-bold text-white shadow transition flex items-center justify-center gap-2">
+                💬 ログPDF出力
+              </button>
+              <button onClick={() => exportToPDF('novel', 'third')} disabled={isExporting} className="bg-indigo-700 hover:bg-indigo-600 px-4 py-3 rounded-lg text-xs font-bold text-white shadow transition flex items-center justify-center gap-2 disabled:opacity-50">
+                {isExporting ? "⏳ 執筆中..." : "📖 小説(第三者)"}
+              </button>
+              <button onClick={() => exportToPDF('novel', 'first')} disabled={isExporting} className="bg-blue-700 hover:bg-blue-600 px-4 py-3 rounded-lg text-xs font-bold text-white shadow transition flex items-center justify-center gap-2 disabled:opacity-50">
+                {isExporting ? "⏳ 執筆中..." : "📖 小説(自分視点)"}
+              </button>
+            </div>
 
-          <button onClick={saveToArchive} className="w-full mt-2 bg-amber-700 hover:bg-amber-600 px-4 py-3 rounded-lg text-sm font-bold text-white shadow transition flex items-center justify-center gap-2">
-            👑 プレイ書庫(マイページ)に保存する
-          </button>
-          <p className="text-[10px] text-slate-500 text-center">※退室後もマイページからいつでも出力できます。</p>
-        </div>
+            <button onClick={() => saveToArchive(false)} className="w-full mt-2 bg-amber-700 hover:bg-amber-600 px-4 py-3 rounded-lg text-sm font-bold text-white shadow transition flex items-center justify-center gap-2">
+              👑 プレイ書庫(マイページ)に保存する
+            </button>
+            <p className="text-[10px] text-slate-500 text-center">※退室後もマイページからいつでも出力できます。</p>
+          </div>
+        )}
 
         {coPlayers.length > 0 && (
           <div className="bg-slate-900 border border-slate-700 p-6 rounded-xl shadow-lg mt-6">
@@ -107,7 +122,12 @@ export default function EvaluationView({
           </div>
         )}
 
-        <button onClick={submitEvaluation} className="w-full bg-emerald-600 hover:bg-emerald-500 text-white font-bold py-4 rounded-xl shadow-lg transition-transform active:scale-95 text-lg">
+        <button onClick={async () => {
+          if (activeRoom.is_trial) {
+            await saveToArchive(true); // 体験版なら裏で保存してから退出
+          }
+          submitEvaluation();
+        }} className="w-full bg-slate-700 hover:bg-slate-600 text-white font-bold py-4 rounded-xl shadow-lg transition-transform active:scale-95 text-lg">
           評価を送信してロビーに戻る
         </button>
       </div>
