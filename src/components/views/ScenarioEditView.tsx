@@ -9,15 +9,12 @@ type Props = {
   setEditingCharIndex: React.Dispatch<React.SetStateAction<number | null>>;
   saveScenario: () => Promise<void>;
   setCurrentView: React.Dispatch<React.SetStateAction<ViewState>>;
-  allScenarios: Scenario[]; // ★追加：前提シナリオ選択用
+  allScenarios: Scenario[]; 
 };
 
 export default function ScenarioEditView({ editingScenario, setEditingScenario, editingCharIndex, setEditingCharIndex, saveScenario, setCurrentView, allScenarios }: Props) {
   const [tab, setTab] = useState<'basic' | 'chars' | 'plot'>('basic');
-  
   const [isGeneratingImg, setIsGeneratingImg] = useState(false);
-  const [coverPrompt, setCoverPrompt] = useState("");
-  const [charPrompt, setCharPrompt] = useState("");
 
   const initialChapters = (() => {
     try {
@@ -75,14 +72,18 @@ export default function ScenarioEditView({ editingScenario, setEditingScenario, 
     }
   };
 
-  const handleAIGenerate = async (promptText: string, callback: (base64: string) => void) => {
-    if (!promptText.trim()) { alert("画像生成用のプロンプト（描写）を入力してください。"); return; }
+  // ★ シナリオの内容から全自動で表紙を生成
+  const handleGenerateCover = async () => {
+    const info = `タイトル: ${editingScenario.title}\n世界観: ${editingScenario.setting}\nプロット: ${editingScenario.plot}`;
+    if (!editingScenario.title) {
+      alert("タイトルを入力してから生成してください。");
+      return;
+    }
     setIsGeneratingImg(true);
     try {
-      const translationPrompt = ["以下の日本語の情景描写を、画像生成AI用のカンマ区切りの英語プロンプトに変換してください。","【絶対条件】","・文章ではなく、英単語のカンマ区切りで出力してください。","・不適切な画像が生成されるのを防ぐため、必ず最後に「SFW, fully clothed, masterpiece, high quality」を含めてください。","","情景描写：",promptText].join('\n');
-      let englishPrompt = "";
-      try { englishPrompt = await generateAITextWithPrompt(translationPrompt); } catch (err) { englishPrompt = `${promptText}, SFW, fully clothed, masterpiece, high quality`; }
-      const prompt = encodeURIComponent(`${englishPrompt}, TRPG illustration, cinematic lighting, dramatic atmosphere`);
+      const autoPromptReq = ["あなたはプロのイラストレーターです。以下のTRPGシナリオの情報を元に、シナリオの表紙（パッケージ）となる情景の画像生成プロンプトを作成してください。","【絶対条件】","・文章ではなく、英単語のカンマ区切りで出力すること。","・不適切な画像が生成されるのを防ぐため、必ず最後に「SFW, masterpiece, high quality」を含めること。","","【シナリオ情報】",info].join('\n');
+      const englishPrompt = await generateAITextWithPrompt(autoPromptReq);
+      const prompt = encodeURIComponent(`${englishPrompt}, TRPG scenario cover, cinematic lighting, dramatic atmosphere`);
       const seed = Math.floor(Math.random() * 100000);
       const url = `https://image.pollinations.ai/prompt/${prompt}?nologo=true&seed=${seed}&safe=true`;
       const res = await fetch(url);
@@ -90,21 +91,52 @@ export default function ScenarioEditView({ editingScenario, setEditingScenario, 
       const blob = await res.blob();
       const reader = new FileReader();
       reader.onloadend = () => {
-        callback(reader.result as string);
+        setEditingScenario({...editingScenario, imageUrl: reader.result as string});
         setIsGeneratingImg(false);
       };
       reader.readAsDataURL(blob);
-    } catch (err: any) {
-      alert("画像の生成に失敗しました。\n少し時間をおいて再度お試しください。");
+    } catch(e) {
+      alert("画像の生成に失敗しました。時間をおいて再試行してください。");
       setIsGeneratingImg(false);
     }
   };
 
-  // 自分のシナリオ（編集中のものは除く）を前提シナリオの候補とする
+  // ★ キャラクターの入力情報から全自動で立ち絵を生成
+  const handleGenerateChar = async (index: number) => {
+    const char = editingScenario.presetCharacters[index];
+    const info = `名前: ${char.name}\n職業: ${char.job}\n特徴: ${char.genderOrRace}\n性格: ${char.personality}`;
+    if (!char.name || !char.personality) {
+      alert("名前と性格を入力してから生成してください。");
+      return;
+    }
+    setIsGeneratingImg(true);
+    try {
+      const autoPromptReq = ["あなたはプロのイラストレーターです。以下のTRPGキャラクターの情報を元に、キャラクターの立ち絵となる魅力的で高画質な人物イラストを画像生成AI用のカンマ区切りの英語プロンプトに変換してください。","【絶対条件】","・文章ではなく、英単語のカンマ区切りで出力すること。","・不適切な画像が生成されるのを防ぐため、必ず最後に「SFW, fully clothed, masterpiece, high quality, character portrait, simple background」を含めること。","","【キャラクター情報】",info].join('\n');
+      const englishPrompt = await generateAITextWithPrompt(autoPromptReq);
+      const prompt = encodeURIComponent(`${englishPrompt}`);
+      const seed = Math.floor(Math.random() * 100000);
+      const url = `https://image.pollinations.ai/prompt/${prompt}?nologo=true&seed=${seed}&safe=true`;
+      const res = await fetch(url);
+      if (!res.ok) throw new Error("AIサーバーが混雑しています");
+      const blob = await res.blob();
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        const chars = [...editingScenario.presetCharacters];
+        chars[index].imageUrl = reader.result as string;
+        setEditingScenario({...editingScenario, presetCharacters: chars});
+        setIsGeneratingImg(false);
+      };
+      reader.readAsDataURL(blob);
+    } catch(e) {
+      alert("画像の生成に失敗しました。時間をおいて再試行してください。");
+      setIsGeneratingImg(false);
+    }
+  };
+
   const availableRequiredScenarios = allScenarios.filter(s => s.id !== editingScenario.id);
 
   return (
-    <div className="flex-1 flex flex-col p-6 max-w-5xl mx-auto w-full min-h-0 overflow-y-auto custom-scrollbar">
+    <div className="flex-1 flex flex-col p-4 md:p-6 max-w-5xl mx-auto w-full min-h-0 overflow-y-auto custom-scrollbar">
       <header className="mb-6 flex justify-between items-center border-b border-slate-700 pb-4">
         <h2 className="text-2xl font-bold text-emerald-400">📝 シナリオ作成エディタ</h2>
         <div className="flex gap-4">
@@ -113,7 +145,7 @@ export default function ScenarioEditView({ editingScenario, setEditingScenario, 
         </div>
       </header>
 
-      <div className="flex gap-4 mb-6 border-b border-slate-700">
+      <div className="flex gap-4 mb-6 border-b border-slate-700 overflow-x-auto whitespace-nowrap">
         <button onClick={() => setTab('basic')} className={`pb-2 text-sm font-bold transition-colors border-b-2 ${tab === 'basic' ? 'border-emerald-500 text-emerald-400' : 'border-transparent text-slate-400 hover:text-white'}`}>基本設定</button>
         <button onClick={() => setTab('chars')} className={`pb-2 text-sm font-bold transition-colors border-b-2 ${tab === 'chars' ? 'border-blue-500 text-blue-400' : 'border-transparent text-slate-400 hover:text-white'}`}>キャラクター ({editingScenario.presetCharacters.length})</button>
         <button onClick={() => setTab('plot')} className={`pb-2 text-sm font-bold transition-colors border-b-2 ${tab === 'plot' ? 'border-amber-500 text-amber-400' : 'border-transparent text-slate-400 hover:text-white'}`}>シナリオ本文設定</button>
@@ -143,7 +175,6 @@ export default function ScenarioEditView({ editingScenario, setEditingScenario, 
                 </div>
               </div>
 
-              {/* ★ 追加: 続編設定（前提シナリオ） */}
               <div className="mt-4 pt-4 border-t border-slate-700">
                 <label className="text-xs text-amber-400 block mb-1 font-bold">🔗 前提シナリオ（続編にする場合）</label>
                 <p className="text-[10px] text-slate-400 mb-2">指定したシナリオを過去にクリアしたプレイヤーのみが、このシナリオの部屋を立てたり参加したりできるようになります。</p>
@@ -174,12 +205,10 @@ export default function ScenarioEditView({ editingScenario, setEditingScenario, 
                       <p className="text-[10px] text-slate-400 mb-1">📁 PCの画像をアップロードする</p>
                       <input type="file" accept="image/*" onChange={(e) => handleFileUpload(e, (url) => setEditingScenario({...editingScenario, imageUrl: url}))} className="text-xs text-slate-300 file:mr-2 file:py-1 file:px-3 file:rounded file:border-0 file:text-xs file:font-bold file:bg-slate-700 file:text-white hover:file:bg-slate-600 cursor-pointer" />
                     </div>
+                    {/* ★ ボタンのみの全自動生成UI */}
                     <div className="bg-slate-900/50 p-3 rounded border border-emerald-900/50">
-                      <p className="text-[10px] text-emerald-400 mb-1">✨ AIにプロンプトから生成させる</p>
-                      <div className="flex gap-2">
-                        <input type="text" value={coverPrompt} onChange={e=>setCoverPrompt(e.target.value)} placeholder="例: 古びた洋館の入り口、暗い森、不気味な空" className="flex-1 bg-slate-900 border border-slate-700 rounded p-2 text-xs text-white focus:border-emerald-500" />
-                        <button onClick={() => handleAIGenerate(coverPrompt, (url) => setEditingScenario({...editingScenario, imageUrl: url}))} disabled={isGeneratingImg} className="bg-emerald-600 hover:bg-emerald-500 disabled:bg-slate-600 px-3 py-1 text-xs rounded text-white font-bold whitespace-nowrap shadow">{isGeneratingImg ? "生成中..." : "AI生成"}</button>
-                      </div>
+                      <p className="text-[10px] text-emerald-400 mb-2">✨ 入力したシナリオの設定からAIが自動生成</p>
+                      <button onClick={handleGenerateCover} disabled={isGeneratingImg} className="w-full bg-emerald-600 hover:bg-emerald-500 disabled:bg-slate-600 py-2 text-xs rounded text-white font-bold shadow">{isGeneratingImg ? "生成中..." : "パッケージ画像をAI生成する"}</button>
                     </div>
                   </div>
                 </div>
@@ -322,12 +351,10 @@ export default function ScenarioEditView({ editingScenario, setEditingScenario, 
                             const chars = [...editingScenario.presetCharacters]; chars[editingCharIndex].imageUrl = url; setEditingScenario({...editingScenario, presetCharacters: chars});
                           })} className="text-xs text-slate-300 file:mr-2 file:py-1 file:px-3 file:rounded file:border-0 file:text-xs file:font-bold file:bg-slate-700 file:text-white hover:file:bg-slate-600 cursor-pointer w-full" />
                         </div>
-                        <div className="bg-slate-900/50 p-2 rounded border border-blue-900/50 flex flex-col sm:flex-row sm:items-center gap-2">
-                          <span className="text-[10px] text-blue-400 whitespace-nowrap">✨ AI生成</span>
-                          <input type="text" value={charPrompt} onChange={e=>setCharPrompt(e.target.value)} placeholder="例: 黒髪ショートの真面目な警察官" className="flex-1 bg-slate-900 border border-slate-700 rounded p-2 text-xs text-white focus:border-blue-500" />
-                          <button onClick={() => handleAIGenerate(charPrompt, (url) => {
-                            const chars = [...editingScenario.presetCharacters]; chars[editingCharIndex].imageUrl = url; setEditingScenario({...editingScenario, presetCharacters: chars});
-                          })} disabled={isGeneratingImg} className="bg-blue-600 hover:bg-blue-500 disabled:bg-slate-600 px-3 py-1.5 text-xs rounded text-white font-bold shadow whitespace-nowrap">{isGeneratingImg ? "生成中..." : "生成"}</button>
+                        {/* ★ ボタンのみの全自動生成UI */}
+                        <div className="bg-slate-900/50 p-2 rounded border border-blue-900/50 flex flex-col gap-2 w-full">
+                          <span className="text-[10px] text-blue-400 text-center md:text-left">✨ 入力したキャラクターの設定からAIが自動生成</span>
+                          <button onClick={() => handleGenerateChar(editingCharIndex)} disabled={isGeneratingImg} className="w-full bg-blue-600 hover:bg-blue-500 disabled:bg-slate-600 py-2 text-xs rounded text-white font-bold shadow">{isGeneratingImg ? "生成中..." : "立ち絵をAI生成する"}</button>
                         </div>
                       </div>
                     </div>

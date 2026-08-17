@@ -53,10 +53,10 @@ export default function LobbyView({
   };
 
   return (
-    <div className="flex-1 flex flex-col p-6 max-w-7xl mx-auto w-full min-h-0 overflow-y-auto custom-scrollbar">
-      <header className="mb-4 flex justify-between items-end border-b border-slate-700 pb-4">
+    <div className="flex-1 flex flex-col p-4 md:p-6 max-w-7xl mx-auto w-full min-h-0 overflow-y-auto custom-scrollbar">
+      <header className="mb-4 flex flex-col md:flex-row justify-between items-start md:items-end border-b border-slate-700 pb-4 gap-4">
         <div><h1 className="text-3xl font-extrabold text-emerald-400 mb-1">AI GM MORPG Lobby</h1></div>
-        <div className="flex items-center gap-4">
+        <div className="flex flex-wrap items-center gap-4">
           <button onClick={() => setCurrentView("library")} className="bg-amber-600/20 text-amber-400 border border-amber-500/50 hover:bg-amber-600/40 px-3 py-1.5 rounded font-bold text-xs flex items-center gap-1 transition-colors">
             <span className="text-base">👑</span> プレイ書庫 (Premium)
           </button>
@@ -78,18 +78,18 @@ export default function LobbyView({
         </div>
       )}
 
-      <div className="flex gap-4 mb-6 border-b border-slate-700 flex-shrink-0">
+      <div className="flex gap-4 mb-6 border-b border-slate-700 flex-shrink-0 overflow-x-auto whitespace-nowrap">
         <button onClick={() => setLobbyTab('rooms')} className={`pb-2 text-sm font-bold transition-colors border-b-2 ${lobbyTab === 'rooms' ? 'border-blue-500 text-blue-400' : 'border-transparent text-slate-400 hover:text-white'}`}>🌐 募集中のセッション</button>
         <button onClick={() => setLobbyTab('scenarios')} className={`pb-2 text-sm font-bold transition-colors border-b-2 ${lobbyTab === 'scenarios' ? 'border-emerald-500 text-emerald-400' : 'border-transparent text-slate-400 hover:text-white'}`}>📖 シナリオを探す・部屋を作る</button>
         <button onClick={() => setLobbyTab('trials')} className={`pb-2 text-sm font-bold transition-colors border-b-2 ${lobbyTab === 'trials' ? 'border-pink-500 text-pink-400' : 'border-transparent text-slate-400 hover:text-white'}`}>🌟 お試しプレイ (広告無料)</button>
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 flex-1 min-h-0">
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 w-full mb-8">
         <div className="lg:col-span-2 flex flex-col gap-4">
           
           {lobbyTab === 'rooms' && (
             <>
-              <div className="flex justify-between items-end">
+              <div className="flex justify-between items-end flex-wrap gap-2">
                 <h2 className="text-sm font-bold text-slate-400">現在参加できるセッション</h2>
                 <div className="flex gap-2">
                   <input type="text" placeholder="シークレット部屋ID" value={secretRoomIdSearch} onChange={e=>setSecretRoomIdSearch(e.target.value)} className="bg-slate-800 border border-slate-700 rounded px-2 py-1 text-xs text-white w-40" />
@@ -97,7 +97,7 @@ export default function LobbyView({
                 </div>
               </div>
 
-              <div className="h-[500px] overflow-y-auto space-y-4 pr-2 border border-slate-700/50 p-2 rounded-lg bg-slate-900/50 custom-scrollbar">
+              <div className="max-h-[60vh] min-h-[300px] overflow-y-auto space-y-4 pr-2 border border-slate-700/50 p-2 rounded-lg bg-slate-900/50 custom-scrollbar">
                 {availableRooms.filter(r => r.privacy === 'open' || r.host_id === currentUser.id).length === 0 ? <p className="text-slate-400 text-sm p-4 text-center">現在募集中のセッションはありません。</p> : 
                   availableRooms.filter(r => r.privacy === 'open' || r.host_id === currentUser.id).map((room) => {
                   const isHost = room.host_id === currentUser.id;
@@ -109,14 +109,13 @@ export default function LobbyView({
                   const reqScenario = getRequiredScenario(reqId);
 
                   return (
-                    // ★ 変更：ブロック警告表示のスタイル
-                    <div key={room.id} className={`bg-slate-800 border rounded-xl p-4 flex gap-4 relative transition-colors ${room.isWarning ? 'border-red-500 shadow-[0_0_10px_rgba(239,68,68,0.5)]' : 'border-slate-700 hover:border-blue-500'}`}>
+                    <div key={room.id} className={`bg-slate-800 border rounded-xl p-4 flex gap-4 relative transition-colors flex-col sm:flex-row ${room.isWarning ? 'border-red-500 shadow-[0_0_10px_rgba(239,68,68,0.5)]' : 'border-slate-700 hover:border-blue-500'}`}>
                       {room.isWarning && (
                         <div className="absolute top-0 right-0 bg-red-600 text-white text-[10px] font-bold px-3 py-1 rounded-bl-lg rounded-tr-lg">
                           ⚠️ あなたをブロックしているユーザーが参加しています
                         </div>
                       )}
-                      <img src={room.scenario?.imageUrl || NO_IMAGE_SCENARIO} className="w-24 h-24 object-cover rounded" />
+                      <img src={room.scenario?.imageUrl || NO_IMAGE_SCENARIO} className="w-full sm:w-24 h-32 sm:h-24 object-cover rounded" />
                       <div className="flex-1">
                         <div className="flex justify-between items-start">
                           <h3 className="text-lg font-bold text-white mb-1 flex items-center gap-2">
@@ -124,7 +123,7 @@ export default function LobbyView({
                             {isHost && <span className="text-[10px] bg-amber-600 text-white px-2 py-0.5 rounded ml-auto">あなたがホスト</span>}
                           </h3>
                         </div>
-                        <div className="text-xs text-slate-400 mb-2 flex items-center gap-2">
+                        <div className="text-xs text-slate-400 mb-2 flex flex-wrap items-center gap-2">
                           <span>ホスト: <span className="underline cursor-pointer hover:text-blue-300 transition-colors" onClick={() => openUserProfile(room.host_id)}>{room.host_name}</span></span>
                           <span className="text-amber-400 font-bold ml-2">⭐ {room.scenario?.ratingCount ? (room.scenario.ratingSum / room.scenario.ratingCount).toFixed(1) : "未評価"}</span>
                           <span className={`px-1.5 py-0.5 rounded text-white ${room.difficulty === 'beginner' ? 'bg-pink-500' : room.difficulty === 'easy' ? 'bg-green-600' : room.difficulty === 'normal' ? 'bg-blue-600' : room.difficulty === 'hard' ? 'bg-orange-600' : room.difficulty === 'pro' ? 'bg-red-600' : 'bg-purple-600'}`}>
@@ -139,7 +138,7 @@ export default function LobbyView({
                             <p className="text-[10px] text-slate-400">前提シナリオ『{reqScenario?.title || '不明なシナリオ'}』をクリアする必要があります。</p>
                           </div>
                         ) : (
-                          <div className="flex gap-2">
+                          <div className="flex flex-col sm:flex-row gap-2">
                             {availableChars.length > 0 ? (
                               <select className="bg-slate-900 border border-slate-700 rounded p-1 text-xs text-white flex-1" onChange={(e) => executeJoinRoom(room, e.target.value)} value="">
                                 <option value="" disabled>キャラクターを選択して参加...</option>
@@ -149,7 +148,7 @@ export default function LobbyView({
                               <span className="text-xs text-red-400 font-bold bg-slate-900 p-1.5 rounded flex-1 text-center">満員です</span>
                             )}
                             {room.privacy === 'open' && (
-                              <button onClick={() => spectateRoom(room)} className="bg-slate-700 hover:bg-slate-600 text-white text-xs px-3 rounded font-bold">👁️ 観戦</button>
+                              <button onClick={() => spectateRoom(room)} className="bg-slate-700 hover:bg-slate-600 text-white text-xs px-3 py-1 sm:py-0 rounded font-bold">👁️ 観戦</button>
                             )}
                           </div>
                         )}
@@ -163,7 +162,7 @@ export default function LobbyView({
           )}
 
           {lobbyTab === 'scenarios' && (
-            <div className="h-[500px] overflow-y-auto space-y-4 pr-2 custom-scrollbar">
+            <div className="max-h-[60vh] min-h-[300px] overflow-y-auto space-y-4 pr-2 custom-scrollbar">
               {playableScenarios.length === 0 ? <p className="text-slate-400 text-sm p-4 text-center">公開されているシナリオはありません。</p> :
                 playableScenarios.map(s => {
                   const reqId = s.requiredScenarioId;
@@ -171,8 +170,8 @@ export default function LobbyView({
                   const reqScenario = getRequiredScenario(reqId);
 
                   return (
-                    <div key={s.id} className="bg-slate-800 border border-slate-700 rounded-xl p-4 flex gap-4 hover:border-emerald-500 transition-colors">
-                      <img src={s.imageUrl || NO_IMAGE_SCENARIO} className="w-24 h-24 object-cover rounded" />
+                    <div key={s.id} className="bg-slate-800 border border-slate-700 rounded-xl p-4 flex flex-col sm:flex-row gap-4 hover:border-emerald-500 transition-colors">
+                      <img src={s.imageUrl || NO_IMAGE_SCENARIO} className="w-full sm:w-24 h-32 sm:h-24 object-cover rounded" />
                       <div className="flex-1">
                         <h3 className="text-lg font-bold text-white mb-1 flex items-center gap-2">
                           {s.title}
@@ -212,11 +211,11 @@ export default function LobbyView({
               <div className="flex justify-between items-end mb-2">
                 <p className="text-xs text-pink-300">広告視聴で導入部(約10分)を無料でAIと遊べます。</p>
               </div>
-              <div className="h-[460px] overflow-y-auto space-y-4 pr-2 custom-scrollbar">
+              <div className="max-h-[60vh] min-h-[300px] overflow-y-auto space-y-4 pr-2 custom-scrollbar">
                 {sortedTrials.length === 0 ? <p className="text-slate-400 text-sm p-4 text-center">お試しプレイ可能なシナリオはありません。</p> :
                   sortedTrials.map(ts => (
-                    <div key={ts.id} className="bg-pink-900/10 border border-pink-500/30 rounded-xl p-4 flex gap-4 hover:border-pink-500 transition-colors">
-                      <img src={ts.imageUrl || NO_IMAGE_SCENARIO} className="w-24 h-24 object-cover rounded" />
+                    <div key={ts.id} className="bg-pink-900/10 border border-pink-500/30 rounded-xl p-4 flex flex-col sm:flex-row gap-4 hover:border-pink-500 transition-colors">
+                      <img src={ts.imageUrl || NO_IMAGE_SCENARIO} className="w-full sm:w-24 h-32 sm:h-24 object-cover rounded" />
                       <div className="flex-1 flex flex-col justify-between">
                         <div>
                           <h3 className="text-lg font-bold text-white mb-1">{ts.title}</h3>
@@ -263,7 +262,7 @@ export default function LobbyView({
             {createdScenarios.length === 0 ? (
               <p className="text-xs text-slate-400 mt-2 text-center p-2 bg-slate-900 rounded border border-slate-700/50">作成したシナリオはありません。</p>
             ) : (
-              <div className="max-h-[300px] overflow-y-auto space-y-3 pr-2 custom-scrollbar">
+              <div className="max-h-[40vh] overflow-y-auto space-y-3 pr-2 custom-scrollbar">
                 {createdScenarios.map(s => {
                   return (
                     <div key={s.id} className={`bg-slate-900 border rounded-lg p-3 flex flex-col gap-2 ${s.isBanned ? 'border-red-900/50 opacity-80' : 'border-slate-700'}`}>
@@ -300,7 +299,8 @@ export default function LobbyView({
         </div>
       </div>
 
-      <footer className="mt-auto pt-4 border-t border-slate-800 flex flex-col md:flex-row justify-center items-center gap-4 text-xs text-slate-500 pb-2 flex-shrink-0">
+      {/* フッターをグリッドの外、最下部にしっかり配置 */}
+      <footer className="mt-8 pt-4 border-t border-slate-800 flex flex-col md:flex-row justify-center items-center gap-4 text-xs text-slate-500 pb-4 w-full">
         <a href="/terms" target="_blank" className="hover:text-white transition-colors">利用規約</a>
         <a href="/privacy" target="_blank" className="hover:text-white transition-colors">プライバシーポリシー</a>
         <a href="/tokushoho" target="_blank" className="hover:text-white transition-colors">特定商取引法に基づく表記</a>
