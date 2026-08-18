@@ -58,7 +58,8 @@ export default function LobbyView({
   useEffect(() => {
     if (lobbyTab === 'ranking' && rankingType === 'creator') {
       const fetchProfiles = async () => {
-        const authorIds = Array.from(new Set(availableScenarios.map(s => s.authorId).filter(Boolean)));
+        // ★ 修正: 公開されているシナリオの作者のみを取得
+        const authorIds = Array.from(new Set(playableScenarios.map(s => s.authorId).filter(Boolean)));
         if (authorIds.length === 0) return;
         const { data } = await supabase.from('profiles').select('id, handle_name, avatar_url').in('id', authorIds as string[]);
         if (data) {
@@ -69,7 +70,7 @@ export default function LobbyView({
       };
       fetchProfiles();
     }
-  }, [lobbyTab, rankingType, availableScenarios]);
+  }, [lobbyTab, rankingType, playableScenarios]);
 
   const getRankIcon = (idx: number) => {
     if (idx === 0) return <span className="text-3xl">🥇</span>;
@@ -264,7 +265,8 @@ export default function LobbyView({
               </div>
 
               <div className="flex-1 overflow-y-auto space-y-3 pr-2 custom-scrollbar">
-                {rankingType === 'played' && availableScenarios.slice().sort((a,b) => (b.playCount || 0) - (a.playCount || 0)).slice(0, 10).map((s, idx) => (
+                {/* ★ 修正: playableScenarios（公開シナリオ）のみでランキングを作成 */}
+                {rankingType === 'played' && playableScenarios.slice().sort((a,b) => (b.playCount || 0) - (a.playCount || 0)).slice(0, 10).map((s, idx) => (
                   <div key={s.id} className="bg-slate-800 border border-slate-700 p-4 rounded-xl flex items-center gap-4">
                     <div className="w-10 flex justify-center items-center">{getRankIcon(idx)}</div>
                     <img src={s.imageUrl || NO_IMAGE_SCENARIO} className="w-16 h-16 object-cover rounded" />
@@ -276,7 +278,8 @@ export default function LobbyView({
                   </div>
                 ))}
 
-                {rankingType === 'viewed' && availableScenarios.slice().sort((a,b) => (b.viewCount || 0) - (a.viewCount || 0)).slice(0, 10).map((s, idx) => (
+                {/* ★ 修正: playableScenarios（公開シナリオ）のみでランキングを作成 */}
+                {rankingType === 'viewed' && playableScenarios.slice().sort((a,b) => (b.viewCount || 0) - (a.viewCount || 0)).slice(0, 10).map((s, idx) => (
                   <div key={s.id} className="bg-slate-800 border border-slate-700 p-4 rounded-xl flex items-center gap-4">
                     <div className="w-10 flex justify-center items-center">{getRankIcon(idx)}</div>
                     <img src={s.imageUrl || NO_IMAGE_SCENARIO} className="w-16 h-16 object-cover rounded" />
@@ -288,9 +291,10 @@ export default function LobbyView({
                   </div>
                 ))}
 
+                {/* ★ 修正: playableScenarios（公開シナリオ）の作者のみをランキングの対象にする */}
                 {rankingType === 'creator' && (() => {
                   const creatorMap: Record<string, {id: string, pt: number, play: number, view: number}> = {};
-                  availableScenarios.forEach(s => {
+                  playableScenarios.forEach(s => {
                     if(!s.authorId) return;
                     if(!creatorMap[s.authorId]) creatorMap[s.authorId] = { id: s.authorId, pt: 0, play: 0, view: 0 };
                     creatorMap[s.authorId].play += (s.playCount || 0);
