@@ -20,11 +20,11 @@ export type UserProfile = {
   email: string;
   friendIds?: string[];
   blockedUserIds?: string[];
-  points?: number;            // ★ 追加
-  ticketsNormal?: number;     // ★ 追加
-  ticketsSilver?: number;     // ★ 追加
-  ticketsGold?: number;       // ★ 追加
-  ticketsPlatinum?: number;   // ★ 追加
+  points?: number;            
+  ticketsNormal?: number;     
+  ticketsSilver?: number;     
+  ticketsGold?: number;       
+  ticketsPlatinum?: number;   
 };
 
 export type Character = {
@@ -108,6 +108,7 @@ export type Room = {
   current_chapter_index?: number;
   isWarning?: boolean;
   spectator_ids?: string[];
+  ai_model?: string; // ★ これを追加しました
 };
 
 export type Message = {
