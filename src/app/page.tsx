@@ -581,7 +581,6 @@ export default function Home() {
   const submitAppeal = async () => { if(!currentUser || !appealText) return; await supabase.from('ban_appeals').insert({ user_id: currentUser.id, reason: "不明", appeal_text: appealText, status: 'appealing' }); alert("調査依頼を送信しました。"); setAppealText(""); };
   const markNotificationAsRead = async (notifId: string) => { await supabase.from('notifications').update({ is_read: true }).eq('id', notifId); setMyNotifications(myNotifications.map((n: any) => n.id === notifId ? { ...n, isRead: true } : n)); };
 
-  // ★ ポイント消費でのチケット交換機能
   const exchangeTicketWithPoints = async (type: 'item'|'silver'|'gold'|'platinum'|'diamond', cost: number) => {
     if (!currentUser) return;
     if ((currentUser.points || 0) < cost) {
@@ -1465,8 +1464,15 @@ export default function Home() {
         afkInstruction
       });
 
+      // ★ AIプレイヤー（相談タブ）のモデル固定ロジック
+      // flashの場合はflash、それ以外(pro/claude/opus)の場合はすべてproで固定する
+      let finalModel = activeRoom.ai_model || 'flash';
+      if (targetTab === "consult") {
+        finalModel = finalModel === 'flash' ? 'flash' : 'pro';
+      }
+
       // @ts-ignore
-      const aiText = await generateAIResponse(sysPrompt, history, activeRoom.ai_model || 'flash');
+      const aiText = await generateAIResponse(sysPrompt, history, finalModel);
       
       const splitMatch = aiText.match(/\[SPLIT_PROPOSAL:\s*(.+?)\]/);
       if (splitMatch) { setProposedTeams([]); generateSplitProposal(); }
@@ -1785,7 +1791,6 @@ export default function Home() {
         </div>
       )}
 
-      {/* ★ 全画面共通：チケット購入ストア */}
       {showTicketModal && (
         <div className="fixed inset-0 bg-black/80 z-[80] flex items-center justify-center p-4">
           <div className="bg-slate-800 border border-slate-700 rounded-xl p-6 w-full max-w-2xl shadow-2xl">

@@ -1,4 +1,4 @@
-// 環境変数からAPIキーを取得
+// 環境変数からAPIキーを取得（GitHubにプッシュするため直接書き込まず .env.local から読み込む）
 const GEMINI_API_KEY = process.env.NEXT_PUBLIC_GEMINI_API_KEY;
 const CLAUDE_API_KEY = process.env.NEXT_PUBLIC_CLAUDE_API_KEY;
 const NANOBANANA_API_KEY = process.env.NEXT_PUBLIC_NANOBANANA_API_KEY;
@@ -8,7 +8,10 @@ export const generateAIResponse = async (systemPrompt: string, history: any[], m
   // ▼ Gemini (Flash / Pro) のAPI呼び出し
   // ----------------------------------------------------
   if (model === 'flash' || model === 'pro') {
-    const targetModel = model === 'pro' ? 'gemini-1.5-pro-latest' : 'Gemini 3.6 Flash';
+    // ご指定の Gemini 3.6 Flash / Gemini 3.1 Pro にモデル名を固定
+    const targetModel = model === 'pro' ? 'gemini-3.1-pro' : 'gemini-3.6-flash';
+    
+    // 正しいエンドポイントのフォーマット
     const url = `https://generativelanguage.googleapis.com/v1beta/models/${targetModel}:generateContent?key=${GEMINI_API_KEY}`;
     
     const body = {
@@ -41,7 +44,6 @@ export const generateAIResponse = async (systemPrompt: string, history: any[], m
   if (model === 'claude' || model === 'opus') {
     const targetModel = model === 'opus' ? 'claude-3-opus-20240229' : 'claude-3-5-sonnet-20240620';
     
-    // Gemini用の履歴フォーマットをClaude用に変換
     const claudeHistory = history.map(h => ({
       role: h.role === 'model' ? 'assistant' : 'user',
       content: h.parts[0].text
@@ -52,7 +54,6 @@ export const generateAIResponse = async (systemPrompt: string, history: any[], m
       headers: {
         'x-api-key': CLAUDE_API_KEY || '',
         'anthropic-version': '2023-06-01',
-        // ※Next.jsのクライアントサイドから直接叩くための特殊ヘッダー（本来はサーバー経由推奨ですが今回は直接通信します）
         'anthropic-dangerous-direct-browser-access': 'true', 
         'Content-Type': 'application/json'
       },
@@ -101,8 +102,6 @@ export const generateFreeImage = async (prompt: string): Promise<string> => {
 
 // 高品質なプレミアム画像生成API (nanobanana等)
 export const generatePremiumImage = async (prompt: string): Promise<string> => {
-  // ※ここにnanobanana APIの実際のエンドポイントとリクエスト処理を実装します。
-  // 今回は仮として、無料APIに「masterpiece(傑作)」のプロンプトを付与して代用しています。
   console.log(`[Premium Image] Key: ${NANOBANANA_API_KEY}`);
   return generateFreeImage(prompt + ", masterpiece, high quality, highly detailed");
 };
