@@ -1,12 +1,11 @@
-// 環境変数からAPIキーを取得（GitHubにプッシュするため直接書き込まず .env.local から読み込む）
+// 環境変数からAPIキーを取得（※GitHubのブロックを防ぐため、必ず .env.local に設定してください！）
 const GEMINI_API_KEY = process.env.NEXT_PUBLIC_GEMINI_API_KEY;
 const CLAUDE_API_KEY = process.env.NEXT_PUBLIC_CLAUDE_API_KEY;
 const NANOBANANA_API_KEY = process.env.NEXT_PUBLIC_NANOBANANA_API_KEY;
 
 export const generateAIResponse = async (systemPrompt: string, history: any[], model: string = 'flash') => {
   
-  // ★重要：GeminiやClaudeは「user」と「model(assistant)」が必ず交互になることを要求します。
-  // 連続したロールの履歴を1つに統合して、APIエラー（400 Bad Request）を防ぎます。
+  // ★履歴の自動整列（連続したユーザー発言をまとめる安全処理）
   const normalizedHistory: any[] = [];
   for (const msg of history) {
     const role = (msg.role === 'assistant' || msg.role === 'model') ? 'model' : 'user';
@@ -19,7 +18,7 @@ export const generateAIResponse = async (systemPrompt: string, history: any[], m
     }
   }
 
-  // もし最後の履歴が「model」で終わっている場合、APIが返答を拒否するためダミーのユーザー発言を足す
+  // APIエラーを防ぐためのダミー発言
   if (normalizedHistory.length > 0 && normalizedHistory[normalizedHistory.length - 1].role === 'model') {
     normalizedHistory.push({ role: 'user', parts: [{ text: '（待機しています。続けてください）' }] });
   }
@@ -28,11 +27,14 @@ export const generateAIResponse = async (systemPrompt: string, history: any[], m
   // ▼ Gemini (3.6 Flash / 3.1 Pro) のAPI呼び出し
   // ----------------------------------------------------
   if (model === 'flash' || model === 'pro') {
-    const targetModel = model === 'pro' ? 'gemini-3.1-pro' : 'gemini-3.6-flash';
+    // ユーザー様のご指定通り、2026年最新モデルを正確に指定します！
+    // （※3.1 ProはGoogle APIの仕様上 -preview が必要な場合があります）
+    const targetModel = model === 'pro' ? 'gemini-3.1-pro-preview' : 'gemini-3.6-flash';
+    
     const url = `https://generativelanguage.googleapis.com/v1beta/models/${targetModel}:generateContent?key=${GEMINI_API_KEY}`;
     
     const body = {
-      model: `models/${targetModel}`,
+      // ⚠️ 先ほど400エラーの原因となっていた不要な「model: models/...」の記述を完全削除しました
       system_instruction: { parts: [{ text: systemPrompt }] },
       contents: normalizedHistory,
       generationConfig: { 
