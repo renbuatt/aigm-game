@@ -1266,7 +1266,6 @@ export default function Home() {
       
       try {
         let aiModelToUse = options?.aiModel || 'flash'; 
-        // エクスポート時も設定を反映
         if (aiModelToUse === 'flash') {
           aiModelToUse = geminiFlashModel === '3.5-lite' ? 'flash-lite' : 'flash';
         }
@@ -1468,7 +1467,6 @@ export default function Home() {
         const logText = logsToCompress.map((m: any) => `${m.role === 'user' ? 'PL' : 'GM'}: ${m.content}`).join('\n');
         const compressionPrompt = ["あなたはTRPGの優秀な記録係です。以下の「現在のあらすじ」と「追加のチャットログ」を統合し、AI GMが今後の展開を処理するための【詳細な最新のあらすじ】を作成してください。","【絶対条件】","・重要な出来事、NPCとの会話結果、得たアイテムやヒント、PLの目的は絶対に漏らさないこと。","・システムやダイスの結果等のメタな情報は省略し、物語の進行を中心にまとめること。","","【現在のあらすじ】",currentSummary || "なし（最初の要約です）","","【追加のチャットログ】",logText].join('\n');
         try {
-          // ★ スイッチャー設定の反映
           let apiModelString = activeRoom.ai_model || 'flash';
           if (apiModelString === 'flash') {
             apiModelString = geminiFlashModel === '3.5-lite' ? 'flash-lite' : 'flash';
@@ -1572,7 +1570,6 @@ export default function Home() {
         targetTab 
       });
 
-      // ★ AIプレイヤー（相談タブ）のモデル固定ロジック ＆ スイッチャー設定の反映
       let finalModel = activeRoom.ai_model || 'flash';
       if (targetTab === "consult") {
         finalModel = finalModel === 'flash' ? 'flash' : 'pro';
@@ -1694,48 +1691,45 @@ export default function Home() {
         />
       )}
 
-      {/* ★ 管理画面（追加の設定UIをラップして表示） */}
+      {/* ★ 管理画面（レイアウト崩れを防ぐためそのまま表示し、スイッチャーはフローティングで表示） */}
       {currentView === "admin" && currentUser?.isAdmin && (
-        <div className="flex-1 flex flex-col overflow-hidden relative">
-          <div className="bg-slate-800 p-4 border-b border-slate-700 flex flex-col sm:flex-row justify-between items-center z-10 shadow-md">
-            <h2 className="font-bold text-lg text-emerald-400 mb-2 sm:mb-0">⚙️ AIモデル詳細設定</h2>
-            <label className="flex items-center gap-3 text-sm">
-              <span className="text-slate-300 hidden sm:inline">Gemini Flash の裏側モデル:</span>
-              <select 
-                value={geminiFlashModel}
-                onChange={(e) => toggleGeminiFlashModel(e.target.value as '3.5-lite' | '3.6')}
-                className="bg-slate-900 border border-slate-600 rounded p-2 text-white font-bold cursor-pointer"
-              >
-                <option value="3.5-lite">Gemini 3.5 Flash Lite (軽量・多回数・要約強め)</option>
-                <option value="3.6">Gemini 3.6 Flash (通常・高品質・表現豊か)</option>
-              </select>
-            </label>
+        <>
+          <AdminView
+            isMaintenance={isMaintenance}
+            toggleMaintenance={toggleMaintenance}
+            isTicketSystemEnabled={isTicketSystemEnabled}
+            toggleTicketSystem={toggleTicketSystem}
+            reports={reports}
+            allUsers={allUsers}
+            scenarios={scenarios}
+            resolveReport={resolveReport}
+            setBanTargetUser={setBanTargetUser}
+            setBanReason={setBanReason}
+            setBanTargetScenario={setBanTargetScenario}
+            setScenarioBanReason={setScenarioBanReason}
+            unbanScenarioFromAppeal={unbanScenarioFromAppeal}
+            userSearchQuery={userSearchQuery}
+            setUserSearchQuery={setUserSearchQuery}
+            toggleAdminStatus={toggleAdminStatus}
+            scenarioSearchQuery={scenarioSearchQuery}
+            setScenarioSearchQuery={setScenarioSearchQuery}
+            setCurrentView={setCurrentView}
+            executeCreateTester={executeCreateTester}
+          />
+          
+          {/* ★ フローティングスイッチャー（画面右下に常に浮いて表示されます） */}
+          <div className="fixed bottom-6 right-6 bg-slate-800 border border-emerald-500 p-4 rounded-xl shadow-[0_0_20px_rgba(16,185,129,0.3)] z-[100] flex flex-col gap-2">
+            <h2 className="font-bold text-sm text-emerald-400">⚙️ Gemini Flash モデル切替</h2>
+            <select 
+              value={geminiFlashModel}
+              onChange={(e) => toggleGeminiFlashModel(e.target.value as '3.5-lite' | '3.6')}
+              className="bg-slate-900 border border-slate-600 rounded p-2 text-sm text-white font-bold cursor-pointer outline-none hover:bg-slate-700 transition-colors"
+            >
+              <option value="3.5-lite">3.5 Flash Lite (軽量・多回数・要約強め)</option>
+              <option value="3.6">3.6 Flash (通常・高品質・表現豊か)</option>
+            </select>
           </div>
-          <div className="flex-1 overflow-hidden relative">
-            <AdminView
-              isMaintenance={isMaintenance}
-              toggleMaintenance={toggleMaintenance}
-              isTicketSystemEnabled={isTicketSystemEnabled}
-              toggleTicketSystem={toggleTicketSystem}
-              reports={reports}
-              allUsers={allUsers}
-              scenarios={scenarios}
-              resolveReport={resolveReport}
-              setBanTargetUser={setBanTargetUser}
-              setBanReason={setBanReason}
-              setBanTargetScenario={setBanTargetScenario}
-              setScenarioBanReason={setScenarioBanReason}
-              unbanScenarioFromAppeal={unbanScenarioFromAppeal}
-              userSearchQuery={userSearchQuery}
-              setUserSearchQuery={setUserSearchQuery}
-              toggleAdminStatus={toggleAdminStatus}
-              scenarioSearchQuery={scenarioSearchQuery}
-              setScenarioSearchQuery={setScenarioSearchQuery}
-              setCurrentView={setCurrentView}
-              executeCreateTester={executeCreateTester}
-            />
-          </div>
-        </div>
+        </>
       )}
 
       {currentView === "banned" && <BannedView handleLogout={handleLogout} />}
