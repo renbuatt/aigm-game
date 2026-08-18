@@ -31,7 +31,7 @@ type Props = {
   isChatDisabled: boolean;
   mergeTeam: () => Promise<void>;
   executeMergeAll: () => Promise<void>;
-  generateSceneImage: (promptText?: string) => Promise<void>;
+  generateSceneImage: (imageType: 'free' | 'premium') => Promise<void>; // ★ 引数を追加
   proposedTeams: {id: string, action: string, members: string[], leader: string}[];
   setProposedTeams: React.Dispatch<React.SetStateAction<{id: string, action: string, members: string[], leader: string}[]>>;
   isGeneratingSplit: boolean;
@@ -64,8 +64,6 @@ export default function GameView({
   const [playerNames, setPlayerNames] = useState<Record<string, string>>({});
   
   const chatContainerRef = useRef<HTMLDivElement>(null);
-
-  // ★ 閲覧者数の計算
   const spectatorCount = activeRoom.spectator_ids ? activeRoom.spectator_ids.length : 0;
 
   useEffect(() => {
@@ -98,10 +96,11 @@ export default function GameView({
     }
   }, [messages, activeRoom.status, activeRoom.is_paused, isHost, isScenarioEnded, triggerAutoAction]);
 
-  const handleGenerateImage = async () => {
+  // ★ 画像生成呼び出し（引数で切り替え）
+  const handleGenerateImage = async (type: 'free' | 'premium') => {
     if (imageCount >= 3 || isGeneratingImg) return;
     setIsGeneratingImg(true);
-    await generateSceneImage(""); 
+    await generateSceneImage(type); 
     setIsGeneratingImg(false);
   };
 
@@ -220,7 +219,6 @@ export default function GameView({
           <div className="flex items-center gap-2">
             <button onClick={leaveGame} className="text-xs bg-slate-700 hover:bg-slate-600 text-white px-3 py-1.5 rounded font-bold shadow">🚪 離脱 / 終了</button>
             
-            {/* ★ 閲覧者数の表示 */}
             {spectatorCount > 0 && (
               <span className="text-xs bg-slate-900 border border-slate-700 text-slate-300 px-2 py-1.5 rounded font-bold shadow flex items-center gap-1">
                 👁️ {spectatorCount}人が閲覧中
@@ -385,19 +383,25 @@ export default function GameView({
               <button onClick={startGame} className="bg-pink-600 hover:bg-pink-500 text-white text-[10px] font-bold px-4 py-2 rounded animate-pulse ml-2 shadow-lg shadow-pink-900/50">▶ お試し開始</button>
             )}
 
+            {/* ★ ここで画像生成ボタンを2種類に分けました */}
             {isHost && activeRoom.status === "playing" && !isScenarioEnded && !activeRoom.is_trial && (
-               <>
+               <div className="flex gap-2 ml-2">
                  {imageCount < 3 && (
-                   <button onClick={handleGenerateImage} disabled={isGeneratingImg} className="bg-purple-700 hover:bg-purple-600 disabled:bg-slate-600 text-white text-[10px] font-bold px-3 py-1.5 rounded shadow-lg ml-2 transition">
-                     {isGeneratingImg ? "⏳ 生成中..." : "🖼️ 情景生成"}
-                   </button>
+                   <>
+                     <button onClick={() => handleGenerateImage("free")} disabled={isGeneratingImg} className="bg-purple-700 hover:bg-purple-600 disabled:bg-slate-600 text-white text-[10px] font-bold px-3 py-1.5 rounded shadow-lg transition">
+                       {isGeneratingImg ? "⏳ 生成中..." : "🖼️ 無料で情景生成"}
+                     </button>
+                     <button onClick={() => handleGenerateImage("premium")} disabled={isGeneratingImg} className="bg-amber-600 hover:bg-amber-500 disabled:bg-slate-600 text-white text-[10px] font-bold px-3 py-1.5 rounded shadow-lg transition">
+                       ✨ 高品質な情景生成
+                     </button>
+                   </>
                  )}
                  {isSplitMode ? (
-                   <button onClick={executeMergeAll} className="bg-indigo-700 hover:bg-indigo-600 text-white text-[10px] font-bold px-3 py-1.5 rounded shadow-lg ml-2">🚪 全員合流</button>
+                   <button onClick={executeMergeAll} className="bg-indigo-700 hover:bg-indigo-600 text-white text-[10px] font-bold px-3 py-1.5 rounded shadow-lg">🚪 全員合流</button>
                  ) : (
-                   <button onClick={startSplitting} className="bg-blue-700 hover:bg-blue-600 text-white text-[10px] font-bold px-3 py-1.5 rounded shadow-lg ml-2">👥 チーム分け</button>
+                   <button onClick={startSplitting} className="bg-blue-700 hover:bg-blue-600 text-white text-[10px] font-bold px-3 py-1.5 rounded shadow-lg">👥 チーム分け</button>
                  )}
-               </>
+               </div>
             )}
           </div>
         </div>
