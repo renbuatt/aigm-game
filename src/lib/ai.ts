@@ -24,17 +24,15 @@ export const generateAIResponse = async (systemPrompt: string, history: any[], m
   }
 
   // ----------------------------------------------------
-  // ▼ Gemini (3.6 Flash / 3.1 Pro) のAPI呼び出し
+  // ▼ Gemini (3.5 Flash Lite / 3.1 Pro) のAPI呼び出し
   // ----------------------------------------------------
   if (model === 'flash' || model === 'pro') {
-    // ユーザー様のご指定通り、2026年最新モデルを正確に指定します！
-    // （※3.1 ProはGoogle APIの仕様上 -preview が必要な場合があります）
-    const targetModel = model === 'pro' ? 'gemini-3.1-pro-preview' : 'gemini-3.6-flash';
+    // 画像で確認いただいた「Gemini 3.5 Flash Lite」に指定を変更しました！
+    const targetModel = model === 'pro' ? 'gemini-3.1-pro' : 'gemini-3.5-flash-lite';
     
     const url = `https://generativelanguage.googleapis.com/v1beta/models/${targetModel}:generateContent?key=${GEMINI_API_KEY}`;
     
     const body = {
-      // ⚠️ 先ほど400エラーの原因となっていた不要な「model: models/...」の記述を完全削除しました
       system_instruction: { parts: [{ text: systemPrompt }] },
       contents: normalizedHistory,
       generationConfig: { 
