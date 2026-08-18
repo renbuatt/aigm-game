@@ -29,7 +29,8 @@ type Props = {
   openUserProfile: (userId: string) => void;
   setScenarioAppealTarget: React.Dispatch<React.SetStateAction<Scenario | null>>;
   playArchives: PlayArchive[];
-  setShowTicketModal: React.Dispatch<React.SetStateAction<boolean>>; // ★ 追加
+  setShowTicketModal: React.Dispatch<React.SetStateAction<boolean>>;
+  exchangeTicketWithPoints: (type: 'item'|'silver'|'gold'|'platinum'|'diamond', cost: number) => Promise<void>; // ★ 追加
 };
 
 export default function LobbyView({
@@ -37,7 +38,7 @@ export default function LobbyView({
   rooms, searchedSecretRoom, setSearchedSecretRoom, executeJoinRoom, availableRooms,
   spectateRoom, setEditingScenario, setCurrentView, createdScenarios, deleteScenario, setRoomConfigModal,
   fetchAdminData, startTrialPlay, availableScenarios, openUserProfile, setScenarioAppealTarget, playArchives,
-  setShowTicketModal // ★ 追加
+  setShowTicketModal, exchangeTicketWithPoints // ★ 追加
 }: Props) {
   
   const [lobbyTab, setLobbyTab] = useState<'rooms' | 'scenarios' | 'trials' | 'ranking'>('rooms');
@@ -154,6 +155,9 @@ export default function LobbyView({
                         <div className="text-xs text-slate-400 mb-2 flex flex-wrap items-center gap-2">
                           <span>ホスト: <span className="underline cursor-pointer hover:text-blue-300 transition-colors" onClick={() => openUserProfile(room.host_id)}>{room.host_name}</span></span>
                           <span className="text-amber-400 font-bold ml-2">⭐ {room.scenario?.ratingCount ? (room.scenario.ratingSum / room.scenario.ratingCount).toFixed(1) : "未評価"}</span>
+                          <span className={`px-1.5 py-0.5 rounded text-white ${room.difficulty === 'beginner' ? 'bg-pink-500' : room.difficulty === 'easy' ? 'bg-green-600' : room.difficulty === 'normal' ? 'bg-blue-600' : room.difficulty === 'hard' ? 'bg-orange-600' : room.difficulty === 'pro' ? 'bg-red-600' : 'bg-purple-600'}`}>
+                            {room.difficulty === 'beginner' ? '⬜ 初心者' : room.difficulty === 'easy' ? '🟩 簡単' : room.difficulty === 'normal' ? '🟦 普通' : room.difficulty === 'hard' ? '🟧 難しい' : room.difficulty === 'pro' ? '🟥 プロ' : '🟪 鬼'}
+                          </span>
                         </div>
                         {room.host_message && <p className="text-xs text-slate-300 italic mb-2">「{room.host_message}」</p>}
                         
@@ -343,7 +347,6 @@ export default function LobbyView({
             </div>
 
             <div className="mt-3 pt-3 border-t border-slate-700/50 flex flex-col gap-2">
-               {/* ★ アイテムチケットと生成回数を表示 */}
                <div className="flex justify-between items-center px-1 mb-1">
                   <span className="text-xs text-slate-400">アイテムチケット</span>
                   <span className="text-sm font-bold text-white">{currentUser.ticketsItem || 0} 枚</span>

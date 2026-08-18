@@ -89,7 +89,7 @@ export default function Home() {
   const [searchedSecretRoom, setSearchedSecretRoom] = useState<Room | null>(null);
 
   const [adModal, setAdModal] = useState<any>({ isOpen: false, step: 0, scenario: null, room: null, type: 'trial' });
-  const [showTicketModal, setShowTicketModal] = useState(false); // ★ 全画面共通のチケットストアモーダル
+  const [showTicketModal, setShowTicketModal] = useState(false);
   
   const [unreadIndicators, setUnreadIndicators] = useState({ story: false, consult: false, gm: false });
   const chatTabRef = useRef<ChatTab>(chatTab);
@@ -274,8 +274,7 @@ export default function Home() {
         purchasedTickets: d.purchased_tickets || {}, isBanned: d.is_banned || false, playTime: d.play_time || 60,
         isPlayableByOthers: d.is_playable_by_others || false, isTrialOk: d.is_trial_ok || false, itemVisibility: d.item_visibility || "none",
         requiredScenarioId: d.required_scenario_id || "",
-        playCount: d.play_count || 0,
-        viewCount: d.view_count || 0
+        playCount: d.play_count || 0, viewCount: d.view_count || 0
       }));
       setScenarios(loadedScenarios);
     }
@@ -289,9 +288,7 @@ export default function Home() {
         current_summary: r.current_summary || "", difficulty: r.difficulty || "normal", rule: r.rule || "coc_jp",
         is_paused: r.is_paused || false, afk_users: r.afk_users || [], is_trial: r.is_trial || false,
         item_visibility: r.item_visibility || "none", inventories: r.inventories || {},
-        current_chapter_index: r.current_chapter_index || 0,
-        spectator_ids: r.spectator_ids || [],
-        ai_model: r.ai_model || 'flash'
+        current_chapter_index: r.current_chapter_index || 0, spectator_ids: r.spectator_ids || [], ai_model: r.ai_model || 'flash'
       })).filter((r: any) => r.scenario) as Room[];
       setRooms(formattedRooms);
     }
@@ -583,6 +580,40 @@ export default function Home() {
   const resolveReport = async (reportId: string) => { await supabase.from('reports').update({ status: 'resolved' }).eq('id', reportId); fetchAdminData(); };
   const submitAppeal = async () => { if(!currentUser || !appealText) return; await supabase.from('ban_appeals').insert({ user_id: currentUser.id, reason: "不明", appeal_text: appealText, status: 'appealing' }); alert("調査依頼を送信しました。"); setAppealText(""); };
   const markNotificationAsRead = async (notifId: string) => { await supabase.from('notifications').update({ is_read: true }).eq('id', notifId); setMyNotifications(myNotifications.map((n: any) => n.id === notifId ? { ...n, isRead: true } : n)); };
+
+  // ★ ポイント消費でのチケット交換機能
+  const exchangeTicketWithPoints = async (type: 'item'|'silver'|'gold'|'platinum'|'diamond', cost: number) => {
+    if (!currentUser) return;
+    if ((currentUser.points || 0) < cost) {
+      alert("ポイントが足りません！");
+      return;
+    }
+    if (!confirm(`${cost} ptを消費してチケットを交換しますか？`)) return;
+
+    const updates: any = { points: currentUser.points! - cost };
+    if (type === 'item') updates.tickets_item = (currentUser.ticketsItem || 0) + 1;
+    if (type === 'silver') updates.tickets_silver = (currentUser.ticketsSilver || 0) + 1;
+    if (type === 'gold') updates.tickets_gold = (currentUser.ticketsGold || 0) + 1;
+    if (type === 'platinum') updates.tickets_platinum = (currentUser.ticketsPlatinum || 0) + 1;
+    if (type === 'diamond') updates.tickets_diamond = (currentUser.ticketsDiamond || 0) + 1;
+
+    const { error } = await supabase.from('profiles').update(updates).eq('id', currentUser.id);
+    if (error) {
+      alert("交換に失敗しました: " + error.message);
+      return;
+    }
+
+    setCurrentUser({
+      ...currentUser,
+      points: updates.points,
+      ticketsItem: type === 'item' ? (currentUser.ticketsItem || 0) + 1 : currentUser.ticketsItem,
+      ticketsSilver: type === 'silver' ? (currentUser.ticketsSilver || 0) + 1 : currentUser.ticketsSilver,
+      ticketsGold: type === 'gold' ? (currentUser.ticketsGold || 0) + 1 : currentUser.ticketsGold,
+      ticketsPlatinum: type === 'platinum' ? (currentUser.ticketsPlatinum || 0) + 1 : currentUser.ticketsPlatinum,
+      ticketsDiamond: type === 'diamond' ? (currentUser.ticketsDiamond || 0) + 1 : currentUser.ticketsDiamond,
+    });
+    alert("チケットを交換しました！");
+  };
 
   const generateSceneImage = async (imageType: 'free' | 'premium') => {
     if (!activeRoom || !myScene || !currentUser) return;
@@ -1617,6 +1648,7 @@ export default function Home() {
           setScenarioAppealTarget={setScenarioAppealTarget}
           playArchives={playArchives}
           setShowTicketModal={setShowTicketModal}
+          exchangeTicketWithPoints={exchangeTicketWithPoints}
         />
       )}
       
@@ -1758,16 +1790,21 @@ export default function Home() {
         <div className="fixed inset-0 bg-black/80 z-[80] flex items-center justify-center p-4">
           <div className="bg-slate-800 border border-slate-700 rounded-xl p-6 w-full max-w-2xl shadow-2xl">
             <div className="flex justify-between items-center mb-4 border-b border-slate-700 pb-3">
-              <h3 className="text-xl font-bold text-emerald-400">🎟️ チケット購入ストア</h3>
+              <h3 className="text-xl font-bold text-emerald-400">🎟️ チケット購入・交換ストア</h3>
               <button onClick={() => setShowTicketModal(false)} className="text-2xl text-slate-400 hover:text-white">×</button>
             </div>
             
+            <div className="bg-slate-900 border border-slate-700 rounded-lg p-3 mb-4 flex justify-between items-center shadow-inner">
+               <span className="text-sm text-slate-300">現在の所持ポイント（動画・報酬）</span>
+               <span className="text-xl font-bold text-yellow-400">🪙 {currentUser?.points || 0} pt</span>
+            </div>
+
             <p className="text-xs text-slate-300 mb-4">
-              セッション（1枚につき最大3章までプレイ可能）や、各種機能を利用するためのチケットです。<br/>
-              <span className="text-amber-400 font-bold">※複数枚まとめ買いで割引が適用されます。（現在決済システムは準備中です）</span>
+              セッションや、各種機能を利用するためのチケットです。<br/>
+              <span className="text-amber-400 font-bold">※ポイントを消費して無料で交換することも可能です。</span>
             </p>
 
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 max-h-[60vh] overflow-y-auto pr-2 custom-scrollbar">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 max-h-[50vh] overflow-y-auto pr-2 custom-scrollbar">
                {/* アイテムチケット */}
                <div className="bg-slate-700/30 border border-slate-600 p-4 rounded-xl flex flex-col justify-between">
                   <div>
@@ -1778,10 +1815,15 @@ export default function Home() {
                     <p className="text-[11px] text-slate-400">高品質画像生成(3回分)や、<br/>小説執筆、書庫保存などに使用します。</p>
                   </div>
                   <div className="mt-4 pt-3 border-t border-slate-600">
-                    <button onClick={() => alert("※決済システム準備中")} className="w-full bg-slate-600 hover:bg-slate-500 text-white text-sm py-2 rounded font-bold shadow mb-2">
-                       1枚購入 - ¥120
-                    </button>
-                    <button onClick={() => alert("※決済システム準備中")} className="w-full bg-slate-800 border border-slate-500 hover:bg-slate-700 text-slate-300 text-xs py-1.5 rounded font-bold">
+                    <div className="flex gap-2 mb-2">
+                      <button onClick={() => alert("※決済システム準備中")} className="flex-1 bg-slate-600 hover:bg-slate-500 text-white text-xs py-2 rounded font-bold shadow">
+                         ¥120 で購入
+                      </button>
+                      <button onClick={() => exchangeTicketWithPoints('item', 300)} className="flex-[1.5] bg-yellow-600 hover:bg-yellow-500 text-white text-xs py-2 rounded font-bold shadow flex items-center justify-center gap-1">
+                         🪙 300 ptで交換
+                      </button>
+                    </div>
+                    <button onClick={() => alert("※決済システム準備中")} className="w-full bg-slate-800 border border-slate-500 hover:bg-slate-700 text-slate-300 text-[10px] py-1.5 rounded font-bold">
                        3枚セット - ¥320 (約11%OFF)
                     </button>
                   </div>
@@ -1797,10 +1839,15 @@ export default function Home() {
                     <p className="text-[11px] text-slate-400">手軽にサクッと遊びたい方向け。<br/>テンポの良いスピーディーなセッション。</p>
                   </div>
                   <div className="mt-4 pt-3 border-t border-slate-600">
-                    <button onClick={() => alert("※決済システム準備中")} className="w-full bg-blue-600 hover:bg-blue-500 text-white text-sm py-2 rounded font-bold shadow mb-2">
-                       1枚購入 - ¥360
-                    </button>
-                    <button onClick={() => alert("※決済システム準備中")} className="w-full bg-slate-800 border border-slate-500 hover:bg-slate-700 text-slate-300 text-xs py-1.5 rounded font-bold">
+                    <div className="flex gap-2 mb-2">
+                      <button onClick={() => alert("※決済システム準備中")} className="flex-1 bg-blue-600 hover:bg-blue-500 text-white text-xs py-2 rounded font-bold shadow">
+                         ¥360 で購入
+                      </button>
+                      <button onClick={() => exchangeTicketWithPoints('silver', 100)} className="flex-[1.5] bg-yellow-600 hover:bg-yellow-500 text-white text-xs py-2 rounded font-bold shadow flex items-center justify-center gap-1">
+                         🪙 100 ptで交換
+                      </button>
+                    </div>
+                    <button onClick={() => alert("※決済システム準備中")} className="w-full bg-slate-800 border border-slate-500 hover:bg-slate-700 text-slate-300 text-[10px] py-1.5 rounded font-bold">
                        3枚セット - ¥980 (10%OFF)
                     </button>
                   </div>
@@ -1816,10 +1863,15 @@ export default function Home() {
                     <p className="text-[11px] text-amber-500/70">論理的で緻密なシナリオ向け。<br/>NPCの思惑が絡み合うミステリーに最適。</p>
                   </div>
                   <div className="mt-4 pt-3 border-t border-amber-900/50">
-                    <button onClick={() => alert("※決済システム準備中")} className="w-full bg-amber-600 hover:bg-amber-500 text-white text-sm py-2 rounded font-bold shadow mb-2">
-                       1枚購入 - ¥600
-                    </button>
-                    <button onClick={() => alert("※決済システム準備中")} className="w-full bg-slate-800 border border-amber-700/50 hover:bg-slate-700 text-amber-300 text-xs py-1.5 rounded font-bold">
+                    <div className="flex gap-2 mb-2">
+                      <button onClick={() => alert("※決済システム準備中")} className="flex-1 bg-amber-600 hover:bg-amber-500 text-white text-xs py-2 rounded font-bold shadow">
+                         ¥600 で購入
+                      </button>
+                      <button onClick={() => exchangeTicketWithPoints('gold', 300)} className="flex-[1.5] bg-yellow-600 hover:bg-yellow-500 text-white text-xs py-2 rounded font-bold shadow flex items-center justify-center gap-1">
+                         🪙 300 ptで交換
+                      </button>
+                    </div>
+                    <button onClick={() => alert("※決済システム準備中")} className="w-full bg-slate-800 border border-amber-700/50 hover:bg-slate-700 text-amber-300 text-[10px] py-1.5 rounded font-bold">
                        3枚セット - ¥1,620 (10%OFF)
                     </button>
                   </div>
@@ -1835,30 +1887,40 @@ export default function Home() {
                     <p className="text-[11px] text-indigo-400/70">エモーショナルな体験を求める方向け。<br/>文学的で美しい情景・心理描写。</p>
                   </div>
                   <div className="mt-4 pt-3 border-t border-indigo-900/50">
-                    <button onClick={() => alert("※決済システム準備中")} className="w-full bg-indigo-600 hover:bg-indigo-500 text-white text-sm py-2 rounded font-bold shadow mb-2">
-                       1枚購入 - ¥1,200
-                    </button>
-                    <button onClick={() => alert("※決済システム準備中")} className="w-full bg-slate-800 border border-indigo-700/50 hover:bg-slate-700 text-indigo-300 text-xs py-1.5 rounded font-bold">
+                    <div className="flex gap-2 mb-2">
+                      <button onClick={() => alert("※決済システム準備中")} className="flex-1 bg-indigo-600 hover:bg-indigo-500 text-white text-xs py-2 rounded font-bold shadow">
+                         ¥1,200 で購入
+                      </button>
+                      <button onClick={() => exchangeTicketWithPoints('platinum', 900)} className="flex-[1.5] bg-yellow-600 hover:bg-yellow-500 text-white text-xs py-2 rounded font-bold shadow flex items-center justify-center gap-1">
+                         🪙 900 ptで交換
+                      </button>
+                    </div>
+                    <button onClick={() => alert("※決済システム準備中")} className="w-full bg-slate-800 border border-indigo-700/50 hover:bg-slate-700 text-indigo-300 text-[10px] py-1.5 rounded font-bold">
                        3枚セット - ¥3,240 (10%OFF)
                     </button>
                   </div>
                </div>
 
                {/* ダイヤモンドチケット */}
-               <div className="bg-gradient-to-br from-fuchsia-900/40 to-rose-900/20 border-2 border-fuchsia-500/50 p-4 rounded-xl flex flex-col justify-between relative overflow-hidden">
+               <div className="bg-gradient-to-br from-fuchsia-900/40 to-rose-900/20 border-2 border-fuchsia-500/50 p-4 rounded-xl flex flex-col justify-between relative overflow-hidden md:col-span-2">
                   <div className="absolute top-0 right-0 bg-fuchsia-600 text-white text-[8px] font-bold px-4 py-1 rotate-45 translate-x-3 translate-y-2 shadow-lg">最高級</div>
                   <div>
                     <div className="flex justify-between items-center mb-2">
                       <h4 className="text-lg font-bold text-fuchsia-300">ダイヤモンド</h4>
                       <span className="bg-fuchsia-600 text-white text-[10px] px-2 py-1 rounded font-bold">Claude Opus</span>
                     </div>
-                    <p className="text-[11px] text-fuchsia-200/80">最高峰のVIP TRPG体験。<br/>人間を超える神業GMで、絶対に失敗できない究極のセッションを。</p>
+                    <p className="text-[11px] text-fuchsia-200/80">最高峰のVIP TRPG体験。人間を超える神業GMで、絶対に失敗できない究極のセッションを。</p>
                   </div>
                   <div className="mt-4 pt-3 border-t border-fuchsia-900/50">
-                    <button onClick={() => alert("※決済システム準備中")} className="w-full bg-fuchsia-600 hover:bg-fuchsia-500 text-white text-sm py-2 rounded font-bold shadow mb-2">
-                       1枚購入 - ¥1,800
-                    </button>
-                    <button onClick={() => alert("※決済システム準備中")} className="w-full bg-slate-800 border border-fuchsia-700/50 hover:bg-slate-700 text-fuchsia-300 text-xs py-1.5 rounded font-bold">
+                    <div className="flex gap-2 mb-2">
+                      <button onClick={() => alert("※決済システム準備中")} className="flex-1 bg-fuchsia-600 hover:bg-fuchsia-500 text-white text-xs py-2 rounded font-bold shadow">
+                         ¥1,800 で購入
+                      </button>
+                      <button onClick={() => exchangeTicketWithPoints('diamond', 1200)} className="flex-[1.5] bg-yellow-600 hover:bg-yellow-500 text-white text-xs py-2 rounded font-bold shadow flex items-center justify-center gap-1">
+                         🪙 1200 ptで交換
+                      </button>
+                    </div>
+                    <button onClick={() => alert("※決済システム準備中")} className="w-full bg-slate-800 border border-fuchsia-700/50 hover:bg-slate-700 text-fuchsia-300 text-[10px] py-1.5 rounded font-bold">
                        3枚セット - ¥4,860 (10%OFF)
                     </button>
                   </div>
@@ -2029,7 +2091,6 @@ export default function Home() {
                 </select>
               </div>
 
-              {/* ★ AIモデル（GM）の選択機能 */}
               <div>
                 <label className="text-xs text-slate-400 block mb-1">AIモデル (GM) {isTicketSystemEnabled && <span className="text-amber-400 text-[10px]">※チケット消費</span>}</label>
                 <select 
