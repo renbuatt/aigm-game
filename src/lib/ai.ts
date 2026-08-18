@@ -8,7 +8,7 @@ export const generateAIResponse = async (systemPrompt: string, history: any[], m
   // ▼ Gemini (Flash / Pro) のAPI呼び出し
   // ----------------------------------------------------
   if (model === 'flash' || model === 'pro') {
-    const targetModel = model === 'pro' ? 'gemini-1.5-pro-latest' : 'gemini-1.5-flash-latest';
+    const targetModel = model === 'pro' ? 'gemini-1.5-pro-latest' : 'Gemini 3.6 Flash';
     const url = `https://generativelanguage.googleapis.com/v1beta/models/${targetModel}:generateContent?key=${GEMINI_API_KEY}`;
     
     const body = {
