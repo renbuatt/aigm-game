@@ -24,11 +24,16 @@ export const generateAIResponse = async (systemPrompt: string, history: any[], m
   }
 
   // ----------------------------------------------------
-  // ▼ Gemini (3.5 Flash Lite / 3.1 Pro) のAPI呼び出し
+  // ▼ Gemini (3.5 Flash Lite / 3.6 Flash / 3.1 Pro) のAPI呼び出し
   // ----------------------------------------------------
-  if (model === 'flash' || model === 'pro') {
-    // 画像で確認いただいた「Gemini 3.5 Flash Lite」に指定を変更しました！
-    const targetModel = model === 'pro' ? 'gemini-3.1-pro' : 'gemini-3.5-flash-lite';
+  if (model === 'flash' || model === 'flash-lite' || model === 'pro') {
+    // 管理画面のスイッチャー設定に応じて、Liteと通常版を切り替える
+    let targetModel = 'gemini-3.6-flash';
+    if (model === 'pro') {
+      targetModel = 'gemini-3.1-pro';
+    } else if (model === 'flash-lite') {
+      targetModel = 'gemini-3.5-flash-lite';
+    }
     
     const url = `https://generativelanguage.googleapis.com/v1beta/models/${targetModel}:generateContent?key=${GEMINI_API_KEY}`;
     

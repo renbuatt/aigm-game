@@ -57,8 +57,11 @@ export default function Home() {
 
   const [ratingScenario, setRatingScenario] = useState<number>(5);
   const [ratingGM, setRatingGM] = useState<number>(5);
+  
+  // ★ システム設定 State
   const [isMaintenance, setIsMaintenance] = useState(false);
   const [isTicketSystemEnabled, setIsTicketSystemEnabled] = useState(false);
+  const [geminiFlashModel, setGeminiFlashModel] = useState<'3.5-lite' | '3.6'>('3.5-lite');
   
   const [allUsers, setAllUsers] = useState<UserProfile[]>([]);
   const [myNotifications, setMyNotifications] = useState<Notification[]>([]);
@@ -96,7 +99,6 @@ export default function Home() {
   const prevMessagesLength = useRef(0);
   const [playArchives, setPlayArchives] = useState<PlayArchive[]>([]);
 
-  // ★ 連打・多重リクエストを絶対に防ぐための絶対的な同期ロック
   const isRequestingRef = useRef(false);
 
   const availableScenarios = scenarios.filter((s: any) => !s.isBanned);
@@ -366,9 +368,11 @@ export default function Home() {
       const { data: appData } = await supabase.from('app_settings').select('*').eq('id', 1).single();
       const currentMaintenance = appData ? appData.is_maintenance : false;
       const currentTicketSystem = appData ? appData.is_ticket_system_enabled : false;
+      const currentFlashModel = appData?.gemini_flash_model || '3.5-lite';
       
       setIsMaintenance(currentMaintenance);
       setIsTicketSystemEnabled(currentTicketSystem);
+      setGeminiFlashModel(currentFlashModel);
 
       const { formattedRooms } = await fetchData();
       const { data: { session } } = await supabase.auth.getSession();
@@ -453,7 +457,6 @@ export default function Home() {
     await pushMessage(activeRoom.id, { sender: "system", text: msg, type: "system", channel: "system" }, false); 
   };
 
-  // ★ タイムアウト自動行動（多重リクエスト防止ロック追加）
   const triggerAutoAction = async () => {
     if (!activeRoom || activeRoom.is_paused || activeRoom.status !== 'playing' || isScenarioEnded || isRequestingRef.current) return;
     isRequestingRef.current = true;
@@ -545,9 +548,21 @@ export default function Home() {
     if (reportsData) setReports(reportsData.map((d: any) => ({ id: d.id, reporterId: d.reporter_id, targetType: d.target_type, targetId: d.target_id, roomId: d.room_id || null, reason: d.reason, status: d.status, createdAt: d.created_at })));
   };
 
+  // ★ 管理機能のトグル処理
   const toggleMaintenance = async () => { const newStatus = !isMaintenance; await supabase.from('app_settings').update({ is_maintenance: newStatus }).eq('id', 1); setIsMaintenance(newStatus); alert(`メンテナンスモードを ${newStatus ? "ON" : "OFF"} にしました。`); };
   const toggleTicketSystem = async () => { const newStatus = !isTicketSystemEnabled; await supabase.from('app_settings').update({ is_ticket_system_enabled: newStatus }).eq('id', 1); setIsTicketSystemEnabled(newStatus); alert(`チケットシステムを ${newStatus ? "ON" : "OFF"} にしました。`); };
   const toggleAdminStatus = async (userId: string, currentStatus: boolean) => { const newStatus = !currentStatus; await supabase.from('profiles').update({ is_admin: newStatus }).eq('id', userId); setAllUsers(allUsers.map((u: any) => u.id === userId ? { ...u, isAdmin: newStatus } : u)); alert(newStatus ? "管理者権限を付与しました。" : "管理者権限を剥奪しました。"); };
+  
+  // ★ Gemini Flash モデルのトグル処理
+  const toggleGeminiFlashModel = async (newModel: '3.5-lite' | '3.6') => { 
+    const { error } = await supabase.from('app_settings').update({ gemini_flash_model: newModel }).eq('id', 1); 
+    if (error) {
+      alert(`設定の保存に失敗しました。\n※Supabaseの app_settings テーブルに gemini_flash_model (text型) カラムを追加してください。\nエラー詳細: ${error.message}`);
+    }
+    setGeminiFlashModel(newModel); 
+    alert(`Gemini Flashの裏側モデルを ${newModel === '3.5-lite' ? '3.5 Flash Lite (軽量版)' : '3.6 Flash (通常版)'} に変更しました。`); 
+  };
+
   const executeBan = async () => { if(!banTargetUser || !banReason) return; await supabase.from('profiles').update({ is_banned: true }).eq('id', banTargetUser.id); await supabase.from('ban_appeals').insert({ user_id: banTargetUser.id, reason: banReason, status: 'banned' }); alert("BANを実行しました。"); setBanTargetUser(null); setBanReason(""); fetchAdminData(); };
   const unbanUser = async (userId: string) => { await supabase.from('profiles').update({ is_banned: false }).eq('id', userId); await supabase.from('ban_appeals').update({ status: 'resolved' }).eq('user_id', userId); alert("BANを解除しました。"); fetchAdminData(); };
   
@@ -662,13 +677,19 @@ export default function Home() {
       const recentLogs = memoryData?.reverse().map((m: any) => `${m.role === 'user' ? 'PL' : 'GM'}: ${m.content}`).join('\n') || "";
       const autoPromptReq = ["あなたはTRPGの情景描写AIです。以下の直近のログから、現在の「場所、雰囲気、見えているもの」を1〜2文の簡潔な日本語で描写してください。キャラクターのセリフや行動ではなく、空間のビジュアルに焦点を当ててください。","【直近のログ】",recentLogs].join('\n');
       
-      const targetPrompt = await generateAITextWithPrompt(autoPromptReq, activeRoom.ai_model || 'flash');
+      // ★ スイッチャー設定の反映
+      let apiModelString = activeRoom.ai_model || 'flash';
+      if (apiModelString === 'flash') {
+        apiModelString = geminiFlashModel === '3.5-lite' ? 'flash-lite' : 'flash';
+      }
+
+      const targetPrompt = await generateAITextWithPrompt(autoPromptReq, apiModelString);
 
       const translationPrompt = ["以下の日本語の情景描写を、画像生成AI用のカンマ区切りの英語プロンプトに変換してください。","【絶対条件】","・文章ではなく、英単語のカンマ区切りで出力してください。","・不適切な画像が生成されるのを防ぐため、必ず最後に「SFW, fully clothed, masterpiece, high quality」を含めてください。","","情景描写：",targetPrompt].join('\n');
       
       let englishPrompt = "";
       try { 
-        englishPrompt = await generateAITextWithPrompt(translationPrompt, activeRoom.ai_model || 'flash'); 
+        englishPrompt = await generateAITextWithPrompt(translationPrompt, apiModelString); 
       } catch (err) { englishPrompt = `${targetPrompt}, SFW, fully clothed, masterpiece, high quality`; }
       
       let base64data = "";
@@ -711,7 +732,13 @@ export default function Home() {
       const chars = activeRoom.scenario?.presetCharacters.filter((c: any) => Object.values(activeRoom.joined_users || {}).includes(c.id)).map((c: any) => `{"id": "${c.id}", "name": "${c.name}"}`).join(", ") || "";
       const prompt = ["あなたはTRPGのシステムAIです。以下の「現在参加しているキャラクター」と「直近のチャットログ」を分析し、物語の展開上、最も自然な【チーム分け（2つ以上のグループへの分割）の構成案】を作成してください。","【参加キャラクター】",chars,"","【直近のログ】",recentLogs,"","【出力形式（絶対遵守）】","必ず以下のJSONフォーマットのみを出力してください。余計な文章やマークダウン記号は一切含めないでください。",'{"teams": [{"action": "目的A", "members": ["キャラID1"]}, {"action": "目的B", "members": ["キャラID3"]}]}'].join('\n');
       
-      const aiResponse = await generateAITextWithPrompt(prompt, activeRoom.ai_model || 'flash');
+      // ★ スイッチャー設定の反映
+      let apiModelString = activeRoom.ai_model || 'flash';
+      if (apiModelString === 'flash') {
+        apiModelString = geminiFlashModel === '3.5-lite' ? 'flash-lite' : 'flash';
+      }
+
+      const aiResponse = await generateAITextWithPrompt(prompt, apiModelString);
       
       const jsonStr = aiResponse.replace(/```json/g, "").replace(/```/g, "").trim();
       const parsed = JSON.parse(jsonStr);
@@ -919,7 +946,6 @@ export default function Home() {
     setCurrentView("game");
   };
 
-  // ★ ゲーム開始時もロック
   const startGame = async () => {
     if(!activeRoom || !activeRoom.scenario || !joinedCharacter || !myScene || isRequestingRef.current) return;
     isRequestingRef.current = true;
@@ -994,11 +1020,9 @@ export default function Home() {
     }
   };
 
-  // ★ 発言送信時：連打と多重リクエストを絶対に防ぐ
   const handleSend = async () => {
     if (!input.trim() || isRequestingRef.current || !activeRoom || !joinedCharacter || !currentUser || !myScene) return;
     
-    // 即座にロックをかける
     isRequestingRef.current = true;
     setIsLoading(true);
 
@@ -1011,7 +1035,7 @@ export default function Home() {
 
       if (isFinished || isRecruiting || (chatTab === "consult" && !consultWithAI)) {
         await pushMessage(activeRoom.id, { sender: "player", text: currentInput, type: (isFinished || isRecruiting) ? "ooc" : "ic", sceneId: myScene.id, charName: joinedCharacter.name, channel: chatTab });
-        return; // 通信しない場合はそのまま終了（finallyでロック解除される）
+        return; 
       }
 
       await pushMessage(activeRoom.id, { sender: "player", text: currentInput, type: chatTab === "story" ? "ic" : "ooc", sceneId: myScene.id, charName: joinedCharacter.name, channel: chatTab });
@@ -1025,13 +1049,11 @@ export default function Home() {
 
       await callAIGM(context, chatTab);
     } finally {
-      // 処理が終わったら必ずロックを解除
       isRequestingRef.current = false;
       setIsLoading(false);
     }
   };
 
-  // ★ ダイスロール時：連打と多重リクエストを絶対に防ぐ
   const rollDice = async (targetValue: number, label: string, is1d100: boolean = false) => {
     if(!myScene || !activeRoom || isRequestingRef.current || !joinedCharacter) return;
     
@@ -1243,7 +1265,12 @@ export default function Home() {
       const prompt = getNovelPrompt(options?.aiModel || 'flash', viewpointInstruction, charNamesStr);
       
       try {
-        const aiModelToUse = options?.aiModel || 'flash'; 
+        let aiModelToUse = options?.aiModel || 'flash'; 
+        // エクスポート時も設定を反映
+        if (aiModelToUse === 'flash') {
+          aiModelToUse = geminiFlashModel === '3.5-lite' ? 'flash-lite' : 'flash';
+        }
+        
         const generatedText = await generateAITextWithPrompt(prompt + "\n\n【チャットログ】\n" + logTextForAI, aiModelToUse);
         
         let introMap: Record<string, string> = {};
@@ -1428,7 +1455,6 @@ export default function Home() {
   const callAIGM = async (extraUserContext?: string, targetTab: ChatTab = "story", isStarting: boolean = false) => {
     if (!activeRoom || !joinedCharacter || !myScene) return;
     if (!isStarting && activeRoom.status !== 'playing') return;
-    // isLoading制御は呼び出し元の各関数で行っています
     
     try {
       if (extraUserContext) await supabase.from('ai_memory').insert({ room_id: activeRoom.id, role: 'user', content: extraUserContext });
@@ -1436,14 +1462,18 @@ export default function Home() {
       let currentMemory = memoryDataRaw || [];
       let currentSummary = activeRoom.current_summary || "";
 
-      // ★ 要約ループと多重リクエストによるエラーを回避する安全措置
       if (currentMemory.length > 30) {
         const logsToCompress = currentMemory.slice(0, currentMemory.length - 10);
         const recentLogs = currentMemory.slice(-10);
         const logText = logsToCompress.map((m: any) => `${m.role === 'user' ? 'PL' : 'GM'}: ${m.content}`).join('\n');
         const compressionPrompt = ["あなたはTRPGの優秀な記録係です。以下の「現在のあらすじ」と「追加のチャットログ」を統合し、AI GMが今後の展開を処理するための【詳細な最新のあらすじ】を作成してください。","【絶対条件】","・重要な出来事、NPCとの会話結果、得たアイテムやヒント、PLの目的は絶対に漏らさないこと。","・システムやダイスの結果等のメタな情報は省略し、物語の進行を中心にまとめること。","","【現在のあらすじ】",currentSummary || "なし（最初の要約です）","","【追加のチャットログ】",logText].join('\n');
         try {
-          currentSummary = await generateAITextWithPrompt(compressionPrompt, activeRoom.ai_model || 'flash');
+          // ★ スイッチャー設定の反映
+          let apiModelString = activeRoom.ai_model || 'flash';
+          if (apiModelString === 'flash') {
+            apiModelString = geminiFlashModel === '3.5-lite' ? 'flash-lite' : 'flash';
+          }
+          currentSummary = await generateAITextWithPrompt(compressionPrompt, apiModelString);
           await supabase.from('rooms').update({ current_summary: currentSummary }).eq('id', activeRoom.id);
           setActiveRoom(prev => prev ? { ...prev, current_summary: currentSummary } : null);
           const idsToDelete = logsToCompress.map((m: any) => m.id);
@@ -1542,13 +1572,17 @@ export default function Home() {
         targetTab 
       });
 
-      // ★ AIプレイヤー（相談タブ）のモデル固定ロジック（コスト削減）
+      // ★ AIプレイヤー（相談タブ）のモデル固定ロジック ＆ スイッチャー設定の反映
       let finalModel = activeRoom.ai_model || 'flash';
       if (targetTab === "consult") {
         finalModel = finalModel === 'flash' ? 'flash' : 'pro';
       }
+      let apiModelString = finalModel;
+      if (finalModel === 'flash') {
+        apiModelString = geminiFlashModel === '3.5-lite' ? 'flash-lite' : 'flash';
+      }
 
-      const aiText = await generateAIResponse(sysPrompt, history, finalModel);
+      const aiText = await generateAIResponse(sysPrompt, history, apiModelString);
       
       const splitMatch = aiText.match(/\[SPLIT_PROPOSAL:\s*(.+?)\]/);
       if (splitMatch) { setProposedTeams([]); generateSplitProposal(); }
@@ -1603,18 +1637,15 @@ export default function Home() {
 
     } catch (err: any) { 
       console.error(err);
-      
-      // ★ エラーはチャットにはマイルドに出し、管理画面(reports)に裏で飛ばす
       await pushMessage(activeRoom.id, { 
         sender: "system", 
-        text: `【システム】AIが混雑しています。もう一度宣言してください。`, 
+        text: `【システムエラー】AIが混雑しています。もう一度宣言してください。`, 
         type: "system", 
         sceneId: myScene?.id, 
         channel: "system" 
       }, false); 
 
       if (currentUser) {
-         // エラー解析のため、直近5件のチャットログを抽出してレポートに添付
          const recentLogs = messages.slice(-5).map(m => `${m.charName || m.sender}: ${m.text}`).join('\n');
          await supabase.from('reports').insert({
             reporter_id: currentUser.id,
@@ -1663,29 +1694,48 @@ export default function Home() {
         />
       )}
 
+      {/* ★ 管理画面（追加の設定UIをラップして表示） */}
       {currentView === "admin" && currentUser?.isAdmin && (
-        <AdminView
-          isMaintenance={isMaintenance}
-          toggleMaintenance={toggleMaintenance}
-          isTicketSystemEnabled={isTicketSystemEnabled}
-          toggleTicketSystem={toggleTicketSystem}
-          reports={reports}
-          allUsers={allUsers}
-          scenarios={scenarios}
-          resolveReport={resolveReport}
-          setBanTargetUser={setBanTargetUser}
-          setBanReason={setBanReason}
-          setBanTargetScenario={setBanTargetScenario}
-          setScenarioBanReason={setScenarioBanReason}
-          unbanScenarioFromAppeal={unbanScenarioFromAppeal}
-          userSearchQuery={userSearchQuery}
-          setUserSearchQuery={setUserSearchQuery}
-          toggleAdminStatus={toggleAdminStatus}
-          scenarioSearchQuery={scenarioSearchQuery}
-          setScenarioSearchQuery={setScenarioSearchQuery}
-          setCurrentView={setCurrentView}
-          executeCreateTester={executeCreateTester}
-        />
+        <div className="flex-1 flex flex-col overflow-hidden relative">
+          <div className="bg-slate-800 p-4 border-b border-slate-700 flex flex-col sm:flex-row justify-between items-center z-10 shadow-md">
+            <h2 className="font-bold text-lg text-emerald-400 mb-2 sm:mb-0">⚙️ AIモデル詳細設定</h2>
+            <label className="flex items-center gap-3 text-sm">
+              <span className="text-slate-300 hidden sm:inline">Gemini Flash の裏側モデル:</span>
+              <select 
+                value={geminiFlashModel}
+                onChange={(e) => toggleGeminiFlashModel(e.target.value as '3.5-lite' | '3.6')}
+                className="bg-slate-900 border border-slate-600 rounded p-2 text-white font-bold cursor-pointer"
+              >
+                <option value="3.5-lite">Gemini 3.5 Flash Lite (軽量・多回数・要約強め)</option>
+                <option value="3.6">Gemini 3.6 Flash (通常・高品質・表現豊か)</option>
+              </select>
+            </label>
+          </div>
+          <div className="flex-1 overflow-hidden relative">
+            <AdminView
+              isMaintenance={isMaintenance}
+              toggleMaintenance={toggleMaintenance}
+              isTicketSystemEnabled={isTicketSystemEnabled}
+              toggleTicketSystem={toggleTicketSystem}
+              reports={reports}
+              allUsers={allUsers}
+              scenarios={scenarios}
+              resolveReport={resolveReport}
+              setBanTargetUser={setBanTargetUser}
+              setBanReason={setBanReason}
+              setBanTargetScenario={setBanTargetScenario}
+              setScenarioBanReason={setScenarioBanReason}
+              unbanScenarioFromAppeal={unbanScenarioFromAppeal}
+              userSearchQuery={userSearchQuery}
+              setUserSearchQuery={setUserSearchQuery}
+              toggleAdminStatus={toggleAdminStatus}
+              scenarioSearchQuery={scenarioSearchQuery}
+              setScenarioSearchQuery={setScenarioSearchQuery}
+              setCurrentView={setCurrentView}
+              executeCreateTester={executeCreateTester}
+            />
+          </div>
+        </div>
       )}
 
       {currentView === "banned" && <BannedView handleLogout={handleLogout} />}
