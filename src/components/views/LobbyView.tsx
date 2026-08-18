@@ -1,7 +1,9 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { ViewState, UserProfile, Room, Scenario, RoomDifficulty, GameRule, PlayArchive } from "../../types";
+import { supabase } from "../../lib/supabase";
 
 const NO_IMAGE_SCENARIO = "https://images.unsplash.com/photo-1614729939124-03290b5609ce?auto=format&fit=crop&w=400&q=80";
+const DEFAULT_AVATAR = "https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&w=150&q=80";
 
 type Props = {
   currentUser: UserProfile;
@@ -36,11 +38,11 @@ export default function LobbyView({
   fetchAdminData, startTrialPlay, availableScenarios, openUserProfile, setScenarioAppealTarget, playArchives
 }: Props) {
   
-  const [lobbyTab, setLobbyTab] = useState<'rooms' | 'scenarios' | 'trials'>('rooms');
-  const [trialSort, setTrialSort] = useState<'new'|'popular'>('new');
+  const [lobbyTab, setLobbyTab] = useState<'rooms' | 'scenarios' | 'trials' | 'ranking'>('rooms');
+  const [rankingType, setRankingType] = useState<'played' | 'viewed' | 'creator'>('played');
+  const [creatorProfiles, setCreatorProfiles] = useState<Record<string, {name: string, avatar: string}>>({});
 
   const trialScenarios = availableScenarios.filter(s => s.isTrialOk);
-  const sortedTrials = [...trialScenarios].sort((a,b) => trialSort === 'popular' ? (b.ratingSum/b.ratingCount || 0) - (a.ratingSum/a.ratingCount || 0) : (a.id < b.id ? 1 : -1));
   const playableScenarios = availableScenarios.filter(s => s.isPlayableByOthers);
 
   const isScenarioCleared = (scenarioId: string) => {
@@ -50,6 +52,30 @@ export default function LobbyView({
   const getRequiredScenario = (reqId?: string) => {
     if (!reqId) return null;
     return availableScenarios.find(s => s.id === reqId);
+  };
+
+  // ランキング表示用に作者プロフィールを取得
+  useEffect(() => {
+    if (lobbyTab === 'ranking' && rankingType === 'creator') {
+      const fetchProfiles = async () => {
+        const authorIds = Array.from(new Set(availableScenarios.map(s => s.authorId).filter(Boolean)));
+        if (authorIds.length === 0) return;
+        const { data } = await supabase.from('profiles').select('id, handle_name, avatar_url').in('id', authorIds as string[]);
+        if (data) {
+           const map: any = {};
+           data.forEach(d => { map[d.id] = { name: d.handle_name, avatar: d.avatar_url }; });
+           setCreatorProfiles(map);
+        }
+      };
+      fetchProfiles();
+    }
+  }, [lobbyTab, rankingType, availableScenarios]);
+
+  const getRankIcon = (idx: number) => {
+    if (idx === 0) return <span className="text-3xl">🥇</span>;
+    if (idx === 1) return <span className="text-3xl">🥈</span>;
+    if (idx === 2) return <span className="text-3xl">🥉</span>;
+    return <span className="text-xl font-bold text-slate-400">{idx + 1}</span>;
   };
 
   return (
@@ -80,8 +106,9 @@ export default function LobbyView({
 
       <div className="flex gap-4 mb-6 border-b border-slate-700 flex-shrink-0 overflow-x-auto whitespace-nowrap">
         <button onClick={() => setLobbyTab('rooms')} className={`pb-2 text-sm font-bold transition-colors border-b-2 ${lobbyTab === 'rooms' ? 'border-blue-500 text-blue-400' : 'border-transparent text-slate-400 hover:text-white'}`}>🌐 募集中のセッション</button>
-        <button onClick={() => setLobbyTab('scenarios')} className={`pb-2 text-sm font-bold transition-colors border-b-2 ${lobbyTab === 'scenarios' ? 'border-emerald-500 text-emerald-400' : 'border-transparent text-slate-400 hover:text-white'}`}>📖 シナリオを探す・部屋を作る</button>
-        <button onClick={() => setLobbyTab('trials')} className={`pb-2 text-sm font-bold transition-colors border-b-2 ${lobbyTab === 'trials' ? 'border-pink-500 text-pink-400' : 'border-transparent text-slate-400 hover:text-white'}`}>🌟 お試しプレイ (広告無料)</button>
+        <button onClick={() => setLobbyTab('scenarios')} className={`pb-2 text-sm font-bold transition-colors border-b-2 ${lobbyTab === 'scenarios' ? 'border-emerald-500 text-emerald-400' : 'border-transparent text-slate-400 hover:text-white'}`}>📖 シナリオを探す・作る</button>
+        <button onClick={() => setLobbyTab('trials')} className={`pb-2 text-sm font-bold transition-colors border-b-2 ${lobbyTab === 'trials' ? 'border-pink-500 text-pink-400' : 'border-transparent text-slate-400 hover:text-white'}`}>🌟 お試しプレイ</button>
+        <button onClick={() => setLobbyTab('ranking')} className={`pb-2 text-sm font-bold transition-colors border-b-2 ${lobbyTab === 'ranking' ? 'border-amber-500 text-amber-400' : 'border-transparent text-slate-400 hover:text-white'}`}>🏆 ランキング</button>
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 w-full mb-8">
@@ -207,31 +234,94 @@ export default function LobbyView({
           )}
 
           {lobbyTab === 'trials' && (
-            <>
-              <div className="flex justify-between items-end mb-2">
-                <p className="text-xs text-pink-300">広告視聴で導入部(約10分)を無料でAIと遊べます。</p>
-              </div>
-              <div className="max-h-[60vh] min-h-[300px] overflow-y-auto space-y-4 pr-2 custom-scrollbar">
-                {sortedTrials.length === 0 ? <p className="text-slate-400 text-sm p-4 text-center">お試しプレイ可能なシナリオはありません。</p> :
-                  sortedTrials.map(ts => (
-                    <div key={ts.id} className="bg-pink-900/10 border border-pink-500/30 rounded-xl p-4 flex flex-col sm:flex-row gap-4 hover:border-pink-500 transition-colors">
-                      <img src={ts.imageUrl || NO_IMAGE_SCENARIO} className="w-full sm:w-24 h-32 sm:h-24 object-cover rounded" />
-                      <div className="flex-1 flex flex-col justify-between">
-                        <div>
-                          <h3 className="text-lg font-bold text-white mb-1">{ts.title}</h3>
-                          <p className="text-[10px] text-pink-300 mb-1">【設定固定】ルール: 国内CoC風 / 難易度: 普通 / アイテム表示なし</p>
-                          <span className="text-xs text-amber-400 font-bold">⭐ {ts.ratingCount ? (ts.ratingSum / ts.ratingCount).toFixed(1) : "未評価"}</span>
-                        </div>
-                        <button onClick={() => startTrialPlay(ts)} className="w-full bg-pink-600 hover:bg-pink-500 text-white text-xs font-bold py-2 rounded shadow mt-2">
-                          📺 広告を見てお試しプレイ
-                        </button>
+            <div className="max-h-[60vh] min-h-[300px] overflow-y-auto space-y-4 pr-2 custom-scrollbar">
+              {trialScenarios.length === 0 ? <p className="text-slate-400 text-sm p-4 text-center">お試しプレイ可能なシナリオはありません。</p> :
+                trialScenarios.map(ts => (
+                  <div key={ts.id} className="bg-pink-900/10 border border-pink-500/30 rounded-xl p-4 flex flex-col sm:flex-row gap-4 hover:border-pink-500 transition-colors">
+                    <img src={ts.imageUrl || NO_IMAGE_SCENARIO} className="w-full sm:w-24 h-32 sm:h-24 object-cover rounded" />
+                    <div className="flex-1 flex flex-col justify-between">
+                      <div>
+                        <h3 className="text-lg font-bold text-white mb-1">{ts.title}</h3>
+                        <p className="text-[10px] text-pink-300 mb-1">【設定固定】ルール: 国内CoC風 / 難易度: 普通 / アイテム表示なし</p>
+                        <span className="text-xs text-amber-400 font-bold">⭐ {ts.ratingCount ? (ts.ratingSum / ts.ratingCount).toFixed(1) : "未評価"}</span>
                       </div>
+                      <button onClick={() => startTrialPlay(ts)} className="w-full bg-pink-600 hover:bg-pink-500 text-white text-xs font-bold py-2 rounded shadow mt-2">
+                        📺 広告を見てお試しプレイ
+                      </button>
                     </div>
-                  ))
-                }
-              </div>
-            </>
+                  </div>
+                ))
+              }
+            </div>
           )}
+
+          {lobbyTab === 'ranking' && (
+            <div className="flex flex-col h-[60vh] min-h-[400px]">
+              <div className="flex gap-2 mb-4 border-b border-slate-700 pb-2">
+                <button onClick={() => setRankingType('played')} className={`px-3 py-1.5 rounded text-xs font-bold transition-colors ${rankingType === 'played' ? 'bg-amber-600 text-white' : 'bg-slate-800 text-slate-400 hover:text-white'}`}>🎮 遊ばれた回数</button>
+                <button onClick={() => setRankingType('viewed')} className={`px-3 py-1.5 rounded text-xs font-bold transition-colors ${rankingType === 'viewed' ? 'bg-blue-600 text-white' : 'bg-slate-800 text-slate-400 hover:text-white'}`}>👁️ 閲覧数</button>
+                <button onClick={() => setRankingType('creator')} className={`px-3 py-1.5 rounded text-xs font-bold transition-colors ${rankingType === 'creator' ? 'bg-purple-600 text-white' : 'bg-slate-800 text-slate-400 hover:text-white'}`}>👑 シナリオ制作者</button>
+              </div>
+
+              <div className="flex-1 overflow-y-auto space-y-3 pr-2 custom-scrollbar">
+                {rankingType === 'played' && availableScenarios.slice().sort((a,b) => (b.playCount || 0) - (a.playCount || 0)).slice(0, 10).map((s, idx) => (
+                  <div key={s.id} className="bg-slate-800 border border-slate-700 p-4 rounded-xl flex items-center gap-4">
+                    <div className="w-10 flex justify-center items-center">{getRankIcon(idx)}</div>
+                    <img src={s.imageUrl || NO_IMAGE_SCENARIO} className="w-16 h-16 object-cover rounded" />
+                    <div className="flex-1 min-w-0">
+                      <h3 className="font-bold text-white truncate">{s.title}</h3>
+                      <p className="text-xs text-amber-400 mt-1">🎮 {s.playCount || 0} 回プレイ</p>
+                    </div>
+                    <button onClick={() => setRoomConfigModal({ scenario: s, charId: "", privacy: "open", message: "", difficulty: "normal", rule: "coc_jp", itemVisibility: "none" })} className="text-[10px] bg-emerald-600 hover:bg-emerald-500 text-white px-3 py-2 rounded font-bold shadow whitespace-nowrap">部屋を作る</button>
+                  </div>
+                ))}
+
+                {rankingType === 'viewed' && availableScenarios.slice().sort((a,b) => (b.viewCount || 0) - (a.viewCount || 0)).slice(0, 10).map((s, idx) => (
+                  <div key={s.id} className="bg-slate-800 border border-slate-700 p-4 rounded-xl flex items-center gap-4">
+                    <div className="w-10 flex justify-center items-center">{getRankIcon(idx)}</div>
+                    <img src={s.imageUrl || NO_IMAGE_SCENARIO} className="w-16 h-16 object-cover rounded" />
+                    <div className="flex-1 min-w-0">
+                      <h3 className="font-bold text-white truncate">{s.title}</h3>
+                      <p className="text-xs text-blue-400 mt-1">👁️ {s.viewCount || 0} 回閲覧</p>
+                    </div>
+                    <button onClick={() => setRoomConfigModal({ scenario: s, charId: "", privacy: "open", message: "", difficulty: "normal", rule: "coc_jp", itemVisibility: "none" })} className="text-[10px] bg-emerald-600 hover:bg-emerald-500 text-white px-3 py-2 rounded font-bold shadow whitespace-nowrap">部屋を作る</button>
+                  </div>
+                ))}
+
+                {rankingType === 'creator' && (() => {
+                  const creatorMap: Record<string, {id: string, pt: number, play: number, view: number}> = {};
+                  availableScenarios.forEach(s => {
+                    if(!s.authorId) return;
+                    if(!creatorMap[s.authorId]) creatorMap[s.authorId] = { id: s.authorId, pt: 0, play: 0, view: 0 };
+                    creatorMap[s.authorId].play += (s.playCount || 0);
+                    creatorMap[s.authorId].view += (s.viewCount || 0);
+                    creatorMap[s.authorId].pt += (s.playCount || 0) + ((s.viewCount || 0) * 0.1);
+                  });
+                  const ranked = Object.values(creatorMap).sort((a,b) => b.pt - a.pt).slice(0, 10);
+
+                  if (ranked.length === 0) return <p className="text-slate-400 text-sm p-4 text-center">データがありません。</p>;
+
+                  return ranked.map((c, idx) => {
+                    const profile = creatorProfiles[c.id];
+                    return (
+                      <div key={c.id} className="bg-slate-800 border border-slate-700 p-4 rounded-xl flex items-center gap-4">
+                        <div className="w-10 flex justify-center items-center">{getRankIcon(idx)}</div>
+                        <img src={profile?.avatar || DEFAULT_AVATAR} className="w-16 h-16 object-cover rounded-full border-2 border-purple-500 cursor-pointer" onClick={() => openUserProfile(c.id)} />
+                        <div className="flex-1 min-w-0">
+                          <h3 className="font-bold text-white cursor-pointer hover:text-purple-300 truncate" onClick={() => openUserProfile(c.id)}>{profile?.name || '読込中...'}</h3>
+                          <div className="text-xs text-slate-400 mt-1 flex flex-wrap gap-3">
+                            <span className="text-purple-400 font-bold">✨ {c.pt.toFixed(1)} PT</span>
+                            <span>(プレイ: {c.play}回 / 閲覧: {c.view}回)</span>
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  });
+                })()}
+              </div>
+            </div>
+          )}
+
         </div>
 
         <div className="space-y-6">
@@ -299,7 +389,6 @@ export default function LobbyView({
         </div>
       </div>
 
-      {/* フッターをグリッドの外、最下部にしっかり配置 */}
       <footer className="mt-8 pt-4 border-t border-slate-800 flex flex-col md:flex-row justify-center items-center gap-4 text-xs text-slate-500 pb-4 w-full">
         <a href="/terms" target="_blank" className="hover:text-white transition-colors">利用規約</a>
         <a href="/privacy" target="_blank" className="hover:text-white transition-colors">プライバシーポリシー</a>

@@ -268,7 +268,9 @@ export default function Home() {
         authorId: d.author_id, price: d.price || 500, playLimit: d.play_limit || 1, giftLimit: d.gift_limit || 1,
         purchasedTickets: d.purchased_tickets || {}, isBanned: d.is_banned || false, playTime: d.play_time || 60,
         isPlayableByOthers: d.is_playable_by_others || false, isTrialOk: d.is_trial_ok || false, itemVisibility: d.item_visibility || "none",
-        requiredScenarioId: d.required_scenario_id || ""
+        requiredScenarioId: d.required_scenario_id || "",
+        playCount: d.play_count || 0, // ★ カラム取得追加
+        viewCount: d.view_count || 0 // ★ カラム取得追加
       }));
       setScenarios(loadedScenarios);
     }
@@ -282,7 +284,8 @@ export default function Home() {
         current_summary: r.current_summary || "", difficulty: r.difficulty || "normal", rule: r.rule || "coc_jp",
         is_paused: r.is_paused || false, afk_users: r.afk_users || [], is_trial: r.is_trial || false,
         item_visibility: r.item_visibility || "none", inventories: r.inventories || {},
-        current_chapter_index: r.current_chapter_index || 0
+        current_chapter_index: r.current_chapter_index || 0,
+        spectator_ids: r.spectator_ids || [] // ★ カラム取得追加
       })).filter((r: any) => r.scenario) as Room[];
       setRooms(formattedRooms);
     }
@@ -664,6 +667,7 @@ export default function Home() {
     await callAIGM(extraUserContext, "story");
   };
 
+  // ★ 修正：部屋を作った時に playCount をインクリメント
   const executeCreateRoom = async () => {
     if (!currentUser || !roomConfigModal) return;
     const { scenario, charId, privacy, message, difficulty, rule, itemVisibility } = roomConfigModal;
@@ -695,6 +699,12 @@ export default function Home() {
     
     if (error) { alert("データベースエラーが発生しました: " + error.message); return; }
     if (data) {
+      // ★ プレイ回数の加算
+      const currentSc = scenarios.find((s: any) => s.id === scenario.id);
+      if (currentSc) {
+         await supabase.from('scenarios').update({ play_count: (currentSc.playCount || 0) + 1 }).eq('id', scenario.id);
+      }
+
       setRoomConfigModal(null); await fetchData();
       const newRoom: Room = { id: data.id, scenario_id: data.scenario_id, scenario: scenario, host_name: data.host_name, host_id: data.host_id, status: data.status, scenes: data.scenes, privacy: data.privacy, host_message: data.host_message, joined_users: data.joined_users, current_summary: "", difficulty: data.difficulty, rule: data.rule, is_paused: false, afk_users: [], is_trial: false, item_visibility: data.item_visibility, inventories: data.inventories, current_chapter_index: 0 };
       await supabase.from('ai_memory').delete().eq('room_id', newRoom.id);
@@ -704,6 +714,7 @@ export default function Home() {
     }
   };
 
+  // ★ 修正：お試しプレイ開始時に playCount をインクリメント
   const executeTrialPlay = async () => {
     if (!currentUser || !adModal.scenario) return;
     const scenario = adModal.scenario;
@@ -726,6 +737,12 @@ export default function Home() {
     
     if (error) { alert("データベースエラーが発生しました: " + error.message); return; }
     if (data) {
+      // ★ プレイ回数の加算
+      const currentSc = scenarios.find((s: any) => s.id === scenario.id);
+      if (currentSc) {
+         await supabase.from('scenarios').update({ play_count: (currentSc.playCount || 0) + 1 }).eq('id', scenario.id);
+      }
+
       await fetchData();
       const newRoom: Room = { id: data.id, scenario_id: data.scenario_id, scenario: scenario, host_name: data.host_name, host_id: data.host_id, status: data.status, scenes: data.scenes, privacy: data.privacy, host_message: data.host_message, joined_users: data.joined_users, current_summary: "", difficulty: data.difficulty, rule: data.rule, is_paused: false, afk_users: [], is_trial: true, item_visibility: "none", inventories: data.inventories, current_chapter_index: 0 };
       await supabase.from('ai_memory').delete().eq('room_id', newRoom.id);
@@ -759,8 +776,21 @@ export default function Home() {
     setCurrentView("game");
   };
 
+  // ★ 修正：観戦時に viewCount のインクリメントと spectator_ids の追加
   const spectateRoom = async (room: Room) => {
-    setActiveRoom(room); setJoinedCharacter(null); await loadChatLogs(room.id);
+    if (!currentUser) return;
+    
+    const newSpectators = [...(room.spectator_ids || []), currentUser.id];
+    await supabase.from('rooms').update({ spectator_ids: newSpectators }).eq('id', room.id);
+    
+    const currentSc = scenarios.find((s: any) => s.id === room.scenario_id);
+    if (currentSc) {
+       await supabase.from('scenarios').update({ view_count: (currentSc.viewCount || 0) + 1 }).eq('id', room.scenario_id);
+    }
+
+    setActiveRoom({ ...room, spectator_ids: newSpectators }); 
+    setJoinedCharacter(null); 
+    await loadChatLogs(room.id);
     await pushMessage(room.id, { sender: "system", text: `【観戦モード】部屋に入室しました。チャットやダイスは使用できません。`, type: "system", sceneId: room.scenes?.[0]?.id, channel: "system" }, false);
     setCurrentView("game");
   };
@@ -794,10 +824,17 @@ export default function Home() {
     }
   };
 
+  // ★ 修正：観戦者が退出するときは spectator_ids から名前を消す
   const leaveGame = async () => {
     if (!activeRoom || !currentUser) return;
     if (activeRoom.status === 'finished') { setCurrentView("evaluation"); return; }
-    if (!joinedCharacter) { setCurrentView("lobby"); setActiveRoom(null); await fetchData(); return; }
+    
+    // 観戦者の離脱
+    if (!joinedCharacter) { 
+      const newSpectators = (activeRoom.spectator_ids || []).filter((id: string) => id !== currentUser.id);
+      await supabase.from('rooms').update({ spectator_ids: newSpectators }).eq('id', activeRoom.id);
+      setCurrentView("lobby"); setActiveRoom(null); await fetchData(); return; 
+    }
 
     const isHost = activeRoom.host_id === currentUser.id;
     const isRecruiting = activeRoom.status === 'recruiting';

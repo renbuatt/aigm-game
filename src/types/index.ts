@@ -66,8 +66,8 @@ export type Scenario = {
   isTrialOk?: boolean;
   itemVisibility?: "all" | "self" | "none";
   requiredScenarioId?: string;
-  playCount?: number; // ★追加
-  viewCount?: number; // ★追加
+  playCount?: number;
+  viewCount?: number;
 };
 
 export type Scene = {
@@ -102,7 +102,7 @@ export type Room = {
   inventories?: Record<string, string>;
   current_chapter_index?: number;
   isWarning?: boolean;
-  spectator_ids?: string[]; // ★追加
+  spectator_ids?: string[];
 };
 
 export type Message = {
