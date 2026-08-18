@@ -352,7 +352,8 @@ export default function LobbyView({
         </div>
 
         <div className="space-y-6">
-          <div className="bg-slate-800 border border-slate-700 rounded-xl p-4 shadow-lg flex flex-col h-full">
+          {/* ★ 修正：h-fullを外して、下部に不要な余白ができないようにしました */}
+          <div className="bg-slate-800 border border-slate-700 rounded-xl p-4 shadow-lg flex flex-col">
             <div className="flex justify-between items-center mb-3 border-b border-slate-700 pb-2">
               <h2 className="text-sm font-bold text-blue-400">👤 プレイヤー情報</h2>
               {currentUser.isAdmin && (
@@ -371,7 +372,6 @@ export default function LobbyView({
               </div>
             </div>
 
-            {/* ★ ここにチケット・ポイント情報を追加 */}
             <div className="mt-3 pt-3 border-t border-slate-700/50 flex flex-col gap-2">
                <div className="flex justify-between items-center px-1">
                   <span className="text-xs text-slate-400">所持ポイント</span>
