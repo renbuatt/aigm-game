@@ -1362,6 +1362,7 @@ export default function Home() {
       let currentMemory = memoryDataRaw || [];
       let currentSummary = activeRoom.current_summary || "";
 
+      // ★ 要約の無限ループ防止と安全対策
       if (currentMemory.length > 30) {
         const logsToCompress = currentMemory.slice(0, currentMemory.length - 10);
         const recentLogs = currentMemory.slice(-10);
@@ -1375,7 +1376,11 @@ export default function Home() {
           const idsToDelete = logsToCompress.map((m: any) => m.id);
           if (idsToDelete.length > 0) await supabase.from('ai_memory').delete().in('id', idsToDelete);
           currentMemory = recentLogs;
-        } catch(e) {}
+        } catch(e) {
+          console.error("要約APIエラー:", e);
+          // 429エラー等で要約が失敗した場合、無限ループを防ぐためにメモリを強制的に直近15件に切り詰める
+          currentMemory = currentMemory.slice(-15);
+        }
       }
 
       const history = currentMemory.map((m: any) => ({ role: m.role === 'assistant' ? 'model' : 'user', parts: [{ text: m.content }] }));
@@ -1461,7 +1466,8 @@ export default function Home() {
         isTrial: activeRoom.is_trial,
         mySceneName: myScene.name,
         isSplitMode,
-        afkInstruction
+        afkInstruction,
+        targetTab // ★ 追加：タブごとにプロンプトを切り分ける
       });
 
       // ★ AIプレイヤー（相談タブ）のモデル固定ロジック
@@ -1525,7 +1531,31 @@ export default function Home() {
          await supabase.from('ai_memory').insert({ room_id: activeRoom.id, role: 'user', content: `【システム情報：第${nextIndex+1}章（${chapters[nextIndex].title}）に突入しました。これまでの状況を踏まえ、次の展開を描写してください】` });
       }
 
-    } catch (err: any) { alert(err.message); await pushMessage(activeRoom.id, { sender: "system", text: `（システムエラー: ${err.message}）`, type: "system", sceneId: myScene?.id, channel: "system" }, false); } finally { setIsLoading(false); }
+    } catch (err: any) { 
+      console.error(err);
+      
+      // ★ エラーはチャットにはマイルドに出し、管理画面(reports)に裏で飛ばす
+      await pushMessage(activeRoom.id, { 
+        sender: "system", 
+        text: `【システム】AIが混雑しています。もう一度宣言してください。`, 
+        type: "system", 
+        sceneId: myScene?.id, 
+        channel: "system" 
+      }, false); 
+
+      if (currentUser) {
+         await supabase.from('reports').insert({
+            reporter_id: currentUser.id,
+            target_type: 'room',
+            target_id: activeRoom.id,
+            room_id: activeRoom.id,
+            reason: `【自動記録：AIシステムエラー】\nエラー内容: ${err.message}\nタブ: ${targetTab}\n直前の入力: ${extraUserContext || "なし"}`,
+            status: 'pending'
+         });
+      }
+    } finally { 
+      setIsLoading(false); 
+    }
   };
 
   const unreadCount = myNotifications.filter((n: any) => !n.isRead).length;
@@ -1791,6 +1821,7 @@ export default function Home() {
         </div>
       )}
 
+      {/* ★ 全画面共通：チケット購入ストア */}
       {showTicketModal && (
         <div className="fixed inset-0 bg-black/80 z-[80] flex items-center justify-center p-4">
           <div className="bg-slate-800 border border-slate-700 rounded-xl p-6 w-full max-w-2xl shadow-2xl">

@@ -8,7 +8,7 @@ export const generateAIResponse = async (systemPrompt: string, history: any[], m
   // ▼ Gemini (Flash / Pro) のAPI呼び出し
   // ----------------------------------------------------
   if (model === 'flash' || model === 'pro') {
-    // ご指定の Gemini 3.6 Flash / Gemini 3.1 Pro にモデル名を固定
+    // 確実に最新の 3.6 Flash / 3.1 Pro を指定します
     const targetModel = model === 'pro' ? 'gemini-3.1-pro' : 'gemini-3.6-flash';
     
     // 正しいエンドポイントのフォーマット
