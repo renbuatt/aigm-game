@@ -2,7 +2,8 @@
 
 import { useState, useEffect, useRef } from "react";
 import { supabase } from "../lib/supabase";
-import { generateAIResponse, generateAITextWithPrompt } from "../lib/ai";
+import { generateAIResponse, generateAITextWithPrompt, generateFreeImage, generatePremiumImage } from "../lib/ai";
+import { getGMSystemPrompt, getNovelPrompt } from "../lib/prompts";
 import { 
   ViewState, UserProfile, Notification, BanAppeal, Report, 
   Character, Scenario, Scene, Room, Message, ChatTab, PlayArchive 
@@ -335,7 +336,9 @@ export default function Home() {
         ticketsNormal: data.tickets_normal || 0,
         ticketsSilver: data.tickets_silver || 0,
         ticketsGold: data.tickets_gold || 0,
-        ticketsPlatinum: data.tickets_platinum || 0
+        ticketsPlatinum: data.tickets_platinum || 0,
+        ticketsDiamond: data.tickets_diamond || 0,
+        imageGenCredits: data.image_gen_credits || 0
       };
       if (data.email !== emailStr) await supabase.from('profiles').update({ email: emailStr }).eq('id', userId);
     } 
@@ -610,35 +613,63 @@ export default function Home() {
   const submitAppeal = async () => { if(!currentUser || !appealText) return; await supabase.from('ban_appeals').insert({ user_id: currentUser.id, reason: "不明", appeal_text: appealText, status: 'appealing' }); alert("調査依頼を送信しました。"); setAppealText(""); };
   const markNotificationAsRead = async (notifId: string) => { await supabase.from('notifications').update({ is_read: true }).eq('id', notifId); setMyNotifications(myNotifications.map((n: any) => n.id === notifId ? { ...n, isRead: true } : n)); };
 
-  const generateSceneImage = async (promptText?: string) => {
-    if (!activeRoom || !myScene) return;
+  // ★ 画像生成の分離 (無料APIとnanobanana有料API)
+  const generateSceneImage = async (imageType: 'free' | 'premium') => {
+    if (!activeRoom || !myScene || !currentUser) return;
+
+    if (imageType === 'premium') {
+      if (isTicketSystemEnabled) {
+        if ((currentUser.imageGenCredits || 0) < 1) {
+          if ((currentUser.ticketsGold || 0) < 1) {
+            alert("チケットが足りません！\n（ゴールドチケット1枚が必要です）\nロビーの「チケット購入ストア」から入手してください。");
+            return;
+          }
+          if (!confirm("高品質画像生成の回数がありません。\nゴールドチケットを1枚消費して、3回分チャージしますか？")) return;
+          
+          const updates: any = { 
+            image_gen_credits: (currentUser.imageGenCredits || 0) + 3,
+            tickets_gold: currentUser.ticketsGold! - 1
+          };
+
+          const { error } = await supabase.from('profiles').update(updates).eq('id', currentUser.id);
+          if (error) { alert("チケットの消費に失敗しました。"); return; }
+          
+          setCurrentUser(prev => prev ? { ...prev, imageGenCredits: (prev.imageGenCredits || 0) + 3, ticketsGold: updates.tickets_gold ?? prev.ticketsGold } : null);
+          alert("3回分の高品質画像生成権をチャージしました！");
+        } else {
+          const { error } = await supabase.from('profiles').update({ image_gen_credits: currentUser.imageGenCredits! - 1 }).eq('id', currentUser.id);
+          if (!error) setCurrentUser(prev => prev ? { ...prev, imageGenCredits: prev.imageGenCredits! - 1 } : null);
+        }
+      }
+    }
+
     setIsLoading(true);
     try {
-      let targetPrompt = promptText;
+      const { data: memoryData } = await supabase.from('ai_memory').select('*').eq('room_id', activeRoom.id).order('created_at', { ascending: false }).limit(10);
+      const recentLogs = memoryData?.reverse().map((m: any) => `${m.role === 'user' ? 'PL' : 'GM'}: ${m.content}`).join('\n') || "";
+      const autoPromptReq = ["あなたはTRPGの情景描写AIです。以下の直近のログから、現在の「場所、雰囲気、見えているもの」を1〜2文の簡潔な日本語で描写してください。キャラクターのセリフや行動ではなく、空間のビジュアルに焦点を当ててください。","【直近のログ】",recentLogs].join('\n');
       
-      if (!targetPrompt || !targetPrompt.trim()) {
-        const { data: memoryData } = await supabase.from('ai_memory').select('*').eq('room_id', activeRoom.id).order('created_at', { ascending: false }).limit(10);
-        const recentLogs = memoryData?.reverse().map((m: any) => `${m.role === 'user' ? 'PL' : 'GM'}: ${m.content}`).join('\n') || "";
-        const autoPromptReq = ["あなたはTRPGの情景描写AIです。以下の直近のログから、現在の「場所、雰囲気、見えているもの」を1〜2文の簡潔な日本語で描写してください。キャラクターのセリフや行動ではなく、空間のビジュアルに焦点を当ててください。","【直近のログ】",recentLogs].join('\n');
-        targetPrompt = await generateAITextWithPrompt(autoPromptReq);
-      }
+      // @ts-ignore
+      const targetPrompt = await generateAITextWithPrompt(autoPromptReq, activeRoom.ai_model || 'flash');
 
       const translationPrompt = ["以下の日本語の情景描写を、画像生成AI用のカンマ区切りの英語プロンプトに変換してください。","【絶対条件】","・文章ではなく、英単語のカンマ区切りで出力してください。","・不適切な画像が生成されるのを防ぐため、必ず最後に「SFW, fully clothed, masterpiece, high quality」を含めてください。","","情景描写：",targetPrompt].join('\n');
+      
       let englishPrompt = "";
-      try { englishPrompt = await generateAITextWithPrompt(translationPrompt); } catch (err) { englishPrompt = `${targetPrompt}, SFW, fully clothed, masterpiece, high quality`; }
-      const prompt = encodeURIComponent(`${englishPrompt}, TRPG scene, cinematic lighting, dramatic atmosphere`);
-      const seed = Math.floor(Math.random() * 100000);
-      const url = `https://image.pollinations.ai/prompt/${prompt}?nologo=true&seed=${seed}&safe=true`;
-      const res = await fetch(url);
-      if (!res.ok) throw new Error("AIサーバーが混雑しています");
-      const blob = await res.blob();
-      const reader = new FileReader();
-      reader.onloadend = async () => {
-        const base64data = reader.result as string;
-        await pushMessage(activeRoom.id, { sender: "gm", text: `【ホストが情景画像を生成しました】\n「${targetPrompt}」`, type: "image", imageUrl: base64data, sceneId: myScene.id, channel: "story" });
-      };
-      reader.readAsDataURL(blob);
-    } catch (err: any) { alert("画像の生成に失敗しました（AIサーバー混雑エラー等）。\n少し時間をおいて再度お試しください。"); } finally { setIsLoading(false); }
+      try { 
+        // @ts-ignore
+        englishPrompt = await generateAITextWithPrompt(translationPrompt, activeRoom.ai_model || 'flash'); 
+      } catch (err) { englishPrompt = `${targetPrompt}, SFW, fully clothed, masterpiece, high quality`; }
+      
+      let base64data = "";
+      if (imageType === 'free') {
+        base64data = await generateFreeImage(englishPrompt);
+      } else {
+        base64data = await generatePremiumImage(englishPrompt);
+      }
+      
+      await pushMessage(activeRoom.id, { sender: "gm", text: `【ホストが情景画像を生成しました】\n「${targetPrompt}」`, type: "image", imageUrl: base64data, sceneId: myScene.id, channel: "story" });
+      
+    } catch (err: any) { alert("画像の生成に失敗しました。\n少し時間をおいて再度お試しください。"); } finally { setIsLoading(false); }
   };
 
   const startSplitting = async () => {
@@ -656,7 +687,10 @@ export default function Home() {
       const recentLogs = memoryData?.reverse().map((m: any) => `${m.role === 'user' ? 'PL' : 'GM'}: ${m.content}`).join('\n') || "";
       const chars = activeRoom.scenario?.presetCharacters.filter((c: any) => Object.values(activeRoom.joined_users || {}).includes(c.id)).map((c: any) => `{"id": "${c.id}", "name": "${c.name}"}`).join(", ") || "";
       const prompt = ["あなたはTRPGのシステムAIです。以下の「現在参加しているキャラクター」と「直近のチャットログ」を分析し、物語の展開上、最も自然な【チーム分け（2つ以上のグループへの分割）の構成案】を作成してください。","【参加キャラクター】",chars,"","【直近のログ】",recentLogs,"","【出力形式（絶対遵守）】","必ず以下のJSONフォーマットのみを出力してください。余計な文章やマークダウン記号は一切含めないでください。",'{"teams": [{"action": "目的A", "members": ["キャラID1"]}, {"action": "目的B", "members": ["キャラID3"]}]}'].join('\n');
-      const aiResponse = await generateAITextWithPrompt(prompt);
+      
+      // @ts-ignore
+      const aiResponse = await generateAITextWithPrompt(prompt, activeRoom.ai_model || 'flash');
+      
       const jsonStr = aiResponse.replace(/```json/g, "").replace(/```/g, "").trim();
       const parsed = JSON.parse(jsonStr);
       if (parsed && parsed.teams) setProposedTeams(parsed.teams.map((t: any) => ({ id: `team_${Date.now()}_${Math.random()}`, action: t.action, members: t.members, leader: t.members[0] || "" })));
@@ -705,7 +739,7 @@ export default function Home() {
     
     const isAuthor = scenario.authorId === currentUser.id;
 
-    if (isTicketSystemEnabled) {
+    if (isTicketSystemEnabled && !isAuthor) {
       let requiredTicketKey = '';
       let currentTickets = 0;
       let costName = '';
@@ -713,9 +747,10 @@ export default function Home() {
       if (aiModel === 'flash') { requiredTicketKey = 'tickets_silver'; currentTickets = currentUser.ticketsSilver || 0; costName = 'シルバー'; }
       if (aiModel === 'pro') { requiredTicketKey = 'tickets_gold'; currentTickets = currentUser.ticketsGold || 0; costName = 'ゴールド'; }
       if (aiModel === 'claude') { requiredTicketKey = 'tickets_platinum'; currentTickets = currentUser.ticketsPlatinum || 0; costName = 'プラチナ'; }
+      if (aiModel === 'opus') { requiredTicketKey = 'tickets_diamond'; currentTickets = currentUser.ticketsDiamond || 0; costName = 'ダイヤモンド'; }
 
       if (currentTickets < 1) {
-        alert(`チケットが足りません！\n（${costName}チケットが1枚必要です）\nロビーの「チケット交換・購入」から入手してください。`);
+        alert(`チケットが足りません！\n（${costName}チケットが1枚必要です）\nロビーの「チケット購入ストア」から入手してください。`);
         return;
       }
 
@@ -726,15 +761,9 @@ export default function Home() {
         ...prev,
         ticketsSilver: aiModel === 'flash' ? prev.ticketsSilver! - 1 : prev.ticketsSilver,
         ticketsGold: aiModel === 'pro' ? prev.ticketsGold! - 1 : prev.ticketsGold,
-        ticketsPlatinum: aiModel === 'claude' ? prev.ticketsPlatinum! - 1 : prev.ticketsPlatinum
+        ticketsPlatinum: aiModel === 'claude' ? prev.ticketsPlatinum! - 1 : prev.ticketsPlatinum,
+        ticketsDiamond: aiModel === 'opus' ? prev.ticketsDiamond! - 1 : prev.ticketsDiamond
       } : null);
-
-      if (scenario.isPlayableByOthers && !isAuthor) {
-         const { data: authorData } = await supabase.from('profiles').select('points').eq('id', scenario.authorId).single();
-         if (authorData) {
-            await supabase.from('profiles').update({ points: (authorData.points || 0) + 30 }).eq('id', scenario.authorId);
-         }
-      }
     }
 
     const hostChar = scenario.presetCharacters.find((c: any) => c.id === charId);
@@ -771,11 +800,6 @@ export default function Home() {
     if (!currentUser || !adModal.scenario) return;
     const scenario = adModal.scenario;
     setAdModal({ isOpen: false, step: 0, scenario: null, room: null, type: 'trial' });
-    
-    if (isTicketSystemEnabled && scenario.authorId) {
-       const { data: authorData } = await supabase.from('profiles').select('points').eq('id', scenario.authorId).single();
-       if (authorData) await supabase.from('profiles').update({ points: (authorData.points || 0) + 1 }).eq('id', scenario.authorId);
-    }
 
     const charId = scenario.presetCharacters[0]?.id;
     if (!charId) { alert("このシナリオにはプリセットキャラクターが設定されていないため、お試しプレイができません。"); return; }
@@ -835,17 +859,6 @@ export default function Home() {
   const spectateRoom = async (room: Room) => {
     if (!currentUser) return;
     
-    if (isTicketSystemEnabled) {
-       const pointsMap: Record<string, number> = {};
-       pointsMap[room.host_id] = (pointsMap[room.host_id] || 0) + 1;
-       if (room.scenario?.authorId) pointsMap[room.scenario.authorId] = (pointsMap[room.scenario.authorId] || 0) + 1;
-
-       for (const uid of Object.keys(pointsMap)) {
-          const { data } = await supabase.from('profiles').select('points').eq('id', uid).single();
-          if (data) await supabase.from('profiles').update({ points: (data.points || 0) + pointsMap[uid] }).eq('id', uid);
-       }
-    }
-
     const newSpectators = [...(room.spectator_ids || []), currentUser.id];
     await supabase.from('rooms').update({ spectator_ids: newSpectators }).eq('id', room.id);
     
@@ -1150,21 +1163,7 @@ export default function Home() {
       const uniqueCharNames = Array.from(new Set(targetMessages.filter((m: any) => m.sender === 'player' || m.sender === 'ai_player').map((m: any) => m.charName).filter(Boolean)));
       const charNamesStr = uniqueCharNames.length > 0 ? `登場キャラクター（${uniqueCharNames.join('、')}）` : '各キャラクター';
 
-      const prompt = type === 'summary' 
-        ? ["以下のTRPGセッションのチャットログを読み込み、物語のあらすじ・結末として分かりやすく要約してください。","※ログには「GMへの行動宣言」と「キャラクター同士の相談・会話」が含まれています。キャラクター同士の相談内容も物語の展開として要約に含めてください。"].join('\n')
-        : [
-            "以下のTRPGセッションのチャットログを元に、プロの小説家が書いたような臨場感あふれる【本格的なリプレイ小説】を執筆してください。",
-            "",
-            "【執筆の条件】",
-            viewpointInstruction,
-            "2. プレイヤー間の相談は魅力的な会話劇として昇華すること。",
-            "3. ダイスロールの成否はドラマチックな演出に変換すること。",
-            "4. 読者を惹きつける一つの完成された短編小説に仕上げること。",
-            "5. 【重要】チャットログ内に [IMAGE_ID: X] というマーカーがあった場合、そのまま `[IMAGE_ID: X]` と出力すること。",
-            `6. 【超重要】本編の前に、必ず以下のマーカーを使って${charNamesStr}の紹介文（設定とチャットログでのプレイスタイルを統合した100文字程度の要約）を全員分出力してください。`,
-            "マーカーの形式： [CHAR_INTRO: キャラクター名] 紹介文",
-            "7. 全員分の紹介文を出力し終えたら、必ず [NOVEL_START] というマーカーを置き、そこから本編を書き始めてください。"
-          ].join('\n');
+      const prompt = getNovelPrompt(options?.aiModel || 'flash', viewpointInstruction, charNamesStr);
       
       try {
         const aiModelToUse = options?.aiModel || 'flash'; 
@@ -1226,26 +1225,32 @@ export default function Home() {
     if (!novelSettingsModal || !currentUser) return;
     const { title, sourceMessages, type, options, aiModel } = novelSettingsModal;
     
-    let cost = 3; 
-    if (aiModel === 'pro') cost = 5;
-    if (aiModel === 'claude') cost = 15;
-
     if (isTicketSystemEnabled) {
-       if ((currentUser.ticketsNormal || 0) < cost) {
-          alert(`課金チケットが足りません！（必要: ${cost}枚 / 所持: ${currentUser.ticketsNormal || 0}枚）\nロビーの「チケット交換・購入」から入手してください。`);
-          return;
-       }
-       if (!confirm(`小説化を開始します。\n課金チケットを ${cost} 枚消費しますか？`)) return;
+      let requiredTicketKey = '';
+      let currentTickets = 0;
+      let costName = '';
+      
+      if (aiModel === 'flash') { requiredTicketKey = 'tickets_silver'; currentTickets = currentUser.ticketsSilver || 0; costName = 'シルバー'; }
+      if (aiModel === 'pro') { requiredTicketKey = 'tickets_gold'; currentTickets = currentUser.ticketsGold || 0; costName = 'ゴールド'; }
+      if (aiModel === 'claude') { requiredTicketKey = 'tickets_platinum'; currentTickets = currentUser.ticketsPlatinum || 0; costName = 'プラチナ'; }
+      if (aiModel === 'opus') { requiredTicketKey = 'tickets_diamond'; currentTickets = currentUser.ticketsDiamond || 0; costName = 'ダイヤモンド'; }
 
-       const { error } = await supabase.from('profiles').update({ tickets_normal: currentUser.ticketsNormal! - cost }).eq('id', currentUser.id);
-       if (error) { alert("チケットの消費に失敗しました。"); return; }
+      if (currentTickets < 1) {
+        alert(`チケットが足りません！\n（${costName}チケットが1枚必要です）\nロビーの「チケット購入ストア」から入手してください。`);
+        return;
+      }
+      if (!confirm(`小説化を開始します。\n${costName}チケットを 1 枚消費しますか？`)) return;
+
+      const { error } = await supabase.from('profiles').update({ [requiredTicketKey]: currentTickets - 1 }).eq('id', currentUser.id);
+      if (error) { alert("チケットの消費に失敗しました。"); return; }
        
-       setCurrentUser(prev => prev ? { ...prev, ticketsNormal: prev.ticketsNormal! - cost } : null);
-
-       if (options?.authorId && options.authorId !== currentUser.id) {
-          const { data: authorData } = await supabase.from('profiles').select('points').eq('id', options.authorId).single();
-          if (authorData) await supabase.from('profiles').update({ points: (authorData.points || 0) + 30 }).eq('id', options.authorId);
-       }
+      setCurrentUser(prev => prev ? { 
+        ...prev,
+        ticketsSilver: aiModel === 'flash' ? prev.ticketsSilver! - 1 : prev.ticketsSilver,
+        ticketsGold: aiModel === 'pro' ? prev.ticketsGold! - 1 : prev.ticketsGold,
+        ticketsPlatinum: aiModel === 'claude' ? prev.ticketsPlatinum! - 1 : prev.ticketsPlatinum,
+        ticketsDiamond: aiModel === 'opus' ? prev.ticketsDiamond! - 1 : prev.ticketsDiamond
+      } : null);
     }
 
     setNovelSettingsModal(null);
@@ -1291,20 +1296,15 @@ export default function Home() {
     const isOwn = activeRoom.scenario?.authorId === currentUser.id;
 
     if (isTicketSystemEnabled && !isOwn) {
-      if ((currentUser.ticketsNormal || 0) < 1) {
-        if(!silent) alert("課金チケットが足りません！（必要: 1枚）\n※自身の作成したシナリオは無料で保存できます。");
+      if ((currentUser.ticketsSilver || 0) < 1) {
+        if(!silent) alert("シルバーチケットが足りません！（必要: 1枚）\n※自身の作成したシナリオは無料で保存できます。");
         return;
       }
-      if(!silent && !confirm("書庫への保存には 課金チケット が 1枚 必要です。保存しますか？")) return;
+      if(!silent && !confirm("書庫への保存には シルバーチケット が 1枚 必要です。保存しますか？")) return;
       
-      const { error: tErr } = await supabase.from('profiles').update({ tickets_normal: currentUser.ticketsNormal! - 1 }).eq('id', currentUser.id);
+      const { error: tErr } = await supabase.from('profiles').update({ tickets_silver: currentUser.ticketsSilver! - 1 }).eq('id', currentUser.id);
       if (tErr) { if(!silent) alert("チケットの消費に失敗しました。"); return; }
-      setCurrentUser(prev => prev ? { ...prev, ticketsNormal: prev.ticketsNormal! - 1 } : null);
-
-      if (activeRoom.scenario?.authorId) {
-         const { data: authorData } = await supabase.from('profiles').select('points').eq('id', activeRoom.scenario.authorId).single();
-         if (authorData) await supabase.from('profiles').update({ points: (authorData.points || 0) + 30 }).eq('id', activeRoom.scenario.authorId);
-      }
+      setCurrentUser(prev => prev ? { ...prev, ticketsSilver: prev.ticketsSilver! - 1 } : null);
     }
 
     const endIndex = messages.findIndex((m: any) => m.text.includes('[SCENARIO_END]'));
@@ -1377,7 +1377,8 @@ export default function Home() {
         const logText = logsToCompress.map((m: any) => `${m.role === 'user' ? 'PL' : 'GM'}: ${m.content}`).join('\n');
         const compressionPrompt = ["あなたはTRPGの優秀な記録係です。以下の「現在のあらすじ」と「追加のチャットログ」を統合し、AI GMが今後の展開を処理するための【詳細な最新のあらすじ】を作成してください。","【絶対条件】","・重要な出来事、NPCとの会話結果、得たアイテムやヒント、PLの目的は絶対に漏らさないこと。","・システムやダイスの結果等のメタな情報は省略し、物語の進行を中心にまとめること。","","【現在のあらすじ】",currentSummary || "なし（最初の要約です）","","【追加のチャットログ】",logText].join('\n');
         try {
-          currentSummary = await generateAITextWithPrompt(compressionPrompt);
+          // @ts-ignore
+          currentSummary = await generateAITextWithPrompt(compressionPrompt, activeRoom.ai_model || 'flash');
           await supabase.from('rooms').update({ current_summary: currentSummary }).eq('id', activeRoom.id);
           setActiveRoom(prev => prev ? { ...prev, current_summary: currentSummary } : null);
           const idsToDelete = logsToCompress.map((m: any) => m.id);
@@ -1454,73 +1455,26 @@ export default function Home() {
           gmStyleLines = ["【GMの振る舞い：ドラマ脚本家型KP】", "感情・関係性・葛藤を重視。"]; break;
       }
       const ruleSpec = ruleSpecLines.join('\n'); const gmStyle = gmStyleLines.join('\n');
-      const diceBase = activeRoom.rule === 'dnd' ? '1d20' : activeRoom.rule === 'sw25' ? '2d6' : activeRoom.rule === 'storytelling' ? '1d6' : '1d100';
 
-      let roleInstructionLines: string[] = [];
-      if (targetTab === "story") {
-        roleInstructionLines = [
-          "【重要：GMの絶対ルール】",
-          "1. PLたちが明確な「行動宣言」を出した時のみ物語を進行させてください。また、1回のレスポンスにおける情景描写やNPCのセリフのテキストボリュームを従来の1.5倍程度に増やし、よりリッチで読み応えのある描写を心がけてください。",
-          `2. リスクを伴う行動には必ず判定（${diceBase}）を要求し、結果が出るまで描写を待機してください。`,
-          "3. 【解法・ヒント・選択肢・次期目標の完全禁止（超重要）】「次は〜が残されています」「〜をしましょう」「（※〜があるかもしれません）」といった、タスクリストの提示、次期目標の誘導、具体的な選択肢、カッコ書きによるアドバイスやヒントは一切出力しないでください（初心者難易度を除く）。進行は完全にPLの自発的な行動に委ねてください。",
-          "4. 【アイテムの厳格な管理（四次元ポケット禁止）】上記の【現在の全キャラクターの所持アイテム】に記載されていないアイテムを使おうとした場合は即座に却下してください。",
-          "5. 【ダイスの自己処理禁止】GM自身がダイスを振らないでください。",
-          "6. 誰かが行動した後は、必ず「〇〇さんはそう動きました。では、△△さんはどうしますか？」と他の人間PLに行動を促し、全員の行動が出揃うまで待機してください。",
-          "7. 【AI相棒の自律行動と割合（超重要）】AI相棒のターンになったら、絶対に人間に「（AIキャラ名）はどうしますか？」と尋ねないでください。AI GM自身が彼らの行動を自律的に描写し、必要なら結果をシミュレートして「🎲 [名前]の〇〇判定 ➔ 出目: X 【成功/失敗】」と自己完結させてください。また、AI相棒はあくまでサポート役です。ダイスロールや重要な決断の頻度は【AI 2 : 人間PL 8】の割合になるよう控えめに行動させてください。",
-          "8. 不自然な行動や間違ったアイテムの使用は容赦なく失敗扱い・状況悪化させてください。",
-          `9. 想定プレイ時間は「約${activeRoom.scenario?.playTime || 60}分」です。すぐに目的を達成させず、探索や会話のターンを従来の1.5倍程度じっくりと長めにとるようペース配分を意識し、小さな障害や寄り道を多めに追加して物語を引っ張ってください。`,
-          "10. 【プロローグ（導入）について】セッション開始直後の導入フェーズでは、設定されたプロローグ情報があればそれに従い、無ければ本編プロットから推測して自動生成してください。",
-          "【設定されたプロローグ】: " + (activeRoom.scenario?.prologue || "特になし"),
-          "この導入部において、必ずプレイヤー全員が最低1回はダイス判定を行わなければならない状況を作ってください。",
-          "11. 【エピローグとエンディング（最重要）】目的を達成しても、いきなり [SCENARIO_END] を出力しないでください。目的達成後は必ず「【エピローグ】」と明記し、これまでの展開を踏まえて相応しい結末を動的に生成し、事後処理を行わせてください。エピローグ内で必ずプレイヤー全員に最後のダイス判定を行わせる状況を作り、PLがエピローグでの行動を終えたと判断できたターンの最後にのみ [SCENARIO_END] を出力してください。",
-          "12. 【所持アイテムの厳格な更新（超重要）】アイテムを入手・消費した場合は、必ず文章の最後に [INVENTORY_UPDATE: キャラクター名, アイテムA, アイテムB...] のタグを出力して、そのキャラの【最新の所持品リスト全体】をカンマ区切りで上書き登録してください。例：アイテムを拾ったら古いアイテムに加えて新しいアイテムも列挙すること。",
-          "13. 【ステータスの厳格な更新（超重要）】HPやSAN値が減少・変動した場合は、文章中で「HPが減少した」と描写するだけで済ませず、必ずAI出力の一番最後に【変動後の最新の値】を使って [STATUS_UPDATE: キャラ名, 最新HP, 最新SAN] のシステムタグを絶対に出力してください。これがないとシステムにダメージが反映されずゲームが壊れます。"
-        ];
-
-        if (!isLastChapter) {
-           roleInstructionLines.push("14. 【チャプター進行（超重要）】現在のチャプターの目的が完全に達成された場合、必ず出力の最後に [CHAPTER_CLEAR] というタグを出力してください。");
-        }
-
-        if (activeRoom.is_trial) {
-          roleInstructionLines.push(
-            "【お試しプレイ専用指示（絶対厳守ルール）】",
-            "このセッションは体験版（お試しプレイ）です。以下のルールを絶対に守ってください。",
-            "1. 【文章量と進行度の指定（超重要）】1回のレスポンスにおける文章量（情景描写やNPCのセリフ）を通常の2倍に増やし、非常に詳細かつリッチに描写してください。また、進行自体は序盤の1〜2シーン程度に留め、ターン数も2倍程度に大幅に引っ張ってください。",
-            "2. 【ネタバレの完全禁止】物語の核心などのネタバレは一切行わないでください。",
-            "3. 【ダイスロールの強制】必ずセッション内で最低1回はPLにダイス判定を行わせてください。",
-            "4. 【クリフハンガーでの強制終了】十分にターン数を稼いでから、物語が一番面白く盛り上がってきた絶頂のタイミング（新たな脅威の出現や驚がくの事実の発覚など）を見計らって、プレイヤーの行動を待たずにバッサリと物語を強制終了させてください。",
-            "5. 【終了時の必須タグ】終了の際は必ず文章の最後に「――この先は本編でお楽しみください！」という言葉を出力してください。"
-          );
-        }
-        if (isSplitMode && myScene.id !== 'scene_main') roleInstructionLines.push(`【チーム分割中の対応】この発言は【${myScene.name}】チームのものです。他チームの状況は考慮せず、勝手に合流させないでください。`);
-        else roleInstructionLines.push("【別行動の提案】PLたちの意見が分かれた場合は、GMから積極的に別行動（チーム分け）を提案し、出力の最後に \"[SPLIT_PROPOSAL: 行動案A, 行動案B]\" のタグを出力してください。");
-        roleInstructionLines.push(afkInstruction);
-
-      } else if (targetTab === "consult") {
-        scenarioPlotText = "【機密情報のため非公開（あなたはPLなので真相を知りません）】";
-        roleInstructionLines = [
-          "【重要：AIプレイヤーとしての振る舞い】",
-          `1. あなたはAI相棒（${aiPlayersList.map((c: any)=>c.name).join(", ")}）の立場で人間PLに返答してください。`,
-          "2. 【メタ知識の禁止】真相や解法などのネタバレ・誘導を絶対に行わないでください。",
-          "3. 【描写・進行の禁止】情景描写やGMのような進行は行わず、キャラクターとしての会話のみを出力してください。",
-          "4. 状況に対して自然なリアクション（怯える、焦るなど）を人間らしく返してください。",
-          (isSplitMode && myScene.id !== 'scene_main' ? "※現在別行動中です。同じチームにいるAI相棒だけが返答してください。" : "")
-        ];
-      } else if (targetTab === "gm") {
-        roleInstructionLines = [
-          "【重要：GMへのメタ質問対応】",
-          "1. 物語は進めず、ルールの裁定やシステム的な回答のみを行ってください。",
-          "2. 正しいクリア手順などのネタバレは自ら絶対に明かさないでください。",
-          "3. 質問には簡潔に答え、頼まれていないアドバイスは行わないでください。",
-          "4. ヒントを要求された場合は「SAN値を1d3減少させる必要があります。行動宣言タブでSANダイスを振ってください」と代償を提示し、AI自身がダイスを振らないでください。"
-        ];
-      }
-
-      const roleInstruction = roleInstructionLines.join('\n');
-      const sysPrompt = ["あなたはTRPGの優秀なAIシステムです。", `タイトル: ${activeRoom.scenario?.title}`, `世界観: ${activeRoom.scenario?.setting}`, `プロット: ${scenarioPlotText}`, "", "【これまでのあらすじ】", currentSummary || "まだセッションは始まったばかりだ。", "", `【人間PL】名前: ${joinedCharacter.name} (${joinedCharacter.genderOrRace || "性別不詳"}) / ステータス: HP:${joinedCharacter.hp} SAN:${joinedCharacter.san}% STR:${joinedCharacter.str} DEX:${joinedCharacter.dex} INT:${joinedCharacter.int} CON:${joinedCharacter.con}`, inventoryText, "【AI相棒】", aiPlayersText, "", ruleSpec, gmStyle, "", "【共通ルール】", difficultyInstruction, "HP・SAN値が減少・変動した場合は必ず出力の最後に [STATUS_UPDATE: キャラ名, 最新HP, 最新SAN] を出力してください。", "", roleInstruction].join('\n');
+      const sysPrompt = getGMSystemPrompt(activeRoom.ai_model || 'flash', {
+        title: activeRoom.scenario?.title,
+        setting: activeRoom.scenario?.setting,
+        scenarioPlotText,
+        currentSummary,
+        joinedCharacter,
+        inventoryText,
+        aiPlayersText,
+        ruleSpec,
+        gmStyle,
+        difficultyInstruction,
+        isTrial: activeRoom.is_trial,
+        mySceneName: myScene.name,
+        isSplitMode,
+        afkInstruction
+      });
 
       // @ts-ignore
-      const aiText = await generateAIResponse(sysPrompt, history, (activeRoom as any).ai_model || 'flash');
+      const aiText = await generateAIResponse(sysPrompt, history, activeRoom.ai_model || 'flash');
       
       const splitMatch = aiText.match(/\[SPLIT_PROPOSAL:\s*(.+?)\]/);
       if (splitMatch) { setProposedTeams([]); generateSplitProposal(); }
@@ -1817,15 +1771,16 @@ export default function Home() {
             <h3 className="text-xl font-bold text-emerald-400 mb-4">📖 小説の執筆設定</h3>
             <div className="space-y-4 mb-6">
               <div>
-                <label className="text-xs text-slate-400 block mb-1">使用するAIモデル {isTicketSystemEnabled && <span className="text-amber-400 text-[10px]">※課金チケット消費</span>}</label>
+                <label className="text-xs text-slate-400 block mb-1">使用するAIモデル {isTicketSystemEnabled && <span className="text-amber-400 text-[10px]">※チケット消費</span>}</label>
                 <select 
                   value={novelSettingsModal.aiModel} 
                   onChange={(e) => setNovelSettingsModal({...novelSettingsModal, aiModel: e.target.value})} 
                   className="w-full bg-slate-900 border border-slate-700 rounded p-2 text-sm text-white"
                 >
-                  <option value="flash">🟢 Gemini Flash {isTicketSystemEnabled ? "(消費: 課金チケット 3枚)" : "(無料)"}</option>
-                  <option value="pro">🟡 Gemini Pro {isTicketSystemEnabled ? "(消費: 課金チケット 5枚)" : "(無料)"}</option>
-                  <option value="claude">🟣 Claude 3.5 Sonnet {isTicketSystemEnabled ? "(消費: 課金チケット 15枚)" : "(無料)"}</option>
+                  <option value="flash">🟢 Gemini Flash {isTicketSystemEnabled ? "(シルバー 1枚)" : "(無料)"}</option>
+                  <option value="pro">🟡 Gemini Pro {isTicketSystemEnabled ? "(ゴールド 1枚)" : "(無料)"}</option>
+                  <option value="claude">🟣 Claude 3.5 Sonnet {isTicketSystemEnabled ? "(プラチナ 1枚)" : "(無料)"}</option>
+                  <option value="opus">💎 Claude 3 Opus {isTicketSystemEnabled ? "(ダイヤモンド 1枚)" : "(無料)"}</option>
                 </select>
               </div>
             </div>
@@ -1998,7 +1953,6 @@ export default function Home() {
                 </select>
               </div>
 
-              {/* ★ AIモデル（GM）の選択機能 */}
               <div>
                 <label className="text-xs text-slate-400 block mb-1">AIモデル (GM) {isTicketSystemEnabled && <span className="text-amber-400 text-[10px]">※チケット消費</span>}</label>
                 <select 
@@ -2009,6 +1963,7 @@ export default function Home() {
                   <option value="flash">🟢 Gemini Flash {isTicketSystemEnabled ? "(シルバー 1枚)" : "(無料)"}</option>
                   <option value="pro">🟡 Gemini Pro {isTicketSystemEnabled ? "(ゴールド 1枚)" : "(無料)"}</option>
                   <option value="claude">🟣 Claude 3.5 Sonnet {isTicketSystemEnabled ? "(プラチナ 1枚)" : "(無料)"}</option>
+                  <option value="opus">💎 Claude 3 Opus {isTicketSystemEnabled ? "(ダイヤモンド 1枚)" : "(無料)"}</option>
                 </select>
               </div>
 

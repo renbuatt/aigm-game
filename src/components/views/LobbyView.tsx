@@ -22,7 +22,7 @@ type Props = {
   setCurrentView: React.Dispatch<React.SetStateAction<ViewState>>;
   createdScenarios: Scenario[];
   deleteScenario: (id: string) => Promise<void>;
-  setRoomConfigModal: React.Dispatch<React.SetStateAction<{ scenario: Scenario, charId: string, privacy: 'open'|'secret', message: string, difficulty: RoomDifficulty, rule: GameRule, itemVisibility: "all"|"self"|"none" } | null>>;
+  setRoomConfigModal: React.Dispatch<React.SetStateAction<{ scenario: Scenario, charId: string, privacy: 'open'|'secret', message: string, difficulty: RoomDifficulty, rule: GameRule, itemVisibility: "all"|"self"|"none", aiModel: string } | null>>;
   fetchAdminData: () => Promise<void>;
   startTrialPlay: (scenario: Scenario) => void;
   availableScenarios: Scenario[];
@@ -42,7 +42,7 @@ export default function LobbyView({
   const [rankingType, setRankingType] = useState<'played' | 'viewed' | 'creator'>('played');
   const [creatorProfiles, setCreatorProfiles] = useState<Record<string, {name: string, avatar: string}>>({});
   
-  // ★ チケット交換モーダル用のステート
+  // チケットストアモーダル
   const [showTicketModal, setShowTicketModal] = useState(false);
 
   const trialScenarios = availableScenarios.filter(s => s.isTrialOk);
@@ -57,7 +57,6 @@ export default function LobbyView({
     return availableScenarios.find(s => s.id === reqId);
   };
 
-  // ランキング表示用に作者プロフィールを取得
   useEffect(() => {
     if (lobbyTab === 'ranking' && rankingType === 'creator') {
       const fetchProfiles = async () => {
@@ -79,30 +78,6 @@ export default function LobbyView({
     if (idx === 1) return <span className="text-3xl">🥈</span>;
     if (idx === 2) return <span className="text-3xl">🥉</span>;
     return <span className="text-xl font-bold text-slate-400">{idx + 1}</span>;
-  };
-
-  // ★ チケット交換処理
-  const handleExchange = async (ticketType: 'silver' | 'gold' | 'platinum', cost: number) => {
-    if ((currentUser.points || 0) < cost) {
-      alert("ポイントが足りません！");
-      return;
-    }
-    
-    if (!confirm(`${cost}ptを消費してチケットを交換しますか？`)) return;
-
-    let updates: any = { points: (currentUser.points || 0) - cost };
-    if (ticketType === 'silver') updates.tickets_silver = (currentUser.ticketsSilver || 0) + 1;
-    if (ticketType === 'gold') updates.tickets_gold = (currentUser.ticketsGold || 0) + 1;
-    if (ticketType === 'platinum') updates.tickets_platinum = (currentUser.ticketsPlatinum || 0) + 1;
-
-    const { error } = await supabase.from('profiles').update(updates).eq('id', currentUser.id);
-    
-    if (error) {
-      alert("エラーが発生しました: " + error.message);
-    } else {
-      alert("チケットの交換が完了しました！");
-      window.location.reload(); // 手っ取り早くUIに反映
-    }
   };
 
   return (
@@ -240,7 +215,7 @@ export default function LobbyView({
                           <div className="bg-slate-900 border border-slate-700 p-2 rounded mt-2 text-center">
                             <p className="text-[10px] text-red-300 font-bold mb-1">※前提シナリオのクリアが必要です</p>
                             {reqScenario ? (
-                              <button onClick={() => setRoomConfigModal({ scenario: reqScenario, charId: "", privacy: "open", message: "", difficulty: "normal", rule: "coc_jp", itemVisibility: reqScenario.itemVisibility || "none" })} className="text-xs bg-indigo-600 hover:bg-indigo-500 text-white px-3 py-1 rounded shadow">
+                              <button onClick={() => setRoomConfigModal({ scenario: reqScenario, charId: "", privacy: "open", message: "", difficulty: "normal", rule: "coc_jp", itemVisibility: reqScenario.itemVisibility || "none", aiModel: 'flash' })} className="text-xs bg-indigo-600 hover:bg-indigo-500 text-white px-3 py-1 rounded shadow">
                                 前提シナリオ「{reqScenario.title}」を遊ぶ
                               </button>
                             ) : (
@@ -248,7 +223,7 @@ export default function LobbyView({
                             )}
                           </div>
                         ) : (
-                          <button onClick={() => setRoomConfigModal({ scenario: s, charId: "", privacy: "open", message: "", difficulty: "normal", rule: "coc_jp", itemVisibility: s.itemVisibility || "none" })} className="w-full bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold py-2 rounded shadow mt-2">
+                          <button onClick={() => setRoomConfigModal({ scenario: s, charId: "", privacy: "open", message: "", difficulty: "normal", rule: "coc_jp", itemVisibility: s.itemVisibility || "none", aiModel: 'flash' })} className="w-full bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold py-2 rounded shadow mt-2">
                             このシナリオで部屋を作成する
                           </button>
                         )}
@@ -299,7 +274,7 @@ export default function LobbyView({
                       <h3 className="font-bold text-white truncate">{s.title}</h3>
                       <p className="text-xs text-amber-400 mt-1">🎮 {s.playCount || 0} 回プレイ</p>
                     </div>
-                    <button onClick={() => setRoomConfigModal({ scenario: s, charId: "", privacy: "open", message: "", difficulty: "normal", rule: "coc_jp", itemVisibility: "none" })} className="text-[10px] bg-emerald-600 hover:bg-emerald-500 text-white px-3 py-2 rounded font-bold shadow whitespace-nowrap">部屋を作る</button>
+                    <button onClick={() => setRoomConfigModal({ scenario: s, charId: "", privacy: "open", message: "", difficulty: "normal", rule: "coc_jp", itemVisibility: "none", aiModel: 'flash' })} className="text-[10px] bg-emerald-600 hover:bg-emerald-500 text-white px-3 py-2 rounded font-bold shadow whitespace-nowrap">部屋を作る</button>
                   </div>
                 ))}
 
@@ -311,7 +286,7 @@ export default function LobbyView({
                       <h3 className="font-bold text-white truncate">{s.title}</h3>
                       <p className="text-xs text-blue-400 mt-1">👁️ {s.viewCount || 0} 回閲覧</p>
                     </div>
-                    <button onClick={() => setRoomConfigModal({ scenario: s, charId: "", privacy: "open", message: "", difficulty: "normal", rule: "coc_jp", itemVisibility: "none" })} className="text-[10px] bg-emerald-600 hover:bg-emerald-500 text-white px-3 py-2 rounded font-bold shadow whitespace-nowrap">部屋を作る</button>
+                    <button onClick={() => setRoomConfigModal({ scenario: s, charId: "", privacy: "open", message: "", difficulty: "normal", rule: "coc_jp", itemVisibility: "none", aiModel: 'flash' })} className="text-[10px] bg-emerald-600 hover:bg-emerald-500 text-white px-3 py-2 rounded font-bold shadow whitespace-nowrap">部屋を作る</button>
                   </div>
                 ))}
 
@@ -352,7 +327,6 @@ export default function LobbyView({
         </div>
 
         <div className="space-y-6">
-          {/* ★ 修正：h-fullを外して、下部に不要な余白ができないようにしました */}
           <div className="bg-slate-800 border border-slate-700 rounded-xl p-4 shadow-lg flex flex-col">
             <div className="flex justify-between items-center mb-3 border-b border-slate-700 pb-2">
               <h2 className="text-sm font-bold text-blue-400">👤 プレイヤー情報</h2>
@@ -373,15 +347,7 @@ export default function LobbyView({
             </div>
 
             <div className="mt-3 pt-3 border-t border-slate-700/50 flex flex-col gap-2">
-               <div className="flex justify-between items-center px-1">
-                  <span className="text-xs text-slate-400">所持ポイント</span>
-                  <span className="text-sm font-bold text-amber-400">{currentUser.points || 0} pt</span>
-               </div>
-               <div className="flex justify-between items-center px-1">
-                  <span className="text-xs text-slate-400">課金チケット</span>
-                  <span className="text-sm font-bold text-white">{currentUser.ticketsNormal || 0} 枚</span>
-               </div>
-               <div className="grid grid-cols-3 gap-2 mt-1">
+               <div className="grid grid-cols-4 gap-2 mt-1">
                   <div className="bg-slate-900 border border-slate-700 rounded p-1.5 text-center shadow-inner">
                      <span className="block text-[8px] text-slate-400">シルバー</span>
                      <span className="block text-xs font-bold text-slate-300">{currentUser.ticketsSilver || 0}</span>
@@ -394,9 +360,14 @@ export default function LobbyView({
                      <span className="block text-[8px] text-indigo-400">プラチナ</span>
                      <span className="block text-xs font-bold text-indigo-300">{currentUser.ticketsPlatinum || 0}</span>
                   </div>
+                  <div className="bg-fuchsia-900/20 border border-fuchsia-900/50 rounded p-1.5 text-center shadow-inner">
+                     <span className="block text-[8px] text-fuchsia-400">ダイヤ</span>
+                     <span className="block text-xs font-bold text-fuchsia-300">{currentUser.ticketsDiamond || 0}</span>
+                  </div>
                </div>
+               
                <button onClick={() => setShowTicketModal(true)} className="w-full mt-2 bg-slate-700 hover:bg-slate-600 text-white text-xs py-2.5 rounded font-bold transition-colors shadow">
-                  🎟️ チケット交換・購入
+                  🎟️ チケット購入ストア
                </button>
             </div>
           </div>
@@ -433,7 +404,7 @@ export default function LobbyView({
                         </div>
                       </div>
                       {!s.isBanned && (
-                        <button onClick={() => setRoomConfigModal({ scenario: s, charId: "", privacy: "open", message: "", difficulty: "normal", rule: "coc_jp", itemVisibility: s.itemVisibility || "none" })} className="w-full bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold py-2 rounded mt-2 shadow">
+                        <button onClick={() => setRoomConfigModal({ scenario: s, charId: "", privacy: "open", message: "", difficulty: "normal", rule: "coc_jp", itemVisibility: s.itemVisibility || "none", aiModel: 'flash' })} className="w-full bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold py-2 rounded mt-2 shadow">
                           部屋を立てる
                         </button>
                       )}
@@ -453,63 +424,96 @@ export default function LobbyView({
         <span className="ml-2">&copy; {new Date().getFullYear()} 五輪警備保障株式会社</span>
       </footer>
 
-      {/* ★ チケット交換モーダル */}
+      {/* ★ チケットストア（直販）モーダル */}
       {showTicketModal && (
         <div className="fixed inset-0 bg-black/80 z-[60] flex items-center justify-center p-4">
-          <div className="bg-slate-800 border border-slate-700 rounded-xl p-6 w-full max-w-md shadow-2xl">
+          <div className="bg-slate-800 border border-slate-700 rounded-xl p-6 w-full max-w-2xl shadow-2xl">
             <div className="flex justify-between items-center mb-4 border-b border-slate-700 pb-3">
-              <h3 className="text-lg font-bold text-amber-400">🎟️ チケット交換・購入</h3>
+              <h3 className="text-xl font-bold text-emerald-400">🎟️ プレミアムチケットストア</h3>
               <button onClick={() => setShowTicketModal(false)} className="text-2xl text-slate-400 hover:text-white">×</button>
             </div>
             
-            <div className="bg-slate-900 border border-slate-700 rounded-lg p-4 mb-5 flex justify-between items-center shadow-inner">
-               <span className="text-sm text-slate-300">現在の所持ポイント</span>
-               <span className="text-xl font-bold text-amber-400">{currentUser.points || 0} pt</span>
-            </div>
+            <p className="text-xs text-slate-300 mb-4">
+              セッション（1枚につき最大3章までプレイ可能）や、AIによる書籍化機能を利用するためのチケットです。<br/>
+              <span className="text-amber-400 font-bold">※複数枚まとめ買いで割引が適用されます。（決済システムは準備中です）</span>
+            </p>
 
-            <div className="space-y-3 max-h-[50vh] overflow-y-auto pr-2 custom-scrollbar">
-               {/* 課金チケット */}
-               <div className="bg-slate-700/30 border border-slate-600 p-4 rounded-lg flex justify-between items-center">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 max-h-[60vh] overflow-y-auto pr-2 custom-scrollbar">
+               {/* シルバーチケット */}
+               <div className="bg-slate-700/30 border border-slate-600 p-4 rounded-xl flex flex-col justify-between">
                   <div>
-                    <h4 className="text-sm font-bold text-white">課金チケット (1枚)</h4>
-                    <p className="text-[10px] text-slate-400 mt-1">120円 (セッション保存等)</p>
+                    <div className="flex justify-between items-center mb-2">
+                      <h4 className="text-lg font-bold text-slate-300">シルバー</h4>
+                      <span className="bg-slate-600 text-white text-[10px] px-2 py-1 rounded font-bold">Gemini Flash</span>
+                    </div>
+                    <p className="text-[11px] text-slate-400">手軽にサクッと遊びたい方向け。<br/>テンポの良いスピーディーなセッション。</p>
                   </div>
-                  <button onClick={() => alert("※現在は決済システム準備中です。")} className="bg-emerald-600 hover:bg-emerald-500 text-white text-xs px-4 py-2 rounded font-bold shadow">
-                     購入する
-                  </button>
+                  <div className="mt-4 pt-3 border-t border-slate-600">
+                    <button onClick={() => alert("※決済システム準備中")} className="w-full bg-blue-600 hover:bg-blue-500 text-white text-sm py-2 rounded font-bold shadow mb-2">
+                       1枚購入 - ¥360
+                    </button>
+                    <button onClick={() => alert("※決済システム準備中")} className="w-full bg-slate-800 border border-slate-500 hover:bg-slate-700 text-slate-300 text-xs py-1.5 rounded font-bold">
+                       3枚セット - ¥980 (10%OFF)
+                    </button>
+                  </div>
                </div>
 
-               {/* シルバー */}
-               <div className="bg-slate-700/30 border border-slate-600 p-4 rounded-lg flex justify-between items-center">
+               {/* ゴールドチケット */}
+               <div className="bg-amber-900/10 border border-amber-700/50 p-4 rounded-xl flex flex-col justify-between">
                   <div>
-                    <h4 className="text-sm font-bold text-slate-300">シルバーチケット</h4>
-                    <p className="text-[10px] text-slate-400 mt-1">Flash専用 / 課金3枚相当</p>
+                    <div className="flex justify-between items-center mb-2">
+                      <h4 className="text-lg font-bold text-amber-400">ゴールド</h4>
+                      <span className="bg-amber-600 text-white text-[10px] px-2 py-1 rounded font-bold">Gemini Pro</span>
+                    </div>
+                    <p className="text-[11px] text-amber-500/70">論理的で緻密なシナリオ向け。<br/>NPCの思惑が絡み合うミステリーに最適。</p>
                   </div>
-                  <button onClick={() => handleExchange('silver', 50)} className="bg-amber-600 hover:bg-amber-500 text-white text-xs px-4 py-2 rounded font-bold shadow">
-                     50 pt で交換
-                  </button>
+                  <div className="mt-4 pt-3 border-t border-amber-900/50">
+                    <button onClick={() => alert("※決済システム準備中")} className="w-full bg-amber-600 hover:bg-amber-500 text-white text-sm py-2 rounded font-bold shadow mb-2">
+                       1枚購入 - ¥600
+                    </button>
+                    <button onClick={() => alert("※決済システム準備中")} className="w-full bg-slate-800 border border-amber-700/50 hover:bg-slate-700 text-amber-300 text-xs py-1.5 rounded font-bold">
+                       3枚セット - ¥1,620 (10%OFF)
+                    </button>
+                  </div>
                </div>
 
-               {/* ゴールド */}
-               <div className="bg-amber-900/10 border border-amber-700/50 p-4 rounded-lg flex justify-between items-center">
+               {/* プラチナチケット */}
+               <div className="bg-indigo-900/10 border border-indigo-700/50 p-4 rounded-xl flex flex-col justify-between">
                   <div>
-                    <h4 className="text-sm font-bold text-amber-400">ゴールドチケット</h4>
-                    <p className="text-[10px] text-amber-500/70 mt-1">Pro専用 / 課金5枚相当</p>
+                    <div className="flex justify-between items-center mb-2">
+                      <h4 className="text-lg font-bold text-indigo-300">プラチナ</h4>
+                      <span className="bg-indigo-600 text-white text-[10px] px-2 py-1 rounded font-bold">Claude Sonnet</span>
+                    </div>
+                    <p className="text-[11px] text-indigo-400/70">エモーショナルな体験を求める方向け。<br/>文学的で美しい情景・心理描写。</p>
                   </div>
-                  <button onClick={() => handleExchange('gold', 250)} className="bg-amber-600 hover:bg-amber-500 text-white text-xs px-4 py-2 rounded font-bold shadow">
-                     250 pt で交換
-                  </button>
+                  <div className="mt-4 pt-3 border-t border-indigo-900/50">
+                    <button onClick={() => alert("※決済システム準備中")} className="w-full bg-indigo-600 hover:bg-indigo-500 text-white text-sm py-2 rounded font-bold shadow mb-2">
+                       1枚購入 - ¥1,200
+                    </button>
+                    <button onClick={() => alert("※決済システム準備中")} className="w-full bg-slate-800 border border-indigo-700/50 hover:bg-slate-700 text-indigo-300 text-xs py-1.5 rounded font-bold">
+                       3枚セット - ¥3,240 (10%OFF)
+                    </button>
+                  </div>
                </div>
 
-               {/* プラチナ */}
-               <div className="bg-indigo-900/10 border border-indigo-700/50 p-4 rounded-lg flex justify-between items-center">
+               {/* ダイヤモンドチケット */}
+               <div className="bg-gradient-to-br from-fuchsia-900/40 to-rose-900/20 border-2 border-fuchsia-500/50 p-4 rounded-xl flex flex-col justify-between relative overflow-hidden">
+                  <div className="absolute top-0 right-0 bg-fuchsia-600 text-white text-[8px] font-bold px-4 py-1 rotate-45 translate-x-3 translate-y-2 shadow-lg">最高級</div>
                   <div>
-                    <h4 className="text-sm font-bold text-indigo-300">プラチナチケット</h4>
-                    <p className="text-[10px] text-indigo-400/70 mt-1">Claude専用 / 課金15枚相当</p>
+                    <div className="flex justify-between items-center mb-2">
+                      <h4 className="text-lg font-bold text-fuchsia-300">ダイヤモンド</h4>
+                      <span className="bg-fuchsia-600 text-white text-[10px] px-2 py-1 rounded font-bold">Claude Opus</span>
+                    </div>
+                    <p className="text-[11px] text-fuchsia-200/80">最高峰のVIP TRPG体験。<br/>人間を超える神業GMで、絶対に失敗できない究極のセッションを。</p>
                   </div>
-                  <button onClick={() => handleExchange('platinum', 800)} className="bg-amber-600 hover:bg-amber-500 text-white text-xs px-4 py-2 rounded font-bold shadow">
-                     800 pt で交換
-                  </button>
+                  <div className="mt-4 pt-3 border-t border-fuchsia-900/50">
+                    <button onClick={() => alert("※決済システム準備中")} className="w-full bg-fuchsia-600 hover:bg-fuchsia-500 text-white text-sm py-2 rounded font-bold shadow mb-2">
+                       1枚購入 - ¥1,800
+                    </button>
+                    <button onClick={() => alert("※決済システム準備中")} className="w-full bg-slate-800 border border-fuchsia-700/50 hover:bg-slate-700 text-fuchsia-300 text-xs py-1.5 rounded font-bold">
+                       3枚セット - ¥4,860 (10%OFF)
+                    </button>
+                  </div>
                </div>
             </div>
           </div>
