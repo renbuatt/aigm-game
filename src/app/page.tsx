@@ -89,6 +89,7 @@ export default function Home() {
   const [searchedSecretRoom, setSearchedSecretRoom] = useState<Room | null>(null);
 
   const [adModal, setAdModal] = useState<any>({ isOpen: false, step: 0, scenario: null, room: null, type: 'trial' });
+  const [showTicketModal, setShowTicketModal] = useState(false); // ★ 全画面共通のチケットストアモーダル
   
   const [unreadIndicators, setUnreadIndicators] = useState({ story: false, consult: false, gm: false });
   const chatTabRef = useRef<ChatTab>(chatTab);
@@ -303,47 +304,27 @@ export default function Home() {
   };
 
   const fetchProfile = async (userId: string, emailStr: string, currentMaintenance: boolean, roomsData: Room[]) => {
-    let profileData: UserProfile | null = null;
     const { data } = await supabase.from('profiles').select('*').eq('id', userId).single();
     
-    const isProfileComplete = data && data.full_name && data.address && data.phone;
-
-    if (!isProfileComplete) {
+    if (!data || !data.full_name) {
       setEmail(emailStr); 
       setCurrentView("onboarding");
       return;
     }
 
-    if (data) {
-      profileData = { 
-        id: data.id, 
-        handleName: data.handle_name, 
-        fullName: data.full_name, 
-        address: data.address, 
-        phone: data.phone, 
-        avatarUrl: data.avatar_url, 
-        bio: data.bio, 
-        discordId: data.discord_id, 
-        ratingSum: data.rating_sum || 0, 
-        ratingCount: data.rating_count || 0, 
-        isAdmin: data.is_admin || false, 
-        isTester: data.is_tester || false, 
-        isBanned: data.is_banned || false, 
-        email: data.email, 
-        friendIds: data.friend_ids || [], 
-        blockedUserIds: data.blocked_user_ids || [],
-        points: data.points || 0,
-        ticketsNormal: data.tickets_normal || 0,
-        ticketsSilver: data.tickets_silver || 0,
-        ticketsGold: data.tickets_gold || 0,
-        ticketsPlatinum: data.tickets_platinum || 0,
-        ticketsDiamond: data.tickets_diamond || 0,
-        imageGenCredits: data.image_gen_credits || 0
-      };
-      if (data.email !== emailStr) await supabase.from('profiles').update({ email: emailStr }).eq('id', userId);
-    } 
+    const profileData: UserProfile = { 
+      id: data.id, handleName: data.handle_name, fullName: data.full_name, address: data.address, phone: data.phone, avatarUrl: data.avatar_url, bio: data.bio, discordId: data.discord_id, ratingSum: data.rating_sum || 0, ratingCount: data.rating_count || 0, isAdmin: data.is_admin || false, isTester: data.is_tester || false, isBanned: data.is_banned || false, email: data.email, friendIds: data.friend_ids || [], blockedUserIds: data.blocked_user_ids || [],
+      points: data.points || 0, 
+      ticketsNormal: data.tickets_normal || 0, 
+      ticketsSilver: data.tickets_silver || 0, 
+      ticketsGold: data.tickets_gold || 0, 
+      ticketsPlatinum: data.tickets_platinum || 0,
+      ticketsDiamond: data.tickets_diamond || 0,
+      ticketsItem: data.tickets_item || 0,
+      imageGenCredits: data.image_gen_credits || 0
+    };
 
-    if (!profileData) return;
+    if (data.email !== emailStr) await supabase.from('profiles').update({ email: emailStr }).eq('id', userId);
 
     setCurrentUser(profileData);
     await fetchNotifications(userId);
@@ -419,10 +400,7 @@ export default function Home() {
       const { data, error } = await supabase.auth.signUp({ email, password });
       if (error) throw error;
       if (data.user) {
-        const { error: upsertError } = await supabase.from('profiles').upsert({
-          id: data.user.id, handle_name: name.split(" ")[0] || email.split("@")[0], full_name: name, address: addr, phone: phone,
-          avatar_url: DEFAULT_AVATAR, bio: "よろしくお願いします。", email: email
-        });
+        const { error: upsertError } = await supabase.from('profiles').upsert({ id: data.user.id, handle_name: name.split(" ")[0] || email.split("@")[0], full_name: name, address: addr, phone: phone, avatar_url: DEFAULT_AVATAR, bio: "よろしくお願いします。", email: email });
         if (upsertError) throw upsertError;
         alert("アカウントを作成しました！");
         const { formattedRooms } = await fetchData();
@@ -436,13 +414,8 @@ export default function Home() {
     try {
       const { data: { session } } = await supabase.auth.getSession();
       if (!session?.user) throw new Error("セッションが見つかりません。");
-      
-      const { error: upsertError } = await supabase.from('profiles').upsert({
-        id: session.user.id, handle_name: name.split(" ")[0] || session.user.email?.split("@")[0], full_name: name, address: addr, phone: phone,
-        avatar_url: DEFAULT_AVATAR, bio: "よろしくお願いします。", email: session.user.email
-      });
+      const { error: upsertError } = await supabase.from('profiles').upsert({ id: session.user.id, handle_name: name.split(" ")[0] || session.user.email?.split("@")[0], full_name: name, address: addr, phone: phone, avatar_url: DEFAULT_AVATAR, bio: "よろしくお願いします。", email: session.user.email });
       if (upsertError) throw upsertError;
-      
       alert("登録が完了しました！");
       const { formattedRooms } = await fetchData();
       await fetchProfile(session.user.id, session.user.email || "", isMaintenance, formattedRooms);
@@ -472,10 +445,8 @@ export default function Home() {
     if (forceRemove) newAfk = newAfk.filter((id: string) => id !== userId);
     else if (newAfk.includes(userId)) newAfk = newAfk.filter((id: string) => id !== userId);
     else newAfk.push(userId);
-    
     await supabase.from('rooms').update({ afk_users: newAfk }).eq('id', activeRoom.id);
     setActiveRoom({ ...activeRoom, afk_users: newAfk });
-    
     const cId = activeRoom.joined_users?.[userId];
     const charName = activeRoom.scenario?.presetCharacters.find((c: any) => c.id === cId)?.name || "プレイヤー";
     const msg = forceRemove ? `【システム】${charName}が復帰しました。` : (newAfk.includes(userId) ? `【システム】${charName}が離席（AFK）しました。` : `【システム】${charName}が復帰しました。`);
@@ -613,28 +584,28 @@ export default function Home() {
   const submitAppeal = async () => { if(!currentUser || !appealText) return; await supabase.from('ban_appeals').insert({ user_id: currentUser.id, reason: "不明", appeal_text: appealText, status: 'appealing' }); alert("調査依頼を送信しました。"); setAppealText(""); };
   const markNotificationAsRead = async (notifId: string) => { await supabase.from('notifications').update({ is_read: true }).eq('id', notifId); setMyNotifications(myNotifications.map((n: any) => n.id === notifId ? { ...n, isRead: true } : n)); };
 
-  // ★ 画像生成の分離 (無料APIとnanobanana有料API)
   const generateSceneImage = async (imageType: 'free' | 'premium') => {
     if (!activeRoom || !myScene || !currentUser) return;
 
     if (imageType === 'premium') {
       if (isTicketSystemEnabled) {
         if ((currentUser.imageGenCredits || 0) < 1) {
-          if ((currentUser.ticketsGold || 0) < 1) {
-            alert("チケットが足りません！\n（ゴールドチケット1枚が必要です）\nロビーの「チケット購入ストア」から入手してください。");
+          if ((currentUser.ticketsItem || 0) < 1) {
+            alert("アイテムチケットが足りません！\nロビーの「チケット購入ストア」から入手してください。");
+            setShowTicketModal(true);
             return;
           }
-          if (!confirm("高品質画像生成の回数がありません。\nゴールドチケットを1枚消費して、3回分チャージしますか？")) return;
+          if (!confirm("高品質画像生成の回数がありません。\nアイテムチケットを1枚消費して、3回分チャージしますか？")) return;
           
           const updates: any = { 
             image_gen_credits: (currentUser.imageGenCredits || 0) + 3,
-            tickets_gold: currentUser.ticketsGold! - 1
+            tickets_item: currentUser.ticketsItem! - 1
           };
 
           const { error } = await supabase.from('profiles').update(updates).eq('id', currentUser.id);
           if (error) { alert("チケットの消費に失敗しました。"); return; }
           
-          setCurrentUser(prev => prev ? { ...prev, imageGenCredits: (prev.imageGenCredits || 0) + 3, ticketsGold: updates.tickets_gold ?? prev.ticketsGold } : null);
+          setCurrentUser(prev => prev ? { ...prev, imageGenCredits: (prev.imageGenCredits || 0) + 3, ticketsItem: updates.tickets_item ?? prev.ticketsItem } : null);
           alert("3回分の高品質画像生成権をチャージしました！");
         } else {
           const { error } = await supabase.from('profiles').update({ image_gen_credits: currentUser.imageGenCredits! - 1 }).eq('id', currentUser.id);
@@ -751,6 +722,7 @@ export default function Home() {
 
       if (currentTickets < 1) {
         alert(`チケットが足りません！\n（${costName}チケットが1枚必要です）\nロビーの「チケット購入ストア」から入手してください。`);
+        setShowTicketModal(true);
         return;
       }
 
@@ -858,7 +830,7 @@ export default function Home() {
 
   const spectateRoom = async (room: Room) => {
     if (!currentUser) return;
-    
+
     const newSpectators = [...(room.spectator_ids || []), currentUser.id];
     await supabase.from('rooms').update({ spectator_ids: newSpectators }).eq('id', room.id);
     
@@ -1226,31 +1198,17 @@ export default function Home() {
     const { title, sourceMessages, type, options, aiModel } = novelSettingsModal;
     
     if (isTicketSystemEnabled) {
-      let requiredTicketKey = '';
-      let currentTickets = 0;
-      let costName = '';
-      
-      if (aiModel === 'flash') { requiredTicketKey = 'tickets_silver'; currentTickets = currentUser.ticketsSilver || 0; costName = 'シルバー'; }
-      if (aiModel === 'pro') { requiredTicketKey = 'tickets_gold'; currentTickets = currentUser.ticketsGold || 0; costName = 'ゴールド'; }
-      if (aiModel === 'claude') { requiredTicketKey = 'tickets_platinum'; currentTickets = currentUser.ticketsPlatinum || 0; costName = 'プラチナ'; }
-      if (aiModel === 'opus') { requiredTicketKey = 'tickets_diamond'; currentTickets = currentUser.ticketsDiamond || 0; costName = 'ダイヤモンド'; }
-
-      if (currentTickets < 1) {
-        alert(`チケットが足りません！\n（${costName}チケットが1枚必要です）\nロビーの「チケット購入ストア」から入手してください。`);
+      if ((currentUser.ticketsItem || 0) < 1) {
+        alert(`アイテムチケットが足りません！\nロビーの「チケット購入ストア」から入手してください。`);
+        setShowTicketModal(true);
         return;
       }
-      if (!confirm(`小説化を開始します。\n${costName}チケットを 1 枚消費しますか？`)) return;
+      if (!confirm(`小説化を開始します。\nアイテムチケットを 1 枚消費しますか？`)) return;
 
-      const { error } = await supabase.from('profiles').update({ [requiredTicketKey]: currentTickets - 1 }).eq('id', currentUser.id);
+      const { error } = await supabase.from('profiles').update({ tickets_item: currentUser.ticketsItem! - 1 }).eq('id', currentUser.id);
       if (error) { alert("チケットの消費に失敗しました。"); return; }
        
-      setCurrentUser(prev => prev ? { 
-        ...prev,
-        ticketsSilver: aiModel === 'flash' ? prev.ticketsSilver! - 1 : prev.ticketsSilver,
-        ticketsGold: aiModel === 'pro' ? prev.ticketsGold! - 1 : prev.ticketsGold,
-        ticketsPlatinum: aiModel === 'claude' ? prev.ticketsPlatinum! - 1 : prev.ticketsPlatinum,
-        ticketsDiamond: aiModel === 'opus' ? prev.ticketsDiamond! - 1 : prev.ticketsDiamond
-      } : null);
+      setCurrentUser(prev => prev ? { ...prev, ticketsItem: prev.ticketsItem! - 1 } : null);
     }
 
     setNovelSettingsModal(null);
@@ -1296,15 +1254,18 @@ export default function Home() {
     const isOwn = activeRoom.scenario?.authorId === currentUser.id;
 
     if (isTicketSystemEnabled && !isOwn) {
-      if ((currentUser.ticketsSilver || 0) < 1) {
-        if(!silent) alert("シルバーチケットが足りません！（必要: 1枚）\n※自身の作成したシナリオは無料で保存できます。");
+      if ((currentUser.ticketsItem || 0) < 1) {
+        if(!silent) {
+          alert("アイテムチケットが足りません！（必要: 1枚）\n※自身の作成したシナリオは無料で保存できます。");
+          setShowTicketModal(true);
+        }
         return;
       }
-      if(!silent && !confirm("書庫への保存には シルバーチケット が 1枚 必要です。保存しますか？")) return;
+      if(!silent && !confirm("書庫への保存には アイテムチケット が 1枚 必要です。保存しますか？")) return;
       
-      const { error: tErr } = await supabase.from('profiles').update({ tickets_silver: currentUser.ticketsSilver! - 1 }).eq('id', currentUser.id);
+      const { error: tErr } = await supabase.from('profiles').update({ tickets_item: currentUser.ticketsItem! - 1 }).eq('id', currentUser.id);
       if (tErr) { if(!silent) alert("チケットの消費に失敗しました。"); return; }
-      setCurrentUser(prev => prev ? { ...prev, ticketsSilver: prev.ticketsSilver! - 1 } : null);
+      setCurrentUser(prev => prev ? { ...prev, ticketsItem: prev.ticketsItem! - 1 } : null);
     }
 
     const endIndex = messages.findIndex((m: any) => m.text.includes('[SCENARIO_END]'));
@@ -1655,6 +1616,7 @@ export default function Home() {
           openUserProfile={openUserProfile}
           setScenarioAppealTarget={setScenarioAppealTarget}
           playArchives={playArchives}
+          setShowTicketModal={setShowTicketModal}
         />
       )}
       
@@ -1764,29 +1726,143 @@ export default function Home() {
         </div>
       )}
 
-      {/* ★ 小説作成時のチケット消費モーダル */}
       {novelSettingsModal && (
         <div className="fixed inset-0 bg-black/80 z-[80] flex items-center justify-center p-4">
           <div className="bg-slate-800 border border-emerald-700/50 rounded-xl p-6 w-full max-w-md shadow-2xl">
             <h3 className="text-xl font-bold text-emerald-400 mb-4">📖 小説の執筆設定</h3>
             <div className="space-y-4 mb-6">
               <div>
-                <label className="text-xs text-slate-400 block mb-1">使用するAIモデル {isTicketSystemEnabled && <span className="text-amber-400 text-[10px]">※チケット消費</span>}</label>
+                <label className="text-xs text-slate-400 block mb-1">使用するAIモデル</label>
                 <select 
                   value={novelSettingsModal.aiModel} 
                   onChange={(e) => setNovelSettingsModal({...novelSettingsModal, aiModel: e.target.value})} 
                   className="w-full bg-slate-900 border border-slate-700 rounded p-2 text-sm text-white"
                 >
-                  <option value="flash">🟢 Gemini Flash {isTicketSystemEnabled ? "(シルバー 1枚)" : "(無料)"}</option>
-                  <option value="pro">🟡 Gemini Pro {isTicketSystemEnabled ? "(ゴールド 1枚)" : "(無料)"}</option>
-                  <option value="claude">🟣 Claude 3.5 Sonnet {isTicketSystemEnabled ? "(プラチナ 1枚)" : "(無料)"}</option>
-                  <option value="opus">💎 Claude 3 Opus {isTicketSystemEnabled ? "(ダイヤモンド 1枚)" : "(無料)"}</option>
+                  <option value="flash">🟢 Gemini Flash {isTicketSystemEnabled ? "(消費: アイテムチケット 1枚)" : "(無料)"}</option>
+                  <option value="pro">🟡 Gemini Pro {isTicketSystemEnabled ? "(消費: アイテムチケット 1枚)" : "(無料)"}</option>
+                  <option value="claude">🟣 Claude 3.5 Sonnet {isTicketSystemEnabled ? "(消費: アイテムチケット 1枚)" : "(無料)"}</option>
+                  <option value="opus">💎 Claude 3 Opus {isTicketSystemEnabled ? "(消費: アイテムチケット 1枚)" : "(無料)"}</option>
                 </select>
               </div>
             </div>
             <div className="flex gap-4">
               <button onClick={() => setNovelSettingsModal(null)} className="flex-1 bg-slate-700 hover:bg-slate-600 py-3 rounded text-sm font-bold">キャンセル</button>
               <button onClick={handleStartNovel} className="flex-1 bg-emerald-600 hover:bg-emerald-500 py-3 rounded text-sm font-bold shadow-lg">執筆開始</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ★ 全画面共通：チケット購入ストア */}
+      {showTicketModal && (
+        <div className="fixed inset-0 bg-black/80 z-[80] flex items-center justify-center p-4">
+          <div className="bg-slate-800 border border-slate-700 rounded-xl p-6 w-full max-w-2xl shadow-2xl">
+            <div className="flex justify-between items-center mb-4 border-b border-slate-700 pb-3">
+              <h3 className="text-xl font-bold text-emerald-400">🎟️ チケット購入ストア</h3>
+              <button onClick={() => setShowTicketModal(false)} className="text-2xl text-slate-400 hover:text-white">×</button>
+            </div>
+            
+            <p className="text-xs text-slate-300 mb-4">
+              セッション（1枚につき最大3章までプレイ可能）や、各種機能を利用するためのチケットです。<br/>
+              <span className="text-amber-400 font-bold">※複数枚まとめ買いで割引が適用されます。（現在決済システムは準備中です）</span>
+            </p>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 max-h-[60vh] overflow-y-auto pr-2 custom-scrollbar">
+               {/* アイテムチケット */}
+               <div className="bg-slate-700/30 border border-slate-600 p-4 rounded-xl flex flex-col justify-between">
+                  <div>
+                    <div className="flex justify-between items-center mb-2">
+                      <h4 className="text-lg font-bold text-white">アイテム</h4>
+                      <span className="bg-slate-500 text-white text-[10px] px-2 py-1 rounded font-bold">便利機能用</span>
+                    </div>
+                    <p className="text-[11px] text-slate-400">高品質画像生成(3回分)や、<br/>小説執筆、書庫保存などに使用します。</p>
+                  </div>
+                  <div className="mt-4 pt-3 border-t border-slate-600">
+                    <button onClick={() => alert("※決済システム準備中")} className="w-full bg-slate-600 hover:bg-slate-500 text-white text-sm py-2 rounded font-bold shadow mb-2">
+                       1枚購入 - ¥120
+                    </button>
+                    <button onClick={() => alert("※決済システム準備中")} className="w-full bg-slate-800 border border-slate-500 hover:bg-slate-700 text-slate-300 text-xs py-1.5 rounded font-bold">
+                       3枚セット - ¥320 (約11%OFF)
+                    </button>
+                  </div>
+               </div>
+
+               {/* シルバーチケット */}
+               <div className="bg-slate-700/30 border border-slate-600 p-4 rounded-xl flex flex-col justify-between">
+                  <div>
+                    <div className="flex justify-between items-center mb-2">
+                      <h4 className="text-lg font-bold text-slate-300">シルバー</h4>
+                      <span className="bg-slate-600 text-white text-[10px] px-2 py-1 rounded font-bold">Gemini Flash</span>
+                    </div>
+                    <p className="text-[11px] text-slate-400">手軽にサクッと遊びたい方向け。<br/>テンポの良いスピーディーなセッション。</p>
+                  </div>
+                  <div className="mt-4 pt-3 border-t border-slate-600">
+                    <button onClick={() => alert("※決済システム準備中")} className="w-full bg-blue-600 hover:bg-blue-500 text-white text-sm py-2 rounded font-bold shadow mb-2">
+                       1枚購入 - ¥360
+                    </button>
+                    <button onClick={() => alert("※決済システム準備中")} className="w-full bg-slate-800 border border-slate-500 hover:bg-slate-700 text-slate-300 text-xs py-1.5 rounded font-bold">
+                       3枚セット - ¥980 (10%OFF)
+                    </button>
+                  </div>
+               </div>
+
+               {/* ゴールドチケット */}
+               <div className="bg-amber-900/10 border border-amber-700/50 p-4 rounded-xl flex flex-col justify-between">
+                  <div>
+                    <div className="flex justify-between items-center mb-2">
+                      <h4 className="text-lg font-bold text-amber-400">ゴールド</h4>
+                      <span className="bg-amber-600 text-white text-[10px] px-2 py-1 rounded font-bold">Gemini Pro</span>
+                    </div>
+                    <p className="text-[11px] text-amber-500/70">論理的で緻密なシナリオ向け。<br/>NPCの思惑が絡み合うミステリーに最適。</p>
+                  </div>
+                  <div className="mt-4 pt-3 border-t border-amber-900/50">
+                    <button onClick={() => alert("※決済システム準備中")} className="w-full bg-amber-600 hover:bg-amber-500 text-white text-sm py-2 rounded font-bold shadow mb-2">
+                       1枚購入 - ¥600
+                    </button>
+                    <button onClick={() => alert("※決済システム準備中")} className="w-full bg-slate-800 border border-amber-700/50 hover:bg-slate-700 text-amber-300 text-xs py-1.5 rounded font-bold">
+                       3枚セット - ¥1,620 (10%OFF)
+                    </button>
+                  </div>
+               </div>
+
+               {/* プラチナチケット */}
+               <div className="bg-indigo-900/10 border border-indigo-700/50 p-4 rounded-xl flex flex-col justify-between">
+                  <div>
+                    <div className="flex justify-between items-center mb-2">
+                      <h4 className="text-lg font-bold text-indigo-300">プラチナ</h4>
+                      <span className="bg-indigo-600 text-white text-[10px] px-2 py-1 rounded font-bold">Claude Sonnet</span>
+                    </div>
+                    <p className="text-[11px] text-indigo-400/70">エモーショナルな体験を求める方向け。<br/>文学的で美しい情景・心理描写。</p>
+                  </div>
+                  <div className="mt-4 pt-3 border-t border-indigo-900/50">
+                    <button onClick={() => alert("※決済システム準備中")} className="w-full bg-indigo-600 hover:bg-indigo-500 text-white text-sm py-2 rounded font-bold shadow mb-2">
+                       1枚購入 - ¥1,200
+                    </button>
+                    <button onClick={() => alert("※決済システム準備中")} className="w-full bg-slate-800 border border-indigo-700/50 hover:bg-slate-700 text-indigo-300 text-xs py-1.5 rounded font-bold">
+                       3枚セット - ¥3,240 (10%OFF)
+                    </button>
+                  </div>
+               </div>
+
+               {/* ダイヤモンドチケット */}
+               <div className="bg-gradient-to-br from-fuchsia-900/40 to-rose-900/20 border-2 border-fuchsia-500/50 p-4 rounded-xl flex flex-col justify-between relative overflow-hidden">
+                  <div className="absolute top-0 right-0 bg-fuchsia-600 text-white text-[8px] font-bold px-4 py-1 rotate-45 translate-x-3 translate-y-2 shadow-lg">最高級</div>
+                  <div>
+                    <div className="flex justify-between items-center mb-2">
+                      <h4 className="text-lg font-bold text-fuchsia-300">ダイヤモンド</h4>
+                      <span className="bg-fuchsia-600 text-white text-[10px] px-2 py-1 rounded font-bold">Claude Opus</span>
+                    </div>
+                    <p className="text-[11px] text-fuchsia-200/80">最高峰のVIP TRPG体験。<br/>人間を超える神業GMで、絶対に失敗できない究極のセッションを。</p>
+                  </div>
+                  <div className="mt-4 pt-3 border-t border-fuchsia-900/50">
+                    <button onClick={() => alert("※決済システム準備中")} className="w-full bg-fuchsia-600 hover:bg-fuchsia-500 text-white text-sm py-2 rounded font-bold shadow mb-2">
+                       1枚購入 - ¥1,800
+                    </button>
+                    <button onClick={() => alert("※決済システム準備中")} className="w-full bg-slate-800 border border-fuchsia-700/50 hover:bg-slate-700 text-fuchsia-300 text-xs py-1.5 rounded font-bold">
+                       3枚セット - ¥4,860 (10%OFF)
+                    </button>
+                  </div>
+               </div>
             </div>
           </div>
         </div>
@@ -1953,6 +2029,7 @@ export default function Home() {
                 </select>
               </div>
 
+              {/* ★ AIモデル（GM）の選択機能 */}
               <div>
                 <label className="text-xs text-slate-400 block mb-1">AIモデル (GM) {isTicketSystemEnabled && <span className="text-amber-400 text-[10px]">※チケット消費</span>}</label>
                 <select 

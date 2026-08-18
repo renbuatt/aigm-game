@@ -29,21 +29,20 @@ type Props = {
   openUserProfile: (userId: string) => void;
   setScenarioAppealTarget: React.Dispatch<React.SetStateAction<Scenario | null>>;
   playArchives: PlayArchive[];
+  setShowTicketModal: React.Dispatch<React.SetStateAction<boolean>>; // ★ 追加
 };
 
 export default function LobbyView({
   currentUser, handleLogout, setShowMailbox, unreadCount, secretRoomIdSearch, setSecretRoomIdSearch,
   rooms, searchedSecretRoom, setSearchedSecretRoom, executeJoinRoom, availableRooms,
   spectateRoom, setEditingScenario, setCurrentView, createdScenarios, deleteScenario, setRoomConfigModal,
-  fetchAdminData, startTrialPlay, availableScenarios, openUserProfile, setScenarioAppealTarget, playArchives
+  fetchAdminData, startTrialPlay, availableScenarios, openUserProfile, setScenarioAppealTarget, playArchives,
+  setShowTicketModal // ★ 追加
 }: Props) {
   
   const [lobbyTab, setLobbyTab] = useState<'rooms' | 'scenarios' | 'trials' | 'ranking'>('rooms');
   const [rankingType, setRankingType] = useState<'played' | 'viewed' | 'creator'>('played');
   const [creatorProfiles, setCreatorProfiles] = useState<Record<string, {name: string, avatar: string}>>({});
-  
-  // チケットストアモーダル
-  const [showTicketModal, setShowTicketModal] = useState(false);
 
   const trialScenarios = availableScenarios.filter(s => s.isTrialOk);
   const playableScenarios = availableScenarios.filter(s => s.isPlayableByOthers);
@@ -155,9 +154,6 @@ export default function LobbyView({
                         <div className="text-xs text-slate-400 mb-2 flex flex-wrap items-center gap-2">
                           <span>ホスト: <span className="underline cursor-pointer hover:text-blue-300 transition-colors" onClick={() => openUserProfile(room.host_id)}>{room.host_name}</span></span>
                           <span className="text-amber-400 font-bold ml-2">⭐ {room.scenario?.ratingCount ? (room.scenario.ratingSum / room.scenario.ratingCount).toFixed(1) : "未評価"}</span>
-                          <span className={`px-1.5 py-0.5 rounded text-white ${room.difficulty === 'beginner' ? 'bg-pink-500' : room.difficulty === 'easy' ? 'bg-green-600' : room.difficulty === 'normal' ? 'bg-blue-600' : room.difficulty === 'hard' ? 'bg-orange-600' : room.difficulty === 'pro' ? 'bg-red-600' : 'bg-purple-600'}`}>
-                            {room.difficulty === 'beginner' ? '⬜ 初心者' : room.difficulty === 'easy' ? '🟩 簡単' : room.difficulty === 'normal' ? '🟦 普通' : room.difficulty === 'hard' ? '🟧 難しい' : room.difficulty === 'pro' ? '🟥 プロ' : '🟪 鬼'}
-                          </span>
                         </div>
                         {room.host_message && <p className="text-xs text-slate-300 italic mb-2">「{room.host_message}」</p>}
                         
@@ -347,6 +343,12 @@ export default function LobbyView({
             </div>
 
             <div className="mt-3 pt-3 border-t border-slate-700/50 flex flex-col gap-2">
+               {/* ★ アイテムチケットと生成回数を表示 */}
+               <div className="flex justify-between items-center px-1 mb-1">
+                  <span className="text-xs text-slate-400">アイテムチケット</span>
+                  <span className="text-sm font-bold text-white">{currentUser.ticketsItem || 0} 枚</span>
+               </div>
+               
                <div className="grid grid-cols-4 gap-2 mt-1">
                   <div className="bg-slate-900 border border-slate-700 rounded p-1.5 text-center shadow-inner">
                      <span className="block text-[8px] text-slate-400">シルバー</span>
@@ -423,103 +425,6 @@ export default function LobbyView({
         <a href="/tokushoho" target="_blank" className="hover:text-white transition-colors">特定商取引法に基づく表記</a>
         <span className="ml-2">&copy; {new Date().getFullYear()} 五輪警備保障株式会社</span>
       </footer>
-
-      {/* ★ チケットストア（直販）モーダル */}
-      {showTicketModal && (
-        <div className="fixed inset-0 bg-black/80 z-[60] flex items-center justify-center p-4">
-          <div className="bg-slate-800 border border-slate-700 rounded-xl p-6 w-full max-w-2xl shadow-2xl">
-            <div className="flex justify-between items-center mb-4 border-b border-slate-700 pb-3">
-              <h3 className="text-xl font-bold text-emerald-400">🎟️ プレミアムチケットストア</h3>
-              <button onClick={() => setShowTicketModal(false)} className="text-2xl text-slate-400 hover:text-white">×</button>
-            </div>
-            
-            <p className="text-xs text-slate-300 mb-4">
-              セッション（1枚につき最大3章までプレイ可能）や、AIによる書籍化機能を利用するためのチケットです。<br/>
-              <span className="text-amber-400 font-bold">※複数枚まとめ買いで割引が適用されます。（決済システムは準備中です）</span>
-            </p>
-
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 max-h-[60vh] overflow-y-auto pr-2 custom-scrollbar">
-               {/* シルバーチケット */}
-               <div className="bg-slate-700/30 border border-slate-600 p-4 rounded-xl flex flex-col justify-between">
-                  <div>
-                    <div className="flex justify-between items-center mb-2">
-                      <h4 className="text-lg font-bold text-slate-300">シルバー</h4>
-                      <span className="bg-slate-600 text-white text-[10px] px-2 py-1 rounded font-bold">Gemini Flash</span>
-                    </div>
-                    <p className="text-[11px] text-slate-400">手軽にサクッと遊びたい方向け。<br/>テンポの良いスピーディーなセッション。</p>
-                  </div>
-                  <div className="mt-4 pt-3 border-t border-slate-600">
-                    <button onClick={() => alert("※決済システム準備中")} className="w-full bg-blue-600 hover:bg-blue-500 text-white text-sm py-2 rounded font-bold shadow mb-2">
-                       1枚購入 - ¥360
-                    </button>
-                    <button onClick={() => alert("※決済システム準備中")} className="w-full bg-slate-800 border border-slate-500 hover:bg-slate-700 text-slate-300 text-xs py-1.5 rounded font-bold">
-                       3枚セット - ¥980 (10%OFF)
-                    </button>
-                  </div>
-               </div>
-
-               {/* ゴールドチケット */}
-               <div className="bg-amber-900/10 border border-amber-700/50 p-4 rounded-xl flex flex-col justify-between">
-                  <div>
-                    <div className="flex justify-between items-center mb-2">
-                      <h4 className="text-lg font-bold text-amber-400">ゴールド</h4>
-                      <span className="bg-amber-600 text-white text-[10px] px-2 py-1 rounded font-bold">Gemini Pro</span>
-                    </div>
-                    <p className="text-[11px] text-amber-500/70">論理的で緻密なシナリオ向け。<br/>NPCの思惑が絡み合うミステリーに最適。</p>
-                  </div>
-                  <div className="mt-4 pt-3 border-t border-amber-900/50">
-                    <button onClick={() => alert("※決済システム準備中")} className="w-full bg-amber-600 hover:bg-amber-500 text-white text-sm py-2 rounded font-bold shadow mb-2">
-                       1枚購入 - ¥600
-                    </button>
-                    <button onClick={() => alert("※決済システム準備中")} className="w-full bg-slate-800 border border-amber-700/50 hover:bg-slate-700 text-amber-300 text-xs py-1.5 rounded font-bold">
-                       3枚セット - ¥1,620 (10%OFF)
-                    </button>
-                  </div>
-               </div>
-
-               {/* プラチナチケット */}
-               <div className="bg-indigo-900/10 border border-indigo-700/50 p-4 rounded-xl flex flex-col justify-between">
-                  <div>
-                    <div className="flex justify-between items-center mb-2">
-                      <h4 className="text-lg font-bold text-indigo-300">プラチナ</h4>
-                      <span className="bg-indigo-600 text-white text-[10px] px-2 py-1 rounded font-bold">Claude Sonnet</span>
-                    </div>
-                    <p className="text-[11px] text-indigo-400/70">エモーショナルな体験を求める方向け。<br/>文学的で美しい情景・心理描写。</p>
-                  </div>
-                  <div className="mt-4 pt-3 border-t border-indigo-900/50">
-                    <button onClick={() => alert("※決済システム準備中")} className="w-full bg-indigo-600 hover:bg-indigo-500 text-white text-sm py-2 rounded font-bold shadow mb-2">
-                       1枚購入 - ¥1,200
-                    </button>
-                    <button onClick={() => alert("※決済システム準備中")} className="w-full bg-slate-800 border border-indigo-700/50 hover:bg-slate-700 text-indigo-300 text-xs py-1.5 rounded font-bold">
-                       3枚セット - ¥3,240 (10%OFF)
-                    </button>
-                  </div>
-               </div>
-
-               {/* ダイヤモンドチケット */}
-               <div className="bg-gradient-to-br from-fuchsia-900/40 to-rose-900/20 border-2 border-fuchsia-500/50 p-4 rounded-xl flex flex-col justify-between relative overflow-hidden">
-                  <div className="absolute top-0 right-0 bg-fuchsia-600 text-white text-[8px] font-bold px-4 py-1 rotate-45 translate-x-3 translate-y-2 shadow-lg">最高級</div>
-                  <div>
-                    <div className="flex justify-between items-center mb-2">
-                      <h4 className="text-lg font-bold text-fuchsia-300">ダイヤモンド</h4>
-                      <span className="bg-fuchsia-600 text-white text-[10px] px-2 py-1 rounded font-bold">Claude Opus</span>
-                    </div>
-                    <p className="text-[11px] text-fuchsia-200/80">最高峰のVIP TRPG体験。<br/>人間を超える神業GMで、絶対に失敗できない究極のセッションを。</p>
-                  </div>
-                  <div className="mt-4 pt-3 border-t border-fuchsia-900/50">
-                    <button onClick={() => alert("※決済システム準備中")} className="w-full bg-fuchsia-600 hover:bg-fuchsia-500 text-white text-sm py-2 rounded font-bold shadow mb-2">
-                       1枚購入 - ¥1,800
-                    </button>
-                    <button onClick={() => alert("※決済システム準備中")} className="w-full bg-slate-800 border border-fuchsia-700/50 hover:bg-slate-700 text-fuchsia-300 text-xs py-1.5 rounded font-bold">
-                       3枚セット - ¥4,860 (10%OFF)
-                    </button>
-                  </div>
-               </div>
-            </div>
-          </div>
-        </div>
-      )}
-
     </div>
   );
 }
