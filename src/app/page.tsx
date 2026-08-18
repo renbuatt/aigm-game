@@ -269,8 +269,8 @@ export default function Home() {
         purchasedTickets: d.purchased_tickets || {}, isBanned: d.is_banned || false, playTime: d.play_time || 60,
         isPlayableByOthers: d.is_playable_by_others || false, isTrialOk: d.is_trial_ok || false, itemVisibility: d.item_visibility || "none",
         requiredScenarioId: d.required_scenario_id || "",
-        playCount: d.play_count || 0, // ★ カラム取得追加
-        viewCount: d.view_count || 0 // ★ カラム取得追加
+        playCount: d.play_count || 0,
+        viewCount: d.view_count || 0
       }));
       setScenarios(loadedScenarios);
     }
@@ -285,7 +285,7 @@ export default function Home() {
         is_paused: r.is_paused || false, afk_users: r.afk_users || [], is_trial: r.is_trial || false,
         item_visibility: r.item_visibility || "none", inventories: r.inventories || {},
         current_chapter_index: r.current_chapter_index || 0,
-        spectator_ids: r.spectator_ids || [] // ★ カラム取得追加
+        spectator_ids: r.spectator_ids || []
       })).filter((r: any) => r.scenario) as Room[];
       setRooms(formattedRooms);
     }
@@ -667,7 +667,6 @@ export default function Home() {
     await callAIGM(extraUserContext, "story");
   };
 
-  // ★ 修正：部屋を作った時に playCount をインクリメント
   const executeCreateRoom = async () => {
     if (!currentUser || !roomConfigModal) return;
     const { scenario, charId, privacy, message, difficulty, rule, itemVisibility } = roomConfigModal;
@@ -699,7 +698,6 @@ export default function Home() {
     
     if (error) { alert("データベースエラーが発生しました: " + error.message); return; }
     if (data) {
-      // ★ プレイ回数の加算
       const currentSc = scenarios.find((s: any) => s.id === scenario.id);
       if (currentSc) {
          await supabase.from('scenarios').update({ play_count: (currentSc.playCount || 0) + 1 }).eq('id', scenario.id);
@@ -714,7 +712,6 @@ export default function Home() {
     }
   };
 
-  // ★ 修正：お試しプレイ開始時に playCount をインクリメント
   const executeTrialPlay = async () => {
     if (!currentUser || !adModal.scenario) return;
     const scenario = adModal.scenario;
@@ -737,7 +734,6 @@ export default function Home() {
     
     if (error) { alert("データベースエラーが発生しました: " + error.message); return; }
     if (data) {
-      // ★ プレイ回数の加算
       const currentSc = scenarios.find((s: any) => s.id === scenario.id);
       if (currentSc) {
          await supabase.from('scenarios').update({ play_count: (currentSc.playCount || 0) + 1 }).eq('id', scenario.id);
@@ -776,7 +772,6 @@ export default function Home() {
     setCurrentView("game");
   };
 
-  // ★ 修正：観戦時に viewCount のインクリメントと spectator_ids の追加
   const spectateRoom = async (room: Room) => {
     if (!currentUser) return;
     
@@ -824,12 +819,10 @@ export default function Home() {
     }
   };
 
-  // ★ 修正：観戦者が退出するときは spectator_ids から名前を消す
   const leaveGame = async () => {
     if (!activeRoom || !currentUser) return;
     if (activeRoom.status === 'finished') { setCurrentView("evaluation"); return; }
     
-    // 観戦者の離脱
     if (!joinedCharacter) { 
       const newSpectators = (activeRoom.spectator_ids || []).filter((id: string) => id !== currentUser.id);
       await supabase.from('rooms').update({ spectator_ids: newSpectators }).eq('id', activeRoom.id);
@@ -949,7 +942,7 @@ export default function Home() {
     }
   };
 
-  const executeExport = async (title: string, sourceMessages: Message[], type: 'chat' | 'summary' | 'novel', options?: { archiveId?: string, modelName?: string, viewPoint?: 'third' | 'first', myCharacterName?: string, scenarioImage?: string, createdAt?: string, coPlayers?: string[], characters?: Character[] }) => {
+  const executeExport = async (title: string, sourceMessages: Message[], type: 'chat' | 'summary' | 'novel', options?: any) => {
     const printWindow = window.open('', '_blank');
     if (!printWindow) { alert("ポップアップがブロックされました。ブラウザの設定でポップアップを許可してください。"); return; }
     printWindow.document.write('<div style="padding: 20px; font-family: sans-serif; color: #333;">生成中...しばらくお待ちください。（AI執筆中の場合は数十秒かかることがあります）</div>');
@@ -1362,11 +1355,11 @@ export default function Home() {
           roleInstructionLines.push(
             "【お試しプレイ専用指示（絶対厳守ルール）】",
             "このセッションは体験版（お試しプレイ）です。以下のルールを絶対に守ってください。",
-            "1. 【進行度とターン数の指定（超重要）】シナリオの進行自体は序盤の1〜2シーン程度（従来の1.2倍程度）までに留めつつ、情景描写や細かな探索、NPCとの会話などを細かく挟んで、ターン数を従来の2倍程度まで大幅に引っ張ってください。すぐには解決・進行させないでください。",
+            "1. 【文章量と進行度の指定（超重要）】1回のレスポンスにおける文章量（情景描写やNPCのセリフ）を通常の2倍に増やし、非常に詳細かつリッチに描写してください。また、進行自体は序盤の1〜2シーン程度に留め、ターン数も2倍程度に大幅に引っ張ってください。",
             "2. 【ネタバレの完全禁止】物語の核心などのネタバレは一切行わないでください。",
-            "3. 【ダイスロールの強制】必ずセッション内で最低1回はPLにダイス判定を行わせてください。",
-            "4. 【クリフハンガーでの強制終了】十分にターン数を稼いでから、物語が一番面白く盛り上がってきた絶頂のタイミング（新たな脅威の出現や驚がくの事実の発覚など）を見計らって、プレイヤーの行動を待たずにバッサリと物語を強制終了させてください。",
-            "5. 終了の際は「――この先は本編でお楽しみください！」と期待を煽り、ターンの最後に必ず [SCENARIO_END] を出力してください。"
+            "3. 【人間PLへのダイスロール強制（超重要）】体験版の終了前に、AIではなく『人間プレイヤー』に必ず1回以上、ダイス判定（行動宣言タブからのダイスロール）を行わなければならない緊迫した状況を提示してください。",
+            "4. 【クリフハンガーでの強制終了】十分にターン数を稼ぎ、人間PLがダイスを振った後など、物語が一番面白く盛り上がってきた絶頂のタイミングを見計らって、バッサリと物語を強制終了させてください。",
+            "5. 【終了時の必須タグ】終了の際は必ず文章の最後に「――この先は本編でお楽しみください！」という言葉を出力してください。"
           );
         }
         if (isSplitMode && myScene.id !== 'scene_main') roleInstructionLines.push(`【チーム分割中の対応】この発言は【${myScene.name}】チームのものです。他チームの状況は考慮せず、勝手に合流させないでください。`);
@@ -1429,6 +1422,11 @@ export default function Home() {
       if (cleanAiText.includes('[CHAPTER_CLEAR]')) {
          cleanAiText = cleanAiText.replace(/\[CHAPTER_CLEAR\]/g, '').trim();
          isChapterCleared = true;
+      }
+
+      // ★ 体験版でAIが終了タグを忘れた場合のフォールバック処理
+      if (activeRoom.is_trial && (cleanAiText.includes('本編でお楽しみください') || cleanAiText.includes('本編でお待ち')) && !cleanAiText.includes('[SCENARIO_END]')) {
+        cleanAiText += '\n\n[SCENARIO_END]';
       }
 
       await supabase.from('ai_memory').insert({ room_id: activeRoom.id, role: 'assistant', content: aiText });
