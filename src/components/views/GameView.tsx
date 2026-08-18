@@ -263,7 +263,7 @@ export default function GameView({
             <div className="flex items-center gap-2 mt-1">
               <div className="flex gap-1">
                 {Object.entries(activeRoom.joined_users).map(([uid, cid]) => {
-                  const c = activeRoom.scenario?.presetCharacters.find(pc => pc.id === cid);
+                  const c = activeRoom.scenario?.presetCharacters.find((pc: any) => pc.id === cid);
                   const isUserAfk = activeRoom.afk_users?.includes(uid);
                   if (!c) return null;
                   return (
@@ -325,7 +325,7 @@ export default function GameView({
                     </label>
                     <div className="max-h-48 overflow-y-auto custom-scrollbar space-y-2">
                       {visibility === 'all' ? (
-                        activeRoom.scenario?.presetCharacters.filter(c => Object.values(activeRoom.joined_users).includes(c.id) || aiPlayersList.find(a=>a.id===c.id)).map(c => (
+                        activeRoom.scenario?.presetCharacters.filter((c: any) => Object.values(activeRoom.joined_users).includes(c.id) || aiPlayersList.find(a=>a.id===c.id)).map(c => (
                           <div key={c.id} className="text-xs">
                             <span className="text-blue-300 font-bold">{c.name}</span>
                             <p className="text-slate-300 ml-1 leading-tight">{activeRoom.inventories?.[c.id] || c.items || "特になし"}</p>
@@ -491,7 +491,7 @@ export default function GameView({
                 <span className="text-amber-400 text-sm font-bold">🎉 感想戦モード（AIは停止しています）</span>
                 <div className="flex gap-2">
                   {activeRoom.is_trial && activeRoom.scenario && (activeRoom.scenario.isPlayableByOthers || activeRoom.scenario.authorId === currentUser.id) && openRoomConfigModal && (
-                    <button onClick={() => handleOpenRoomConfig(activeRoom.scenario!)} className="bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold px-4 py-2 rounded shadow transition">
+                    <button onClick={() => openRoomConfigModal(activeRoom.scenario!)} className="bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold px-4 py-2 rounded shadow transition">
                       ✨ このまま本編の部屋を作る
                     </button>
                   )}
