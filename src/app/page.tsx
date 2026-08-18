@@ -64,7 +64,7 @@ export default function Home() {
 
   const [banTargetUser, setBanTargetUser] = useState<UserProfile | null>(null);
   const [banReason, setBanReason] = useState("");
-  const [banAppeals, setBanAppeals] = useState<BanAppeal[]>([]);
+  const [banAppeals, setBanApp appeals] = useState<BanAppeal[]>([]);
   const [appealText, setAppealText] = useState("");
 
   const [userSearchQuery, setUserSearchQuery] = useState("");
@@ -1355,11 +1355,11 @@ export default function Home() {
           roleInstructionLines.push(
             "【お試しプレイ専用指示（絶対厳守ルール）】",
             "このセッションは体験版（お試しプレイ）です。以下のルールを絶対に守ってください。",
-            "1. 【文章量と進行度の指定（超重要）】1回のレスポンスにおける文章量（情景描写やNPCのセリフ）を通常の2倍に増やし、非常に詳細かつリッチに描写してください。また、進行自体は序盤の1〜2シーン程度に留め、ターン数も2倍程度に大幅に引っ張ってください。",
+            "1. 【進行度とターン数の指定（超重要）】シナリオの進行自体は序盤の1〜2シーン程度（従来の1.2倍程度）までに留めつつ、情景描写や細かな探索、NPCとの会話などを細かく挟んで、ターン数を従来の2倍程度まで大幅に引っ張ってください。すぐには解決・進行させないでください。",
             "2. 【ネタバレの完全禁止】物語の核心などのネタバレは一切行わないでください。",
-            "3. 【人間PLへのダイスロール強制（超重要）】体験版の終了前に、AIではなく『人間プレイヤー』に必ず1回以上、ダイス判定（行動宣言タブからのダイスロール）を行わなければならない緊迫した状況を提示してください。",
-            "4. 【クリフハンガーでの強制終了】十分にターン数を稼ぎ、人間PLがダイスを振った後など、物語が一番面白く盛り上がってきた絶頂のタイミングを見計らって、バッサリと物語を強制終了させてください。",
-            "5. 【終了時の必須タグ】終了の際は必ず文章の最後に「――この先は本編でお楽しみください！」という言葉を出力してください。"
+            "3. 【ダイスロールの強制】必ずセッション内で最低1回はPLにダイス判定を行わせてください。",
+            "4. 【クリフハンガーでの強制終了】十分にターン数を稼いでから、物語が一番面白く盛り上がってきた絶頂のタイミング（新たな脅威の出現や驚がくの事実の発覚など）を見計らって、プレイヤーの行動を待たずにバッサリと物語を強制終了させてください。",
+            "5. 終了の際は「――この先は本編でお楽しみください！」と期待を煽り、ターンの最後に必ず [SCENARIO_END] を出力してください。"
           );
         }
         if (isSplitMode && myScene.id !== 'scene_main') roleInstructionLines.push(`【チーム分割中の対応】この発言は【${myScene.name}】チームのものです。他チームの状況は考慮せず、勝手に合流させないでください。`);
@@ -1475,7 +1475,7 @@ export default function Home() {
           blockUser={blockUser}
           unblockUser={unblockUser}
           activeRooms={rooms}
-          executeSpectateWithAd={(room: any) => setAdModal({ isOpen: true, step: 1, scenario: null, room: room, type: 'spectate' })}
+          executeSpectateWithAd={spectateRoom}
           openRoomConfigModal={handleOpenRoomConfig}
         />
       )}
