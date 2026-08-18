@@ -576,7 +576,7 @@ export default function Home() {
   const submitAppeal = async () => { if(!currentUser || !appealText) return; await supabase.from('ban_appeals').insert({ user_id: currentUser.id, reason: "不明", appeal_text: appealText, status: 'appealing' }); alert("調査依頼を送信しました。"); setAppealText(""); };
   const markNotificationAsRead = async (notifId: string) => { await supabase.from('notifications').update({ is_read: true }).eq('id', notifId); setMyNotifications(myNotifications.map(n => n.id === notifId ? { ...n, isRead: true } : n)); };
 
-  // ★ 復活：generateSceneImage 関数
+  // ★ 復活＆改良: 空欄でもAIが自動でプロンプトを推測して画像生成するように修正
   const generateSceneImage = async (promptText?: string) => {
     if (!activeRoom || !myScene) return;
     setIsLoading(true);
@@ -1201,18 +1201,6 @@ export default function Home() {
     setChatTab(tab); setUnreadIndicators(prev => ({ ...prev, [tab]: false }));
   };
 
-  const leaveGameAndCreateRoom = async (scenario: Scenario) => {
-    if (!activeRoom || !currentUser) return;
-    const { data } = await supabase.from('rooms').select('joined_users').eq('id', activeRoom.id).single();
-    if (data) {
-      const newUsers = { ...data.joined_users };
-      delete newUsers[currentUser.id];
-      await supabase.from('rooms').update({ joined_users: newUsers }).eq('id', activeRoom.id);
-    }
-    setActiveRoom(null); setJoinedCharacter(null); setAiPlayersList([]); setMessages([]); setCurrentView("lobby");
-    setRoomConfigModal({ scenario, charId: "", privacy: "open", message: "", difficulty: "normal", rule: "coc_jp", itemVisibility: "all" });
-  };
-
   const handleOpenRoomConfig = (scenario: Scenario) => {
     setRoomConfigModal({ scenario, charId: "", privacy: "open", message: "", difficulty: "normal", rule: "coc_jp", itemVisibility: "all" });
     setCurrentView("lobby");
@@ -1482,7 +1470,7 @@ export default function Home() {
       
       {currentView === "game" && activeRoom && myScene && (
         <GameView 
-          activeRoom={activeRoom} myScene={myScene} currentUser={currentUser!} joinedCharacter={joinedCharacter} leaveGame={leaveGame} setReportTarget={setReportTarget as React.Dispatch<React.SetStateAction<{type: 'user' | 'scenario' | 'room', id: string, name: string, roomId?: string, scenarioId?: string, scenarioName?: string, availableUsers?: { id: string, name: string }[]} | null>>} rollDice={rollDice} startGame={startGame} startSplitting={startSplitting} isSplitMode={isSplitMode} chatTab={chatTab} messages={messages} isLoading={isLoading} isScenarioEnded={isScenarioEnded} setCurrentView={setCurrentView} endGame={endGame} input={input} setInput={setInput} handleSend={handleSend} handleTabClick={handleTabClick} unreadIndicators={unreadIndicators} consultWithAI={consultWithAI} setConsultWithAI={setConsultWithAI} isChatDisabled={isChatDisabled} mergeTeam={mergeTeam} executeMergeAll={executeMergeAll} generateSceneImage={generateSceneImage} proposedTeams={proposedTeams} setProposedTeams={setProposedTeams} isGeneratingSplit={isGeneratingSplit} generateSplitProposal={generateSplitProposal} finishSplitting={finishSplitting} cancelSplitting={cancelSplitting} togglePauseRoom={togglePauseRoom} toggleAFK={toggleAFK} triggerAutoAction={triggerAutoAction} updateInventory={updateInventory} openRoomConfigModal={handleOpenRoomConfig} aiPlayersList={aiPlayersList} saveToArchive={saveToArchive}
+          activeRoom={activeRoom} myScene={myScene} currentUser={currentUser!} joinedCharacter={joinedCharacter} leaveGame={leaveGame} setReportTarget={setReportTarget} rollDice={rollDice} startGame={startGame} startSplitting={startSplitting} isSplitMode={isSplitMode} chatTab={chatTab} messages={messages} isLoading={isLoading} isScenarioEnded={isScenarioEnded} setCurrentView={setCurrentView} endGame={endGame} input={input} setInput={setInput} handleSend={handleSend} handleTabClick={handleTabClick} unreadIndicators={unreadIndicators} consultWithAI={consultWithAI} setConsultWithAI={setConsultWithAI} isChatDisabled={isChatDisabled} mergeTeam={mergeTeam} executeMergeAll={executeMergeAll} generateSceneImage={generateSceneImage} proposedTeams={proposedTeams} setProposedTeams={setProposedTeams} isGeneratingSplit={isGeneratingSplit} generateSplitProposal={generateSplitProposal} finishSplitting={finishSplitting} cancelSplitting={cancelSplitting} togglePauseRoom={togglePauseRoom} toggleAFK={toggleAFK} triggerAutoAction={triggerAutoAction} updateInventory={updateInventory} aiPlayersList={aiPlayersList} saveToArchive={saveToArchive}
         />
       )}
       
