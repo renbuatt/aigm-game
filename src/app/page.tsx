@@ -73,7 +73,6 @@ export default function Home() {
   const [banTargetScenario, setBanTargetScenario] = useState<Scenario | null>(null);
   const [scenarioBanReason, setScenarioBanReason] = useState("");
 
-  // ★ JSX内での型キャストエラーを防ぐため、any型に変更して安全性を確保
   const [reports, setReports] = useState<Report[]>([]);
   const [reportTarget, setReportTarget] = useState<any>(null);
   const [reportReason, setReportReason] = useState("");
@@ -680,12 +679,12 @@ export default function Home() {
       if (ticketError) { alert("チケットの消費処理に失敗しました。"); return; }
     }
 
-    const hostChar = scenario.presetCharacters.find(c => c.id === charId);
+    const hostChar = scenario.presetCharacters.find((c: any) => c.id === charId);
     if (!hostChar) return;
 
-    const initialScenes: Scene[] = [{ id: `scene_main_${Date.now()}`, name: "メインルーム", memberIds: scenario.presetCharacters.map(c => c.id) }];
+    const initialScenes: Scene[] = [{ id: `scene_main_${Date.now()}`, name: "メインルーム", memberIds: scenario.presetCharacters.map((c: any) => c.id) }];
     const initialInventories: Record<string, string> = {};
-    scenario.presetCharacters.forEach(c => { initialInventories[c.id] = c.items || "特になし"; });
+    scenario.presetCharacters.forEach((c: any) => { initialInventories[c.id] = c.items || "特になし"; });
 
     const { data, error } = await supabase.from('rooms').insert({ 
       scenario_id: scenario.id, host_name: currentUser.handleName, host_id: currentUser.id, status: "recruiting", scenes: initialScenes,
@@ -714,9 +713,9 @@ export default function Home() {
     if (!charId) { alert("このシナリオにはプリセットキャラクターが設定されていないため、お試しプレイができません。"); return; }
     const hostChar = scenario.presetCharacters[0];
     
-    const initialScenes: Scene[] = [{ id: `scene_main_${Date.now()}`, name: "メインルーム", memberIds: scenario.presetCharacters.map(c => c.id) }];
+    const initialScenes: Scene[] = [{ id: `scene_main_${Date.now()}`, name: "メインルーム", memberIds: scenario.presetCharacters.map((c: any) => c.id) }];
     const initialInventories: Record<string, string> = {};
-    scenario.presetCharacters.forEach(c => { initialInventories[c.id] = c.items || "特になし"; });
+    scenario.presetCharacters.forEach((c: any) => { initialInventories[c.id] = c.items || "特になし"; });
 
     const { data, error } = await supabase.from('rooms').insert({ 
       scenario_id: scenario.id, host_name: currentUser.handleName, host_id: currentUser.id, status: "recruiting", scenes: initialScenes,
@@ -731,7 +730,7 @@ export default function Home() {
       const newRoom: Room = { id: data.id, scenario_id: data.scenario_id, scenario: scenario, host_name: data.host_name, host_id: data.host_id, status: data.status, scenes: data.scenes, privacy: data.privacy, host_message: data.host_message, joined_users: data.joined_users, current_summary: "", difficulty: data.difficulty, rule: data.rule, is_paused: false, afk_users: [], is_trial: true, item_visibility: "none", inventories: data.inventories, current_chapter_index: 0 };
       await supabase.from('ai_memory').delete().eq('room_id', newRoom.id);
       setActiveRoom(newRoom); setJoinedCharacter(hostChar); setMessages([]); 
-      const aiChars = scenario.presetCharacters.filter(c => c.id !== charId); setAiPlayersList(aiChars);
+      const aiChars = scenario.presetCharacters.filter((c: any) => c.id !== charId); setAiPlayersList(aiChars);
       await pushMessage(newRoom.id, { sender: "system", text: `【お試しルーム作成完了】\n他のキャラクターはAIが担当します。\n右上の「▶お試し開始」ボタンを押してスタートしてください。`, type: "system", sceneId: newRoom.scenes?.[0]?.id, channel: "system" });
       setCurrentView("game");
     }
@@ -911,299 +910,6 @@ export default function Home() {
         else if (chatTab === "consult") promptSuffix = "この結果を踏まえて、AI相棒としてリアクションを返してください。";
         await callAIGM(`【システム判定結果】${joinedCharacter.name}が${label}ロールを行いました。\n結果: ${msgText}\n${promptSuffix}`, chatTab, false);
     }
-  };
-
-  const executeExport = async (title: string, sourceMessages: Message[], type: 'chat' | 'summary' | 'novel', options?: { archiveId?: string, modelName?: string, viewPoint?: 'third' | 'first', myCharacterName?: string, scenarioImage?: string, createdAt?: string, coPlayers?: string[], characters?: Character[] }) => {
-    const printWindow = window.open('', '_blank');
-    if (!printWindow) { alert("ポップアップがブロックされました。ブラウザの設定でポップアップを許可してください。"); return; }
-    printWindow.document.write('<div style="padding: 20px; font-family: sans-serif; color: #333;">生成中...しばらくお待ちください。（AI執筆中の場合は数十秒かかることがあります）</div>');
-
-    const targetMessages = sourceMessages.filter(m => m.channel !== 'gm');
-    let contentHtml = "";
-
-    const commonStyle = `
-      <style>
-        body { font-family: 'Hiragino Kaku Gothic ProN', 'Meiryo', sans-serif; color: #333; margin: 0; padding: 0; background: #f9f9f9; }
-        .page { background: #fff; max-width: 800px; margin: 20px auto; padding: 60px; box-shadow: 0 0 10px rgba(0,0,0,0.1); border-radius: 8px; }
-        .page-break { page-break-before: always; break-before: page; margin-top: 40px; padding-top: 40px; border-top: 2px dashed #ccc; }
-        @media print { body { background: #fff; } .page { box-shadow: none; margin: 0; padding: 0; } .page-break { border-top: none; padding-top: 0; margin-top: 0; } }
-        .cover { display: flex; flex-direction: column; align-items: center; justify-content: center; min-height: 80vh; text-align: center; }
-        .cover img { max-width: 80%; max-height: 50vh; object-fit: contain; border-radius: 8px; box-shadow: 0 4px 15px rgba(0,0,0,0.2); margin-bottom: 30px; }
-        .cover h1 { font-size: 36px; margin-bottom: 20px; color: #2c3e50; }
-        .cover .meta { font-size: 16px; color: #666; line-height: 1.6; }
-        
-        .character-intro { display: flex; align-items: flex-start; gap: 20px; margin-bottom: 40px; }
-        .character-intro img { width: 140px; height: 140px; object-fit: cover; border-radius: 8px; box-shadow: 0 4px 10px rgba(0,0,0,0.15); flex-shrink: 0; }
-        .character-info h3 { margin: 0 0 10px 0; font-size: 22px; color: #2c3e50; border-bottom: 2px solid #10b981; padding-bottom: 5px; }
-        .character-info p { margin: 0; color: #444; font-size: 14px; white-space: pre-wrap; line-height: 1.7; }
-        .no-image { width: 140px; height: 140px; background: #eee; border-radius: 8px; display: flex; align-items: center; justify-content: center; color: #999; font-size: 12px; flex-shrink: 0; }
-
-        .novel-body { white-space: pre-wrap; line-height: 1.9; color: #333; font-size: 15px; }
-        .novel-image { text-align: center; margin: 40px 0; }
-        .novel-image img { max-width: 100%; max-height: 400px; border-radius: 8px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); }
-      </style>
-    `;
-
-    const coverHtml = `
-      <div class="cover">
-        ${options?.scenarioImage ? `<img src="${options.scenarioImage}" />` : ''}
-        <h1>${title}</h1>
-        <div class="meta">
-          <p>プレイ日時: ${options?.createdAt ? new Date(options.createdAt).toLocaleString() : '不明'}</p>
-          <p>参加プレイヤー: ${options?.coPlayers?.length ? options.coPlayers.join(', ') : 'ソロプレイ'}</p>
-        </div>
-      </div>
-    `;
-
-    const generateCharsHtml = (introMap: Record<string, string> = {}) => {
-      let charsToRender = options?.characters;
-
-      if (!charsToRender || charsToRender.length === 0) {
-        const extractedNames = Object.keys(introMap);
-        if (extractedNames.length === 0) return '';
-        charsToRender = extractedNames.map(name => ({
-          id: name,
-          name: name,
-          job: '探索者',
-          personality: introMap[name],
-          imageUrl: '',
-          hp: 0, san: 0, str: 0, dex: 0, int: 0, con: 0, wis: 0, cha: 0,
-          playerName: 'プレイヤー' 
-        }));
-      }
-
-      const chunkSize = 3;
-      const chunks = [];
-      for (let i = 0; i < charsToRender.length; i += chunkSize) {
-        chunks.push(charsToRender.slice(i, i + chunkSize));
-      }
-      
-      return chunks.map((chunk, chunkIdx) => `
-        <div class="page-break">
-          ${chunkIdx === 0 ? '<h2 style="text-align: center; margin-bottom: 40px; font-size: 24px; color: #2c3e50;">登場キャラクター</h2>' : ''}
-          ${chunk.map(c => {
-            const matchedKey = Object.keys(introMap).find(k => k.includes(c.name) || c.name.includes(k));
-            const introText = matchedKey ? introMap[matchedKey] : (c.personality || '情報なし');
-            const playerName = c.playerName ? c.playerName : 'AI相棒';
-            
-            return `
-              <div class="character-intro">
-                ${c.imageUrl ? `<img src="${c.imageUrl}" />` : `<div class="no-image">No Image</div>`}
-                <div class="character-info">
-                  <h3>${c.name} <span style="font-size:14px; font-weight:normal; color:#666;">（PL: ${playerName}）</span></h3>
-                  <p><strong>【特徴・活躍】</strong><br/>${introText}</p>
-                </div>
-              </div>
-            `;
-          }).join('')}
-        </div>
-      `).join('');
-    };
-
-    if (type === 'chat') {
-      const chatHtml = targetMessages.map(m => {
-        if (m.type === 'image' && m.imageUrl) {
-          return `<div style="margin-bottom: 12px; border-bottom: 1px dashed #eee; padding-bottom: 8px;"><strong style="color: #2c3e50;">AI GM (画像)</strong><br><img src="${m.imageUrl}" style="max-width: 300px; border-radius: 8px;" /><br><span style="white-space: pre-wrap; color: #34495e;">${m.text}</span></div>`;
-        }
-        const senderName = m.charName || (m.sender === "player" ? "プレイヤー" : m.sender === "gm" ? "AI GM" : "システム");
-        const text = m.text.replace(/\[SPLIT_PROPOSAL:.*?\]/, '').replace('[SCENARIO_END]', '').trim();
-        if (!text) return "";
-        return `<div style="margin-bottom: 12px; border-bottom: 1px dashed #eee; padding-bottom: 8px;"><strong style="color: #2c3e50;">${senderName}</strong><br><span style="white-space: pre-wrap; color: #34495e;">${text}</span></div>`;
-      }).join('');
-      
-      contentHtml = `
-        ${commonStyle}
-        <div class="page">
-          ${coverHtml}
-          ${generateCharsHtml()}
-          <div class="page-break">
-            <h2 style="text-align: center; margin-bottom: 40px; font-size: 24px; color: #2c3e50;">チャットログ</h2>
-            ${chatHtml}
-          </div>
-        </div>
-      `;
-    } else {
-      setIsExporting(true);
-      
-      let imageCounter = 0;
-      const imagesList: string[] = [];
-
-      const logTextForAI = targetMessages.map(m => {
-        if (m.type === 'image' && m.imageUrl) {
-          imagesList.push(m.imageUrl);
-          imageCounter++;
-          return `[IMAGE_ID: ${imageCounter}] (ここに情景画像が生成されました: ${m.text})`;
-        }
-        return `${m.charName || (m.sender === 'gm' ? 'GM' : 'システム')}: ${m.text.replace(/\[SPLIT_PROPOSAL:.*?\]/, '').replace('[SCENARIO_END]', '').trim()}`;
-      }).join('\n');
-
-      const viewpointInstruction = options?.viewPoint === 'first' && options?.myCharacterName
-        ? `1. 単調な事実の羅列を避け、五感を刺激する情景描写と心理描写を大幅に肉付けすること。また、【${options.myCharacterName}】の視点（一人称）で物語を描写すること。`
-        : `1. 単調な事実の羅列を避け、五感を刺激する情景描写と心理描写を大幅に肉付けすること。神の視点（第三者視点）で物語を描写すること。`;
-
-      const uniqueCharNames = Array.from(new Set(targetMessages.filter(m => m.sender === 'player' || m.sender === 'ai_player').map(m => m.charName).filter(Boolean)));
-      const charNamesStr = uniqueCharNames.length > 0 ? `登場キャラクター（${uniqueCharNames.join('、')}）` : '各キャラクター';
-
-      const prompt = type === 'summary' 
-        ? ["以下のTRPGセッションのチャットログを読み込み、物語のあらすじ・結末として分かりやすく要約してください。","※ログには「GMへの行動宣言」と「キャラクター同士の相談・会話」が含まれています。キャラクター同士の相談内容も物語の展開として要約に含めてください。"].join('\n')
-        : [
-            "以下のTRPGセッションのチャットログを元に、プロの小説家が書いたような臨場感あふれる【本格的なリプレイ小説】を執筆してください。",
-            "",
-            "【執筆の条件】",
-            viewpointInstruction,
-            "2. プレイヤー間の相談は魅力的な会話劇として昇華すること。",
-            "3. ダイスロールの成否はドラマチックな演出に変換すること。",
-            "4. 読者を惹きつける一つの完成された短編小説に仕上げること。",
-            "5. 【重要】チャットログ内に [IMAGE_ID: X] というマーカーがあった場合、そのまま `[IMAGE_ID: X]` と出力すること。",
-            `6. 【超重要】本編の前に、必ず以下のマーカーを使って${charNamesStr}の紹介文（設定とチャットログでのプレイスタイルを統合した100文字程度の要約）を全員分出力してください。`,
-            "マーカーの形式： [CHAR_INTRO: キャラクター名] 紹介文",
-            "7. 全員分の紹介文を出力し終えたら、必ず [NOVEL_START] というマーカーを置き、そこから本編を書き始めてください。"
-          ].join('\n');
-      
-      try {
-        const generatedText = await generateAITextWithPrompt(prompt + "\n\n【チャットログ】\n" + logTextForAI);
-        
-        let introMap: Record<string, string> = {};
-        let finalNovelText = generatedText;
-
-        if (generatedText.includes('[NOVEL_START]')) {
-          const parts = generatedText.split('[NOVEL_START]');
-          const introPart = parts[0];
-          finalNovelText = parts[1].trim();
-
-          const introRegex = /\[CHAR_INTRO:\s*(.+?)\]([\s\S]*?)(?=\[CHAR_INTRO:|$)/g;
-          let m;
-          while ((m = introRegex.exec(introPart)) !== null) {
-            introMap[m[1].trim()] = m[2].trim();
-          }
-        }
-
-        imagesList.forEach((imgUrl, idx) => {
-          const imgTag = `</div><div class="novel-image"><img src="${imgUrl}" /></div><div class="novel-body">`;
-          finalNovelText = finalNovelText.replace(new RegExp(`\\[IMAGE_ID:\\s*${idx + 1}\\]`, 'g'), imgTag);
-        });
-
-        contentHtml = `
-          ${commonStyle}
-          <div class="page">
-            ${coverHtml}
-            ${generateCharsHtml(introMap)}
-            <div class="page-break">
-              <h2 style="text-align: center; margin-bottom: 40px; font-size: 24px; color: #2c3e50;">本編</h2>
-              <div class="novel-body">${finalNovelText}</div>
-            </div>
-          </div>
-        `;
-
-        if (options?.archiveId && type === 'novel' && options.modelName) {
-          const archive = playArchives.find(a => a.id === options.archiveId);
-          if (archive) {
-            const updatedNovels = { ...(archive.novels || {}), [options.modelName]: contentHtml }; 
-            await supabase.from('play_archives').update({ novels: updatedNovels }).eq('id', options.archiveId);
-            setPlayArchives(prev => prev.map(a => a.id === options.archiveId ? { ...a, novels: updatedNovels } : a));
-          }
-        }
-      } catch(e: any) { alert("エクスポート生成エラー: " + e.message); setIsExporting(false); printWindow.close(); return; }
-      setIsExporting(false);
-    }
-
-    printWindow.document.open();
-    printWindow.document.write(`
-      <!DOCTYPE html><html><head><meta charset="utf-8"><title>${title} - ${type === 'chat' ? 'チャットログ' : type === 'summary' ? '要約データ' : 'リプレイ小説'}</title></head><body>${contentHtml}<script>setTimeout(() => { if('${type}' === 'chat') { window.print(); window.close(); } }, 500);</script></body></html>
-    `);
-    printWindow.document.close();
-  };
-
-  const exportToPDF = async (type: 'chat' | 'summary' | 'novel', viewPoint: 'third' | 'first' = 'third') => {
-    if (!activeRoom) return;
-    const endIndex = messages.findIndex(m => m.text.includes('[SCENARIO_END]'));
-    const baseMessages = endIndex !== -1 ? messages.slice(0, endIndex + 1) : messages;
-
-    const userIds = Object.keys(activeRoom.joined_users || {});
-    const { data: profiles } = await supabase.from('profiles').select('id, handle_name').in('id', userIds);
-    const profileMap: Record<string, string> = {};
-    if (profiles) {
-      profiles.forEach(p => { profileMap[p.id] = p.handle_name; });
-    }
-
-    const charactersWithPlayers = activeRoom.scenario?.presetCharacters.map(c => {
-      const uid = Object.keys(activeRoom.joined_users || {}).find(k => activeRoom.joined_users![k] === c.id);
-      return { ...c, playerName: uid ? profileMap[uid] : 'AI相棒' };
-    }) || [];
-
-    await executeExport(
-      activeRoom.scenario?.title || "名称未設定", 
-      baseMessages, 
-      type, 
-      {
-        scenarioImage: activeRoom.scenario?.imageUrl,
-        createdAt: new Date().toISOString(),
-        coPlayers: Object.values(profileMap).filter(name => name !== currentUser?.handleName),
-        characters: charactersWithPlayers,
-        viewPoint: viewPoint,
-        myCharacterName: joinedCharacter?.name
-      }
-    );
-  };
-
-  const saveToArchive = async (silent: boolean = false) => {
-    if (!currentUser || !activeRoom || !joinedCharacter) return;
-    const endIndex = messages.findIndex(m => m.text.includes('[SCENARIO_END]'));
-    const baseMessages = endIndex !== -1 ? messages.slice(0, endIndex + 1) : messages;
-
-    const userIds = Object.keys(activeRoom.joined_users || {});
-    const { data: profiles } = await supabase.from('profiles').select('id, handle_name').in('id', userIds);
-    const profileMap: Record<string, string> = {};
-    if (profiles) {
-      profiles.forEach(p => { profileMap[p.id] = p.handle_name; });
-    }
-    const coPlayers = Object.values(profileMap).filter(name => name !== currentUser?.handleName);
-
-    const charactersWithPlayers = activeRoom.scenario?.presetCharacters.map(c => {
-      const uid = Object.keys(activeRoom.joined_users || {}).find(k => activeRoom.joined_users![k] === c.id);
-      return { ...c, playerName: uid ? profileMap[uid] : 'AI相棒' };
-    }) || [];
-
-    const archiveTitle = activeRoom.is_trial ? `【体験版】${activeRoom.scenario?.title || "不明なシナリオ"}` : activeRoom.scenario?.title || "不明なシナリオ";
-
-    const archiveData = { 
-      user_id: currentUser.id, 
-      scenario_id: activeRoom.scenario?.id || activeRoom.scenario_id,
-      scenario_title: archiveTitle, 
-      scenario_image: activeRoom.scenario?.imageUrl || "", 
-      character_name: joinedCharacter.name, 
-      chat_logs: baseMessages,
-      rule: activeRoom.rule,
-      co_players: coPlayers,
-      characters: charactersWithPlayers 
-    };
-    
-    const { data, error } = await supabase.from('play_archives').insert(archiveData).select().single();
-    if (error) { 
-      if(!silent) alert("書庫への保存に失敗しました: " + error.message); 
-    } else {
-      setPlayArchives(prev => [data, ...prev]);
-      if(!silent) {
-        alert("プレイ履歴を書庫に保存しました！");
-        setCurrentView("library"); 
-      }
-    }
-  };
-
-  const updateInventory = async (newItems: string) => {
-    if (!activeRoom || !currentUser) return;
-    const newInventories = { ...activeRoom.inventories, [currentUser.id]: newItems };
-    await supabase.from('rooms').update({ inventories: newInventories }).eq('id', activeRoom.id);
-    setActiveRoom({ ...activeRoom, inventories: newInventories });
-  };
-
-  const handleTabClick = (tab: ChatTab) => {
-    setChatTab(tab); setUnreadIndicators(prev => ({ ...prev, [tab]: false }));
-  };
-
-  const handleOpenRoomConfig = (scenario: Scenario) => {
-    setRoomConfigModal({ scenario, charId: "", privacy: "open", message: "", difficulty: "normal", rule: "coc_jp", itemVisibility: "all" });
-    setCurrentView("lobby");
   };
 
   const callAIGM = async (extraUserContext?: string, targetTab: ChatTab = "story", isStarting: boolean = false) => {
@@ -1451,32 +1157,170 @@ export default function Home() {
         />
       )}
 
-      {currentView === "admin" && currentUser?.isAdmin && <AdminView isMaintenance={isMaintenance} toggleMaintenance={toggleMaintenance} reports={reports} allUsers={allUsers} scenarios={scenarios} resolveReport={resolveReport} setBanTargetUser={setBanTargetUser} setBanReason={setBanReason} setBanTargetScenario={setBanTargetScenario} setScenarioBanReason={setScenarioBanReason} unbanScenarioFromAppeal={unbanScenarioFromAppeal} userSearchQuery={userSearchQuery} setUserSearchQuery={setUserSearchQuery} toggleAdminStatus={toggleAdminStatus} scenarioSearchQuery={scenarioSearchQuery} setScenarioSearchQuery={setScenarioSearchQuery} setCurrentView={setCurrentView} executeCreateTester={executeCreateTester} />}
+      {currentView === "admin" && currentUser?.isAdmin && (
+        <AdminView
+          isMaintenance={isMaintenance}
+          toggleMaintenance={toggleMaintenance}
+          reports={reports}
+          allUsers={allUsers}
+          scenarios={scenarios}
+          resolveReport={resolveReport}
+          setBanTargetUser={setBanTargetUser}
+          setBanReason={setBanReason}
+          setBanTargetScenario={setBanTargetScenario}
+          setScenarioBanReason={setScenarioBanReason}
+          unbanScenarioFromAppeal={unbanScenarioFromAppeal}
+          userSearchQuery={userSearchQuery}
+          setUserSearchQuery={setUserSearchQuery}
+          toggleAdminStatus={toggleAdminStatus}
+          scenarioSearchQuery={scenarioSearchQuery}
+          setScenarioSearchQuery={setScenarioSearchQuery}
+          setCurrentView={setCurrentView}
+          executeCreateTester={executeCreateTester}
+        />
+      )}
+
       {currentView === "banned" && <BannedView handleLogout={handleLogout} />}
       {currentView === "maintenance" && <MaintenanceView handleLogout={handleLogout} />}
       
-      {currentView === "login" && <LoginView email={email} setEmail={setEmail} password={password} setPassword={setPassword} authLoading={authLoading} handleEmailAuth={handleEmailAuth} handleGoogleAuth={handleGoogleAuth} setCurrentView={setCurrentView} isMaintenance={isMaintenance} />}
-      {currentView === "signup" && <SignupView email={email} setEmail={setEmail} password={password} setPassword={setPassword} authLoading={authLoading} handleEmailSignUp={handleEmailSignUp} handleGoogleAuth={handleGoogleAuth} setCurrentView={setCurrentView} isMaintenance={isMaintenance} />}
-      
-      {currentView === "onboarding" && <OnboardingView authLoading={authLoading} handleProfileSetup={handleProfileSetup} handleLogout={handleLogout} email={email} />}
-
-      {currentView === "lobby" && currentUser && (
-        <LobbyView 
-          currentUser={currentUser} handleLogout={handleLogout} setShowMailbox={setShowMailbox} unreadCount={unreadCount} secretRoomIdSearch={secretRoomIdSearch} setSecretRoomIdSearch={setSecretRoomIdSearch} rooms={rooms} searchedSecretRoom={searchedSecretRoom} setSearchedSecretRoom={setSearchedSecretRoom} executeJoinRoom={executeJoinRoom} availableRooms={availableRooms} spectateRoom={spectateRoom} setEditingScenario={setEditingScenario} setCurrentView={setCurrentView} createdScenarios={createdScenarios} deleteScenario={deleteScenario} setRoomConfigModal={setRoomConfigModal} fetchAdminData={fetchAdminData} startTrialPlay={(scenario) => setAdModal({ isOpen: true, step: 1, scenario, room: null, type: 'trial' })} availableScenarios={availableScenarios} openUserProfile={openUserProfile} setScenarioAppealTarget={setScenarioAppealTarget} playArchives={playArchives}
+      {currentView === "login" && (
+        <LoginView
+          email={email}
+          setEmail={setEmail}
+          password={password}
+          setPassword={setPassword}
+          authLoading={authLoading}
+          handleEmailAuth={handleEmailAuth}
+          handleGoogleAuth={handleGoogleAuth}
+          setCurrentView={setCurrentView}
+          isMaintenance={isMaintenance}
         />
       )}
       
-      {currentView === "scenarioEdit" && editingScenario && <ScenarioEditView editingScenario={editingScenario} setEditingScenario={setEditingScenario} editingCharIndex={editingCharIndex} setEditingCharIndex={setEditingCharIndex} saveScenario={saveScenario} setCurrentView={setCurrentView} allScenarios={scenarios} />}
+      {currentView === "signup" && (
+        <SignupView
+          email={email}
+          setEmail={setEmail}
+          password={password}
+          setPassword={setPassword}
+          authLoading={authLoading}
+          handleEmailSignUp={handleEmailSignUp}
+          handleGoogleAuth={handleGoogleAuth}
+          setCurrentView={setCurrentView}
+          isMaintenance={isMaintenance}
+        />
+      )}
+      
+      {currentView === "onboarding" && (
+        <OnboardingView
+          authLoading={authLoading}
+          handleProfileSetup={handleProfileSetup}
+          handleLogout={handleLogout}
+          email={email}
+        />
+      )}
+
+      {currentView === "lobby" && currentUser && (
+        <LobbyView 
+          currentUser={currentUser}
+          handleLogout={handleLogout}
+          setShowMailbox={setShowMailbox}
+          unreadCount={unreadCount}
+          secretRoomIdSearch={secretRoomIdSearch}
+          setSecretRoomIdSearch={setSecretRoomIdSearch}
+          rooms={rooms}
+          searchedSecretRoom={searchedSecretRoom}
+          setSearchedSecretRoom={setSearchedSecretRoom}
+          executeJoinRoom={executeJoinRoom}
+          availableRooms={availableRooms}
+          spectateRoom={spectateRoom}
+          setEditingScenario={setEditingScenario}
+          setCurrentView={setCurrentView}
+          createdScenarios={createdScenarios}
+          deleteScenario={deleteScenario}
+          setRoomConfigModal={setRoomConfigModal}
+          fetchAdminData={fetchAdminData}
+          startTrialPlay={(scenario) => setAdModal({ isOpen: true, step: 1, scenario, room: null, type: 'trial' })}
+          availableScenarios={availableScenarios}
+          openUserProfile={openUserProfile}
+          setScenarioAppealTarget={setScenarioAppealTarget}
+          playArchives={playArchives}
+        />
+      )}
+      
+      {currentView === "scenarioEdit" && editingScenario && (
+        <ScenarioEditView
+          editingScenario={editingScenario}
+          setEditingScenario={setEditingScenario}
+          editingCharIndex={editingCharIndex}
+          setEditingCharIndex={setEditingCharIndex}
+          saveScenario={saveScenario}
+          setCurrentView={setCurrentView}
+          allScenarios={scenarios}
+        />
+      )}
       
       {currentView === "game" && activeRoom && myScene && currentUser && (
         <GameView 
-          activeRoom={activeRoom} myScene={myScene} currentUser={currentUser} joinedCharacter={joinedCharacter} leaveGame={leaveGame} setReportTarget={setReportTarget} rollDice={rollDice} startGame={startGame} startSplitting={startSplitting} isSplitMode={isSplitMode} chatTab={chatTab} messages={messages} isLoading={isLoading} isScenarioEnded={isScenarioEnded} setCurrentView={setCurrentView} endGame={endGame} input={input} setInput={setInput} handleSend={handleSend} handleTabClick={handleTabClick} unreadIndicators={unreadIndicators} consultWithAI={consultWithAI} setConsultWithAI={setConsultWithAI} isChatDisabled={isChatDisabled} mergeTeam={mergeTeam} executeMergeAll={executeMergeAll} generateSceneImage={generateSceneImage} proposedTeams={proposedTeams} setProposedTeams={setProposedTeams} isGeneratingSplit={isGeneratingSplit} generateSplitProposal={generateSplitProposal} finishSplitting={finishSplitting} cancelSplitting={cancelSplitting} togglePauseRoom={togglePauseRoom} toggleAFK={toggleAFK} triggerAutoAction={triggerAutoAction} updateInventory={updateInventory} openRoomConfigModal={handleOpenRoomConfig} aiPlayersList={aiPlayersList} saveToArchive={saveToArchive}
+          activeRoom={activeRoom}
+          myScene={myScene}
+          currentUser={currentUser}
+          joinedCharacter={joinedCharacter}
+          leaveGame={leaveGame}
+          setReportTarget={setReportTarget}
+          rollDice={rollDice}
+          startGame={startGame}
+          startSplitting={startSplitting}
+          isSplitMode={isSplitMode}
+          chatTab={chatTab}
+          messages={messages}
+          isLoading={isLoading}
+          isScenarioEnded={isScenarioEnded}
+          setCurrentView={setCurrentView}
+          endGame={endGame}
+          input={input}
+          setInput={setInput}
+          handleSend={handleSend}
+          handleTabClick={handleTabClick}
+          unreadIndicators={unreadIndicators}
+          consultWithAI={consultWithAI}
+          setConsultWithAI={setConsultWithAI}
+          isChatDisabled={isChatDisabled}
+          mergeTeam={mergeTeam}
+          executeMergeAll={executeMergeAll}
+          generateSceneImage={generateSceneImage}
+          proposedTeams={proposedTeams}
+          setProposedTeams={setProposedTeams}
+          isGeneratingSplit={isGeneratingSplit}
+          generateSplitProposal={generateSplitProposal}
+          finishSplitting={finishSplitting}
+          cancelSplitting={cancelSplitting}
+          togglePauseRoom={togglePauseRoom}
+          toggleAFK={toggleAFK}
+          triggerAutoAction={triggerAutoAction}
+          updateInventory={updateInventory}
+          openRoomConfigModal={handleOpenRoomConfig}
+          aiPlayersList={aiPlayersList}
+          saveToArchive={saveToArchive}
         />
       )}
       
       {currentView === "evaluation" && activeRoom && currentUser && (
         <EvaluationView 
-          activeRoom={activeRoom} messages={messages} ratingScenario={ratingScenario} setRatingScenario={setRatingScenario} ratingGM={ratingGM} setRatingGM={setRatingGM} submitEvaluation={submitEvaluation} exportToPDF={exportToPDF} isExporting={isExporting} saveToArchive={saveToArchive} currentUser={currentUser} addFriend={addFriend} openUserProfile={openUserProfile} openRoomConfigModal={handleOpenRoomConfig}
+          activeRoom={activeRoom}
+          messages={messages}
+          ratingScenario={ratingScenario}
+          setRatingScenario={setRatingScenario}
+          ratingGM={ratingGM}
+          setRatingGM={setRatingGM}
+          submitEvaluation={submitEvaluation}
+          exportToPDF={exportToPDF}
+          isExporting={isExporting}
+          saveToArchive={saveToArchive}
+          currentUser={currentUser}
+          addFriend={addFriend}
+          openUserProfile={openUserProfile}
+          openRoomConfigModal={handleOpenRoomConfig}
         />
       )}
 
@@ -1487,17 +1331,24 @@ export default function Home() {
             <div className="h-32 bg-slate-900 border border-slate-700 flex items-center justify-center rounded">
               <span className="text-slate-500 font-bold animate-pulse">動画広告が再生されています...<br/>({adModal.step}/3)</span>
             </div>
-            {adModal.step <= 3 ? <button onClick={() => { 
-              if(adModal.step === 3) {
-                if (adModal.type === 'trial') executeTrialPlay();
-                else if (adModal.type === 'spectate' && adModal.room) {
-                  spectateRoom(adModal.room);
-                  setAdModal({ isOpen: false, step: 0, scenario: null, room: null, type: 'trial' });
-                }
-              } else {
-                setAdModal({...adModal, step: adModal.step + 1}); 
-              }
-            }} className="w-full bg-pink-600 hover:bg-pink-500 py-3 rounded text-sm font-bold text-white shadow-lg">{adModal.step === 3 ? (adModal.type === 'trial' ? "お試しプレイを開始する！" : "観戦を開始する！") : "次の広告へ進む"}</button> : null}
+            {adModal.step <= 3 ? (
+              <button 
+                onClick={() => { 
+                  if(adModal.step === 3) {
+                    if (adModal.type === 'trial') executeTrialPlay();
+                    else if (adModal.type === 'spectate' && adModal.room) {
+                      spectateRoom(adModal.room);
+                      setAdModal({ isOpen: false, step: 0, scenario: null, room: null, type: 'trial' });
+                    }
+                  } else {
+                    setAdModal({...adModal, step: adModal.step + 1}); 
+                  }
+                }} 
+                className="w-full bg-pink-600 hover:bg-pink-500 py-3 rounded text-sm font-bold text-white shadow-lg"
+              >
+                {adModal.step === 3 ? (adModal.type === 'trial' ? "お試しプレイを開始する！" : "観戦を開始する！") : "次の広告へ進む"}
+              </button>
+            ) : null}
             <button onClick={() => setAdModal({ isOpen: false, step: 0, scenario: null, room: null, type: 'trial' })} className="text-xs text-slate-400 hover:text-white underline">キャンセル</button>
           </div>
         </div>
@@ -1510,18 +1361,43 @@ export default function Home() {
             {reportTarget.roomId ? (
               <div className="mb-4">
                 <label className="text-xs text-slate-400 block mb-1">通報対象を選択</label>
-                <select className="w-full bg-slate-900 border border-slate-700 rounded p-2 text-sm text-white" onChange={(e) => { 
-                  const val = e.target.value; 
-                  if (val === 'room') { setReportTarget({...reportTarget, type: 'room', id: reportTarget.roomId || "", name: 'この部屋の進行・チャット全般'}); } 
-                  else if (val === 'scenario') { setReportTarget({...reportTarget, type: 'scenario', id: reportTarget.scenarioId || "", name: `シナリオ: ${reportTarget.scenarioName}`}); } 
-                  else { const user = reportTarget.availableUsers?.find((u: any) => u.id === val); if (user) setReportTarget({...reportTarget, type: 'user', id: user.id, name: `プレイヤー: ${user.name}`}); } 
-                }} value={reportTarget.type === 'user' ? reportTarget.id : reportTarget.type}>
-                  <option value="room">この部屋の進行・チャット全般</option><option value="scenario">シナリオの不適切・規約違反</option>{reportTarget.availableUsers?.map((u: any) => <option key={u.id} value={u.id}>プレイヤー: {u.name} を通報</option>)}
+                <select 
+                  className="w-full bg-slate-900 border border-slate-700 rounded p-2 text-sm text-white" 
+                  onChange={(e) => { 
+                    const val = e.target.value; 
+                    if (val === 'room') { 
+                      setReportTarget({...reportTarget, type: 'room', id: reportTarget.roomId || "", name: 'この部屋の進行・チャット全般'}); 
+                    } else if (val === 'scenario') { 
+                      setReportTarget({...reportTarget, type: 'scenario', id: reportTarget.scenarioId || "", name: `シナリオ: ${reportTarget.scenarioName}`}); 
+                    } else { 
+                      const user = reportTarget.availableUsers?.find((u: any) => u.id === val); 
+                      if (user) setReportTarget({...reportTarget, type: 'user', id: user.id, name: `プレイヤー: ${user.name}`}); 
+                    } 
+                  }} 
+                  value={reportTarget.type === 'user' ? reportTarget.id : reportTarget.type}
+                >
+                  <option value="room">この部屋の進行・チャット全般</option>
+                  <option value="scenario">シナリオの不適切・規約違反</option>
+                  {reportTarget.availableUsers?.map((u: any) => (
+                    <option key={u.id} value={u.id}>プレイヤー: {u.name} を通報</option>
+                  ))}
                 </select>
               </div>
-            ) : <p className="text-xs text-slate-400 mb-4">対象: {reportTarget.name}</p>}
-            <div className="space-y-3 mb-4"><textarea value={reportReason} onChange={e=>setReportReason(e.target.value)} placeholder="不適切な発言や、規約違反の内容を詳しく記入してください。（対象のログも一緒に運営に送信されます）" className="w-full h-32 bg-slate-900 border border-slate-700 rounded p-3 text-sm text-white" /></div>
-            <div className="flex gap-4"><button onClick={() => { setReportTarget(null); setReportReason(""); }} className="flex-1 bg-slate-700 hover:bg-slate-600 py-3 rounded text-sm font-bold">キャンセル</button><button onClick={submitUserReport} disabled={!reportReason.trim()} className="flex-1 bg-red-600 hover:bg-red-500 disabled:bg-slate-600 py-3 rounded text-sm font-bold shadow-lg shadow-red-900/50">運営に送信する</button></div>
+            ) : (
+              <p className="text-xs text-slate-400 mb-4">対象: {reportTarget.name}</p>
+            )}
+            <div className="space-y-3 mb-4">
+              <textarea 
+                value={reportReason} 
+                onChange={e=>setReportReason(e.target.value)} 
+                placeholder="不適切な発言や、規約違反の内容を詳しく記入してください。（対象のログも一緒に運営に送信されます）" 
+                className="w-full h-32 bg-slate-900 border border-slate-700 rounded p-3 text-sm text-white" 
+              />
+            </div>
+            <div className="flex gap-4">
+              <button onClick={() => { setReportTarget(null); setReportReason(""); }} className="flex-1 bg-slate-700 hover:bg-slate-600 py-3 rounded text-sm font-bold">キャンセル</button>
+              <button onClick={submitUserReport} disabled={!reportReason.trim()} className="flex-1 bg-red-600 hover:bg-red-500 disabled:bg-slate-600 py-3 rounded text-sm font-bold shadow-lg shadow-red-900/50">運営に送信する</button>
+            </div>
           </div>
         </div>
       )}
@@ -1531,8 +1407,18 @@ export default function Home() {
           <div className="bg-slate-800 border border-amber-700/50 rounded-xl p-6 w-full max-w-lg shadow-2xl">
             <h3 className="text-xl font-bold text-amber-400 mb-2">📝 再審査（修正完了）の申請</h3>
             <p className="text-xs text-slate-400 mb-4">対象シナリオ: {scenarioAppealTarget.title}</p>
-            <div className="space-y-3 mb-4"><textarea value={scenarioAppealText} onChange={e=>setScenarioAppealText(e.target.value)} placeholder="修正した箇所や、非公開措置へのコメントを入力してください。" className="w-full h-32 bg-slate-900 border border-slate-700 rounded p-3 text-sm text-white" /></div>
-            <div className="flex gap-4"><button onClick={() => { setScenarioAppealTarget(null); setScenarioAppealText(""); }} className="flex-1 bg-slate-700 hover:bg-slate-600 py-3 rounded text-sm font-bold">キャンセル</button><button onClick={submitScenarioAppeal} disabled={!scenarioAppealText.trim()} className="flex-1 bg-amber-600 hover:bg-amber-500 disabled:bg-slate-600 py-3 rounded text-sm font-bold shadow-lg shadow-amber-900/50">運営に申請を送信する</button></div>
+            <div className="space-y-3 mb-4">
+              <textarea 
+                value={scenarioAppealText} 
+                onChange={e=>setScenarioAppealText(e.target.value)} 
+                placeholder="修正した箇所や、非公開措置へのコメントを入力してください。" 
+                className="w-full h-32 bg-slate-900 border border-slate-700 rounded p-3 text-sm text-white" 
+              />
+            </div>
+            <div className="flex gap-4">
+              <button onClick={() => { setScenarioAppealTarget(null); setScenarioAppealText(""); }} className="flex-1 bg-slate-700 hover:bg-slate-600 py-3 rounded text-sm font-bold">キャンセル</button>
+              <button onClick={submitScenarioAppeal} disabled={!scenarioAppealText.trim()} className="flex-1 bg-amber-600 hover:bg-amber-500 disabled:bg-slate-600 py-3 rounded text-sm font-bold shadow-lg shadow-amber-900/50">運営に申請を送信する</button>
+            </div>
           </div>
         </div>
       )}
@@ -1542,10 +1428,21 @@ export default function Home() {
           <div className="bg-slate-800 border border-slate-700 rounded-xl p-6 w-full max-w-lg shadow-2xl">
             <h3 className="text-xl font-bold text-white mb-2">⚙️ シナリオの管理措置</h3>
             <p className="text-xs text-slate-400 mb-4">対象: {banTargetScenario.title}</p>
-            <div className="space-y-3 mb-4"><textarea value={scenarioBanReason} onChange={e=>setScenarioBanReason(e.target.value)} placeholder="措置の理由を入力してください（作者にメールで通知されます）" className="w-full h-32 bg-slate-900 border border-slate-700 rounded p-3 text-sm text-white" /></div>
+            <div className="space-y-3 mb-4">
+              <textarea 
+                value={scenarioBanReason} 
+                onChange={e=>setScenarioBanReason(e.target.value)} 
+                placeholder="措置の理由を入力してください（作者にメールで通知されます）" 
+                className="w-full h-32 bg-slate-900 border border-slate-700 rounded p-3 text-sm text-white" 
+              />
+            </div>
             <div className="flex flex-col gap-3">
               <div className="flex gap-2">
-                {!banTargetScenario.isBanned ? <button onClick={() => executeScenarioBan('soft')} disabled={!scenarioBanReason.trim()} className="flex-1 bg-amber-600 hover:bg-amber-500 disabled:bg-slate-600 py-3 rounded text-sm font-bold shadow-lg">一時非公開にする</button> : <button onClick={() => executeScenarioBan('unban')} className="flex-1 bg-emerald-600 hover:bg-emerald-500 py-3 rounded text-sm font-bold shadow-lg">非公開を解除する</button>}
+                {!banTargetScenario.isBanned ? (
+                  <button onClick={() => executeScenarioBan('soft')} disabled={!scenarioBanReason.trim()} className="flex-1 bg-amber-600 hover:bg-amber-500 disabled:bg-slate-600 py-3 rounded text-sm font-bold shadow-lg">一時非公開にする</button>
+                ) : (
+                  <button onClick={() => executeScenarioBan('unban')} className="flex-1 bg-emerald-600 hover:bg-emerald-500 py-3 rounded text-sm font-bold shadow-lg">非公開を解除する</button>
+                )}
                 <button onClick={() => executeScenarioBan('hard')} disabled={!scenarioBanReason.trim()} className="flex-1 bg-red-600 hover:bg-red-500 disabled:bg-slate-600 py-3 rounded text-sm font-bold shadow-lg">完全に削除する</button>
               </div>
               <button onClick={() => setBanTargetScenario(null)} className="w-full bg-slate-700 hover:bg-slate-600 py-3 rounded text-sm font-bold mt-2">キャンセル</button>
@@ -1559,8 +1456,18 @@ export default function Home() {
           <div className="bg-slate-800 border border-red-700/50 rounded-xl p-6 w-full max-w-lg shadow-2xl">
             <h3 className="text-xl font-bold text-red-500 mb-2">⛔ ユーザーをBANする</h3>
             <p className="text-xs text-slate-400 mb-4">対象: {banTargetUser.handleName} ({banTargetUser.email})</p>
-            <div className="space-y-3 mb-4"><textarea value={banReason} onChange={e=>setBanReason(e.target.value)} placeholder="通報ログ・BANの理由を入力してください" className="w-full h-32 bg-slate-900 border border-slate-700 rounded p-3 text-sm text-white" /></div>
-            <div className="flex gap-4"><button onClick={() => setBanTargetUser(null)} className="flex-1 bg-slate-700 hover:bg-slate-600 py-3 rounded text-sm font-bold">キャンセル</button><button onClick={executeBan} disabled={!banReason.trim()} className="flex-1 bg-red-600 hover:bg-red-500 disabled:bg-slate-600 py-3 rounded text-sm font-bold shadow-lg shadow-red-900/50">BANを実行する</button></div>
+            <div className="space-y-3 mb-4">
+              <textarea 
+                value={banReason} 
+                onChange={e=>setBanReason(e.target.value)} 
+                placeholder="通報ログ・BANの理由を入力してください" 
+                className="w-full h-32 bg-slate-900 border border-slate-700 rounded p-3 text-sm text-white" 
+              />
+            </div>
+            <div className="flex gap-4">
+              <button onClick={() => setBanTargetUser(null)} className="flex-1 bg-slate-700 hover:bg-slate-600 py-3 rounded text-sm font-bold">キャンセル</button>
+              <button onClick={executeBan} disabled={!banReason.trim()} className="flex-1 bg-red-600 hover:bg-red-500 disabled:bg-slate-600 py-3 rounded text-sm font-bold shadow-lg shadow-red-900/50">BANを実行する</button>
+            </div>
           </div>
         </div>
       )}
@@ -1568,15 +1475,22 @@ export default function Home() {
       {showMailbox && (
         <div className="fixed inset-0 bg-black/80 z-[60] flex items-center justify-center p-4">
           <div className="bg-slate-800 border border-slate-700 rounded-xl p-6 w-full max-w-lg shadow-2xl flex flex-col max-h-[80vh]">
-            <div className="flex justify-between items-center mb-4"><h3 className="text-xl font-bold">✉️ 受信箱</h3><button onClick={() => setShowMailbox(false)} className="text-xl">×</button></div>
+            <div className="flex justify-between items-center mb-4">
+              <h3 className="text-xl font-bold">✉️ 受信箱</h3>
+              <button onClick={() => setShowMailbox(false)} className="text-xl">×</button>
+            </div>
             <div className="h-[400px] overflow-y-scroll space-y-3 pr-2">
-              {myNotifications.length === 0 ? <p className="text-sm text-slate-500 text-center py-8">お知らせはありません。</p> : myNotifications.map(n => (
-                <div key={n.id} className={`p-4 rounded-lg border ${n.isRead ? 'bg-slate-900 border-slate-700' : 'bg-slate-800 border-blue-500/50'}`}>
-                  <h4 className="font-bold text-sm">{n.title}</h4>
-                  <p className="text-xs text-slate-300 whitespace-pre-wrap mt-2">{n.message}</p>
-                  {!n.isRead && <button onClick={() => markNotificationAsRead(n.id)} className="text-[10px] bg-slate-700 px-3 py-1 rounded mt-3">既読にする</button>}
-                </div>
-              ))}
+              {myNotifications.length === 0 ? (
+                <p className="text-sm text-slate-500 text-center py-8">お知らせはありません。</p>
+              ) : (
+                myNotifications.map(n => (
+                  <div key={n.id} className={`p-4 rounded-lg border ${n.isRead ? 'bg-slate-900 border-slate-700' : 'bg-slate-800 border-blue-500/50'}`}>
+                    <h4 className="font-bold text-sm">{n.title}</h4>
+                    <p className="text-xs text-slate-300 whitespace-pre-wrap mt-2">{n.message}</p>
+                    {!n.isRead && <button onClick={() => markNotificationAsRead(n.id)} className="text-[10px] bg-slate-700 px-3 py-1 rounded mt-3">既読にする</button>}
+                  </div>
+                ))
+              )}
             </div>
           </div>
         </div>
@@ -1587,14 +1501,94 @@ export default function Home() {
           <div className="bg-slate-800 border border-emerald-700/50 rounded-xl p-6 w-full max-w-lg shadow-2xl">
             <h3 className="text-xl font-bold text-emerald-400 mb-4">🚪 部屋の作成: {roomConfigModal.scenario?.title}</h3>
             <div className="space-y-4 mb-6">
-              <div><label className="text-xs text-slate-400 block mb-1">使用するキャラクター <span className="text-red-400">*</span></label><select value={roomConfigModal.charId || ""} onChange={(e) => setRoomConfigModal({...roomConfigModal, charId: e.target.value})} className="w-full bg-slate-900 border border-slate-700 rounded p-2 text-sm text-white"><option value="" disabled>選択してください</option>{roomConfigModal.scenario?.presetCharacters?.map((c: any) => <option key={c.id} value={c.id}>{c.name} ({c.job})</option>)}</select></div>
-              <div><label className="text-xs text-slate-400 block mb-1">ゲームルール（システム）</label><select value={roomConfigModal.rule || "coc_jp"} onChange={(e) => setRoomConfigModal({...roomConfigModal, rule: e.target.value})} className="w-full bg-slate-900 border border-slate-700 rounded p-2 text-sm text-white"><option value="coc_jp">🟩 日本クトゥルフ風（ドラマ・探索重視 / 1d100）</option><option value="coc_en">🟦 海外クトゥルフ風（シビア・ホラー / 1d100）</option><option value="dnd">🟥 D&D風（ヒロイック・ファンタジー / 1d20）</option><option value="sw25">🟨 ソードワールド風（明るい冒険 / 2d6）</option><option value="storytelling">🟪 ストーリーテリング（文学的・演出重視 / 1d6）</option></select></div>
-              <div><label className="text-xs text-slate-400 block mb-1">難易度</label><select value={roomConfigModal.difficulty || "normal"} onChange={(e) => setRoomConfigModal({...roomConfigModal, difficulty: e.target.value})} className="w-full bg-slate-900 border border-slate-700 rounded p-2 text-sm text-white"><option value="beginner">⬜ 初心者（接待GM / 手取り足取り30分限定）</option><option value="easy">🟩 簡単（やさしいGM / 判定が通りやすい）</option><option value="normal">🟦 普通（標準GM / 一般的なバランス）</option><option value="hard">🟧 難しい（厳しめGM / ヒント少なめ）</option><option value="pro">🟥 プロ（本格派GM / ロストの危険あり）</option><option value="oni">🟪 鬼（容赦ないGM / 死ぬ覚悟で挑むモード）</option></select></div>
-              <div><label className="text-xs text-slate-400 block mb-1">公開設定</label><div className="flex gap-4"><label className="flex items-center gap-2 text-sm"><input type="radio" checked={roomConfigModal.privacy === 'open'} onChange={() => setRoomConfigModal({...roomConfigModal, privacy: 'open'})} /> 🔓 オープン（誰でも観戦可能）</label><label className="flex items-center gap-2 text-sm"><input type="radio" checked={roomConfigModal.privacy === 'secret'} onChange={() => setRoomConfigModal({...roomConfigModal, privacy: 'secret'})} /> 🔒 シークレット（IDを知る人のみ）</label></div></div>
-              <div><label className="text-xs text-slate-400 block mb-1">アイテム表示機能</label><select value={roomConfigModal.itemVisibility || "none"} onChange={(e) => setRoomConfigModal({...roomConfigModal, itemVisibility: e.target.value})} className="w-full bg-slate-900 border border-slate-700 rounded p-2 text-sm text-white"><option value="none">非表示</option><option value="self">自分の所持品のみ表示</option><option value="all">パーティー全員の所持品を表示</option></select></div>
-              <div><label className="text-xs text-slate-400 block mb-1 mt-2">ひとことメッセージ</label><input type="text" value={roomConfigModal.message || ""} onChange={(e) => setRoomConfigModal({...roomConfigModal, message: e.target.value})} placeholder="例：初心者歓迎！ゆっくり遊びましょう" className="w-full bg-slate-900 border border-slate-700 rounded p-2 text-sm text-white" /></div>
+              <div>
+                <label className="text-xs text-slate-400 block mb-1">使用するキャラクター <span className="text-red-400">*</span></label>
+                <select 
+                  value={roomConfigModal.charId || ""} 
+                  onChange={(e) => setRoomConfigModal({...roomConfigModal, charId: e.target.value})} 
+                  className="w-full bg-slate-900 border border-slate-700 rounded p-2 text-sm text-white"
+                >
+                  <option value="" disabled>選択してください</option>
+                  {roomConfigModal.scenario?.presetCharacters?.map((c: any) => (
+                    <option key={c.id} value={c.id}>{c.name} ({c.job})</option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label className="text-xs text-slate-400 block mb-1">ゲームルール（システム）</label>
+                <select 
+                  value={roomConfigModal.rule || "coc_jp"} 
+                  onChange={(e) => setRoomConfigModal({...roomConfigModal, rule: e.target.value})} 
+                  className="w-full bg-slate-900 border border-slate-700 rounded p-2 text-sm text-white"
+                >
+                  <option value="coc_jp">🟩 日本クトゥルフ風（ドラマ・探索重視 / 1d100）</option>
+                  <option value="coc_en">🟦 海外クトゥルフ風（シビア・ホラー / 1d100）</option>
+                  <option value="dnd">🟥 D&D風（ヒロイック・ファンタジー / 1d20）</option>
+                  <option value="sw25">🟨 ソードワールド風（明るい冒険 / 2d6）</option>
+                  <option value="storytelling">🟪 ストーリーテリング（文学的・演出重視 / 1d6）</option>
+                </select>
+              </div>
+              <div>
+                <label className="text-xs text-slate-400 block mb-1">難易度</label>
+                <select 
+                  value={roomConfigModal.difficulty || "normal"} 
+                  onChange={(e) => setRoomConfigModal({...roomConfigModal, difficulty: e.target.value})} 
+                  className="w-full bg-slate-900 border border-slate-700 rounded p-2 text-sm text-white"
+                >
+                  <option value="beginner">⬜ 初心者（接待GM / 手取り足取り30分限定）</option>
+                  <option value="easy">🟩 簡単（やさしいGM / 判定が通りやすい）</option>
+                  <option value="normal">🟦 普通（標準GM / 一般的なバランス）</option>
+                  <option value="hard">🟧 難しい（厳しめGM / ヒント少なめ）</option>
+                  <option value="pro">🟥 プロ（本格派GM / ロストの危険あり）</option>
+                  <option value="oni">🟪 鬼（容赦ないGM / 死ぬ覚悟で挑むモード）</option>
+                </select>
+              </div>
+              <div>
+                <label className="text-xs text-slate-400 block mb-1">公開設定</label>
+                <div className="flex gap-4">
+                  <label className="flex items-center gap-2 text-sm">
+                    <input 
+                      type="radio" 
+                      checked={roomConfigModal.privacy === 'open'} 
+                      onChange={() => setRoomConfigModal({...roomConfigModal, privacy: 'open'})} 
+                    /> 🔓 オープン（誰でも観戦可能）
+                  </label>
+                  <label className="flex items-center gap-2 text-sm">
+                    <input 
+                      type="radio" 
+                      checked={roomConfigModal.privacy === 'secret'} 
+                      onChange={() => setRoomConfigModal({...roomConfigModal, privacy: 'secret'})} 
+                    /> 🔒 シークレット（IDを知る人のみ）
+                  </label>
+                </div>
+              </div>
+              <div>
+                <label className="text-xs text-slate-400 block mb-1">アイテム表示機能</label>
+                <select 
+                  value={roomConfigModal.itemVisibility || "none"} 
+                  onChange={(e) => setRoomConfigModal({...roomConfigModal, itemVisibility: e.target.value})} 
+                  className="w-full bg-slate-900 border border-slate-700 rounded p-2 text-sm text-white"
+                >
+                  <option value="none">非表示</option>
+                  <option value="self">自分の所持品のみ表示</option>
+                  <option value="all">パーティー全員の所持品を表示</option>
+                </select>
+              </div>
+              <div>
+                <label className="text-xs text-slate-400 block mb-1 mt-2">ひとことメッセージ</label>
+                <input 
+                  type="text" 
+                  value={roomConfigModal.message || ""} 
+                  onChange={(e) => setRoomConfigModal({...roomConfigModal, message: e.target.value})} 
+                  placeholder="例：初心者歓迎！ゆっくり遊びましょう" 
+                  className="w-full bg-slate-900 border border-slate-700 rounded p-2 text-sm text-white" 
+                />
+              </div>
             </div>
-            <div className="flex gap-4"><button onClick={() => setRoomConfigModal(null)} className="flex-1 bg-slate-700 hover:bg-slate-600 py-3 rounded text-sm font-bold">キャンセル</button><button onClick={executeCreateRoom} disabled={!roomConfigModal.charId} className="flex-1 bg-emerald-600 hover:bg-emerald-500 disabled:bg-slate-600 py-3 rounded text-sm font-bold shadow-lg shadow-emerald-900/50">作成して入室</button></div>
+            <div className="flex gap-4">
+              <button onClick={() => setRoomConfigModal(null)} className="flex-1 bg-slate-700 hover:bg-slate-600 py-3 rounded text-sm font-bold">キャンセル</button>
+              <button onClick={executeCreateRoom} disabled={!roomConfigModal.charId} className="flex-1 bg-emerald-600 hover:bg-emerald-500 disabled:bg-slate-600 py-3 rounded text-sm font-bold shadow-lg shadow-emerald-900/50">作成して入室</button>
+            </div>
           </div>
         </div>
       )}
