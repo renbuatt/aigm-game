@@ -57,7 +57,7 @@ export default function Home() {
   const [ratingScenario, setRatingScenario] = useState<number>(5);
   const [ratingGM, setRatingGM] = useState<number>(5);
   const [isMaintenance, setIsMaintenance] = useState(false);
-  const [isTicketSystemEnabled, setIsTicketSystemEnabled] = useState(false); // ★ チケットシステム状態
+  const [isTicketSystemEnabled, setIsTicketSystemEnabled] = useState(false);
   
   const [allUsers, setAllUsers] = useState<UserProfile[]>([]);
   const [myNotifications, setMyNotifications] = useState<Notification[]>([]);
@@ -82,6 +82,8 @@ export default function Home() {
   const [scenarioAppealText, setScenarioAppealText] = useState("");
 
   const [roomConfigModal, setRoomConfigModal] = useState<any>(null);
+  const [novelSettingsModal, setNovelSettingsModal] = useState<any>(null); // ★ 小説化用モーダル
+  
   const [secretRoomIdSearch, setSecretRoomIdSearch] = useState("");
   const [searchedSecretRoom, setSearchedSecretRoom] = useState<Room | null>(null);
 
@@ -117,7 +119,8 @@ export default function Home() {
   const isScenarioEnded = messages.some((m: any) => m.text.includes('[SCENARIO_END]')) || activeRoom?.status === 'finished';
 
   const handleOpenRoomConfig = (scenario: Scenario) => {
-    setRoomConfigModal({ scenario, charId: "", privacy: "open", message: "", difficulty: "normal", rule: "coc_jp", itemVisibility: "all" });
+    // ★ 部屋作成時にAIモデルの初期値として 'flash' をセット
+    setRoomConfigModal({ scenario, charId: "", privacy: "open", message: "", difficulty: "normal", rule: "coc_jp", itemVisibility: "all", aiModel: "flash" });
     setCurrentView("lobby");
   };
 
@@ -286,7 +289,8 @@ export default function Home() {
         is_paused: r.is_paused || false, afk_users: r.afk_users || [], is_trial: r.is_trial || false,
         item_visibility: r.item_visibility || "none", inventories: r.inventories || {},
         current_chapter_index: r.current_chapter_index || 0,
-        spectator_ids: r.spectator_ids || []
+        spectator_ids: r.spectator_ids || [],
+        ai_model: r.ai_model || 'flash' // ★ 追加
       })).filter((r: any) => r.scenario) as Room[];
       setRooms(formattedRooms);
     }
@@ -311,7 +315,6 @@ export default function Home() {
     }
 
     if (data) {
-      // ★ チケットシステムの読み込み追加
       profileData = { 
         id: data.id, 
         handleName: data.handle_name, 
@@ -696,19 +699,46 @@ export default function Home() {
     await callAIGM(extraUserContext, "story");
   };
 
+  // ★ チケット消費・ポイント還元対応
   const executeCreateRoom = async () => {
     if (!currentUser || !roomConfigModal) return;
-    const { scenario, charId, privacy, message, difficulty, rule, itemVisibility } = roomConfigModal;
+    const { scenario, charId, privacy, message, difficulty, rule, itemVisibility, aiModel } = roomConfigModal;
     if (!charId) { alert("キャラクターを選択してください。"); return; }
     
     const isAuthor = scenario.authorId === currentUser.id;
-    if (!isAuthor) {
-      const currentTickets = scenario.purchasedTickets || {};
-      const myTickets = currentTickets[currentUser.id] || 0;
-      if (myTickets <= 0) { alert("プレイチケットがありません。"); return; }
-      const newTickets = { ...currentTickets, [currentUser.id]: myTickets - 1 };
-      const { error: ticketError } = await supabase.from('scenarios').update({ purchased_tickets: newTickets }).eq('id', scenario.id);
-      if (ticketError) { alert("チケットの消費処理に失敗しました。"); return; }
+
+    // ★ チケットシステムの消費処理
+    if (isTicketSystemEnabled) {
+      let requiredTicketKey = '';
+      let currentTickets = 0;
+      let costName = '';
+      
+      if (aiModel === 'flash') { requiredTicketKey = 'tickets_silver'; currentTickets = currentUser.ticketsSilver || 0; costName = 'シルバー'; }
+      if (aiModel === 'pro') { requiredTicketKey = 'tickets_gold'; currentTickets = currentUser.ticketsGold || 0; costName = 'ゴールド'; }
+      if (aiModel === 'claude') { requiredTicketKey = 'tickets_platinum'; currentTickets = currentUser.ticketsPlatinum || 0; costName = 'プラチナ'; }
+
+      if (currentTickets < 1) {
+        alert(`チケットが足りません！\n（${costName}チケットが1枚必要です）\nロビーの「チケット交換・購入」から入手してください。`);
+        return;
+      }
+
+      const { error: tErr } = await supabase.from('profiles').update({ [requiredTicketKey]: currentTickets - 1 }).eq('id', currentUser.id);
+      if (tErr) { alert("チケットの消費処理に失敗しました。"); return; }
+
+      setCurrentUser(prev => prev ? { 
+        ...prev,
+        ticketsSilver: aiModel === 'flash' ? prev.ticketsSilver! - 1 : prev.ticketsSilver,
+        ticketsGold: aiModel === 'pro' ? prev.ticketsGold! - 1 : prev.ticketsGold,
+        ticketsPlatinum: aiModel === 'claude' ? prev.ticketsPlatinum! - 1 : prev.ticketsPlatinum
+      } : null);
+
+      // ★ 公開シナリオをプレイした場合、制作者にポイント還元 (30pt)
+      if (scenario.isPlayableByOthers && !isAuthor) {
+         const { data: authorData } = await supabase.from('profiles').select('points').eq('id', scenario.authorId).single();
+         if (authorData) {
+            await supabase.from('profiles').update({ points: (authorData.points || 0) + 30 }).eq('id', scenario.authorId);
+         }
+      }
     }
 
     const hostChar = scenario.presetCharacters.find((c: any) => c.id === charId);
@@ -722,7 +752,7 @@ export default function Home() {
       scenario_id: scenario.id, host_name: currentUser.handleName, host_id: currentUser.id, status: "recruiting", scenes: initialScenes,
       privacy: privacy, host_message: message, joined_users: { [currentUser.id]: charId }, current_summary: "", difficulty: difficulty, rule: rule,
       is_paused: false, afk_users: [], is_trial: false, item_visibility: itemVisibility, inventories: initialInventories,
-      current_chapter_index: 0
+      current_chapter_index: 0, ai_model: aiModel // ★ 追加
     }).select().single();
     
     if (error) { alert("データベースエラーが発生しました: " + error.message); return; }
@@ -733,7 +763,7 @@ export default function Home() {
       }
 
       setRoomConfigModal(null); await fetchData();
-      const newRoom: Room = { id: data.id, scenario_id: data.scenario_id, scenario: scenario, host_name: data.host_name, host_id: data.host_id, status: data.status, scenes: data.scenes, privacy: data.privacy, host_message: data.host_message, joined_users: data.joined_users, current_summary: "", difficulty: data.difficulty, rule: data.rule, is_paused: false, afk_users: [], is_trial: false, item_visibility: data.item_visibility, inventories: data.inventories, current_chapter_index: 0 };
+      const newRoom: Room = { id: data.id, scenario_id: data.scenario_id, scenario: scenario, host_name: data.host_name, host_id: data.host_id, status: data.status, scenes: data.scenes, privacy: data.privacy, host_message: data.host_message, joined_users: data.joined_users, current_summary: "", difficulty: data.difficulty, rule: data.rule, is_paused: false, afk_users: [], is_trial: false, item_visibility: data.item_visibility, inventories: data.inventories, current_chapter_index: 0, ai_model: data.ai_model };
       await supabase.from('ai_memory').delete().eq('room_id', newRoom.id);
       setActiveRoom(newRoom); setJoinedCharacter(hostChar); setMessages([]); 
       await pushMessage(newRoom.id, { sender: "system", text: `【入室完了】プレイヤー全員の準備が整うまでお待ちください。\n【案内】シークレット設定の場合、画面左上の「共有ID」をコピーして友人に伝えてください。`, type: "system", sceneId: newRoom.scenes?.[0]?.id, channel: "system" });
@@ -746,6 +776,12 @@ export default function Home() {
     const scenario = adModal.scenario;
     setAdModal({ isOpen: false, step: 0, scenario: null, room: null, type: 'trial' });
     
+    // ★ 試遊広告視聴によるポイント還元 (作者へ1pt)
+    if (isTicketSystemEnabled && scenario.authorId) {
+       const { data: authorData } = await supabase.from('profiles').select('points').eq('id', scenario.authorId).single();
+       if (authorData) await supabase.from('profiles').update({ points: (authorData.points || 0) + 1 }).eq('id', scenario.authorId);
+    }
+
     const charId = scenario.presetCharacters[0]?.id;
     if (!charId) { alert("このシナリオにはプリセットキャラクターが設定されていないため、お試しプレイができません。"); return; }
     const hostChar = scenario.presetCharacters[0];
@@ -758,7 +794,7 @@ export default function Home() {
       scenario_id: scenario.id, host_name: currentUser.handleName, host_id: currentUser.id, status: "recruiting", scenes: initialScenes,
       privacy: 'secret', host_message: "お試しプレイ", joined_users: { [currentUser.id]: charId }, current_summary: "", difficulty: "normal", rule: "coc_jp",
       is_paused: false, afk_users: [], is_trial: true, item_visibility: "none", inventories: initialInventories,
-      current_chapter_index: 0
+      current_chapter_index: 0, ai_model: 'flash' // 体験版は基本Flash
     }).select().single();
     
     if (error) { alert("データベースエラーが発生しました: " + error.message); return; }
@@ -769,7 +805,7 @@ export default function Home() {
       }
 
       await fetchData();
-      const newRoom: Room = { id: data.id, scenario_id: data.scenario_id, scenario: scenario, host_name: data.host_name, host_id: data.host_id, status: data.status, scenes: data.scenes, privacy: data.privacy, host_message: data.host_message, joined_users: data.joined_users, current_summary: "", difficulty: data.difficulty, rule: data.rule, is_paused: false, afk_users: [], is_trial: true, item_visibility: "none", inventories: data.inventories, current_chapter_index: 0 };
+      const newRoom: Room = { id: data.id, scenario_id: data.scenario_id, scenario: scenario, host_name: data.host_name, host_id: data.host_id, status: data.status, scenes: data.scenes, privacy: data.privacy, host_message: data.host_message, joined_users: data.joined_users, current_summary: "", difficulty: data.difficulty, rule: data.rule, is_paused: false, afk_users: [], is_trial: true, item_visibility: "none", inventories: data.inventories, current_chapter_index: 0, ai_model: data.ai_model };
       await supabase.from('ai_memory').delete().eq('room_id', newRoom.id);
       setActiveRoom(newRoom); setJoinedCharacter(hostChar); setMessages([]); 
       const aiChars = scenario.presetCharacters.filter((c: any) => c.id !== charId); setAiPlayersList(aiChars);
@@ -804,6 +840,18 @@ export default function Home() {
   const spectateRoom = async (room: Room) => {
     if (!currentUser) return;
     
+    // ★ 観戦広告視聴によるポイント還元 (ホストと作者へ)
+    if (isTicketSystemEnabled) {
+       const pointsMap: Record<string, number> = {};
+       pointsMap[room.host_id] = (pointsMap[room.host_id] || 0) + 1;
+       if (room.scenario?.authorId) pointsMap[room.scenario.authorId] = (pointsMap[room.scenario.authorId] || 0) + 1;
+
+       for (const uid of Object.keys(pointsMap)) {
+          const { data } = await supabase.from('profiles').select('points').eq('id', uid).single();
+          if (data) await supabase.from('profiles').update({ points: (data.points || 0) + pointsMap[uid] }).eq('id', uid);
+       }
+    }
+
     const newSpectators = [...(room.spectator_ids || []), currentUser.id];
     await supabase.from('rooms').update({ spectator_ids: newSpectators }).eq('id', room.id);
     
@@ -971,7 +1019,14 @@ export default function Home() {
     }
   };
 
-  const executeExport = async (title: string, sourceMessages: Message[], type: 'chat' | 'summary' | 'novel', options?: { archiveId?: string, modelName?: string, viewPoint?: 'third' | 'first', myCharacterName?: string, scenarioImage?: string, createdAt?: string, coPlayers?: string[], characters?: Character[] }) => {
+  const executeExport = async (title: string, sourceMessages: Message[], type: 'chat' | 'summary' | 'novel', options?: { archiveId?: string, modelName?: string, viewPoint?: 'third' | 'first', myCharacterName?: string, scenarioImage?: string, createdAt?: string, coPlayers?: string[], characters?: Character[], scenarioId?: string, authorId?: string, aiModelConfirmed?: boolean, aiModel?: string }) => {
+    
+    // ★ 小説作成時のみ、AIモデル選択モーダルを開く
+    if (type === 'novel' && !options?.aiModelConfirmed) {
+      setNovelSettingsModal({ title, sourceMessages, type, options, aiModel: 'flash' });
+      return;
+    }
+    
     const printWindow = window.open('', '_blank');
     if (!printWindow) { alert("ポップアップがブロックされました。ブラウザの設定でポップアップを許可してください。"); return; }
     printWindow.document.write('<div style="padding: 20px; font-family: sans-serif; color: #333;">生成中...しばらくお待ちください。（AI執筆中の場合は数十秒かかることがあります）</div>');
@@ -1119,7 +1174,8 @@ export default function Home() {
           ].join('\n');
       
       try {
-        const generatedText = await generateAITextWithPrompt(prompt + "\n\n【チャットログ】\n" + logTextForAI);
+        const aiModelToUse = options?.aiModel || 'flash'; // 選択されたモデルを適用
+        const generatedText = await generateAITextWithPrompt(prompt + "\n\n【チャットログ】\n" + logTextForAI, aiModelToUse);
         
         let introMap: Record<string, string> = {};
         let finalNovelText = generatedText;
@@ -1172,6 +1228,38 @@ export default function Home() {
     printWindow.document.close();
   };
 
+  // ★ 小説化のチケット消費・処理開始ハンドラー
+  const handleStartNovel = async () => {
+    if (!novelSettingsModal || !currentUser) return;
+    const { title, sourceMessages, type, options, aiModel } = novelSettingsModal;
+    
+    let cost = 3; // flash
+    if (aiModel === 'pro') cost = 5;
+    if (aiModel === 'claude') cost = 15;
+
+    if (isTicketSystemEnabled) {
+       if ((currentUser.ticketsNormal || 0) < cost) {
+          alert(`課金チケットが足りません！（必要: ${cost}枚 / 所持: ${currentUser.ticketsNormal || 0}枚）\nロビーの「チケット交換・購入」から入手してください。`);
+          return;
+       }
+       if (!confirm(`小説化を開始します。\n課金チケットを ${cost} 枚消費しますか？`)) return;
+
+       const { error } = await supabase.from('profiles').update({ tickets_normal: currentUser.ticketsNormal! - cost }).eq('id', currentUser.id);
+       if (error) { alert("チケットの消費に失敗しました。"); return; }
+       
+       setCurrentUser(prev => prev ? { ...prev, ticketsNormal: prev.ticketsNormal! - cost } : null);
+
+       // 作者へのポイント還元 (30pt)
+       if (options?.authorId && options.authorId !== currentUser.id) {
+          const { data: authorData } = await supabase.from('profiles').select('points').eq('id', options.authorId).single();
+          if (authorData) await supabase.from('profiles').update({ points: (authorData.points || 0) + 30 }).eq('id', options.authorId);
+       }
+    }
+
+    setNovelSettingsModal(null);
+    executeExport(title, sourceMessages, type, { ...options, aiModelConfirmed: true, aiModel });
+  };
+
   const exportToPDF = async (type: 'chat' | 'summary' | 'novel', viewPoint: 'third' | 'first' = 'third') => {
     if (!activeRoom) return;
     const endIndex = messages.findIndex((m: any) => m.text.includes('[SCENARIO_END]'));
@@ -1199,13 +1287,36 @@ export default function Home() {
         coPlayers: Object.values(profileMap).filter((name: any) => name !== currentUser?.handleName),
         characters: charactersWithPlayers,
         viewPoint: viewPoint,
-        myCharacterName: joinedCharacter?.name
+        myCharacterName: joinedCharacter?.name,
+        scenarioId: activeRoom.scenario?.id,     // 追加
+        authorId: activeRoom.scenario?.authorId  // 追加
       }
     );
   };
 
   const saveToArchive = async (silent: boolean = false) => {
     if (!currentUser || !activeRoom || !joinedCharacter) return;
+    const isOwn = activeRoom.scenario?.authorId === currentUser.id;
+
+    // ★ 書庫保存時のチケット消費
+    if (isTicketSystemEnabled && !isOwn) {
+      if ((currentUser.ticketsNormal || 0) < 1) {
+        if(!silent) alert("課金チケットが足りません！（必要: 1枚）\n※自身の作成したシナリオは無料で保存できます。");
+        return;
+      }
+      if(!silent && !confirm("書庫への保存には 課金チケット が 1枚 必要です。保存しますか？")) return;
+      
+      const { error: tErr } = await supabase.from('profiles').update({ tickets_normal: currentUser.ticketsNormal! - 1 }).eq('id', currentUser.id);
+      if (tErr) { if(!silent) alert("チケットの消費に失敗しました。"); return; }
+      setCurrentUser(prev => prev ? { ...prev, ticketsNormal: prev.ticketsNormal! - 1 } : null);
+
+      // 作者へのポイント還元 (30pt)
+      if (activeRoom.scenario?.authorId) {
+         const { data: authorData } = await supabase.from('profiles').select('points').eq('id', activeRoom.scenario.authorId).single();
+         if (authorData) await supabase.from('profiles').update({ points: (authorData.points || 0) + 30 }).eq('id', activeRoom.scenario.authorId);
+      }
+    }
+
     const endIndex = messages.findIndex((m: any) => m.text.includes('[SCENARIO_END]'));
     const baseMessages = endIndex !== -1 ? messages.slice(0, endIndex + 1) : messages;
 
@@ -1418,7 +1529,9 @@ export default function Home() {
       const roleInstruction = roleInstructionLines.join('\n');
       const sysPrompt = ["あなたはTRPGの優秀なAIシステムです。", `タイトル: ${activeRoom.scenario?.title}`, `世界観: ${activeRoom.scenario?.setting}`, `プロット: ${scenarioPlotText}`, "", "【これまでのあらすじ】", currentSummary || "まだセッションは始まったばかりだ。", "", `【人間PL】名前: ${joinedCharacter.name} (${joinedCharacter.genderOrRace || "性別不詳"}) / ステータス: HP:${joinedCharacter.hp} SAN:${joinedCharacter.san}% STR:${joinedCharacter.str} DEX:${joinedCharacter.dex} INT:${joinedCharacter.int} CON:${joinedCharacter.con}`, inventoryText, "【AI相棒】", aiPlayersText, "", ruleSpec, gmStyle, "", "【共通ルール】", difficultyInstruction, "HP・SAN値が減少・変動した場合は必ず出力の最後に [STATUS_UPDATE: キャラ名, 最新HP, 最新SAN] を出力してください。", "", roleInstruction].join('\n');
 
-      const aiText = await generateAIResponse(sysPrompt, history);
+      // ★ GM呼び出し時に設定したAIモデルを使用
+      const aiText = await generateAIResponse(sysPrompt, history, (activeRoom as any).ai_model || 'flash');
+      
       const splitMatch = aiText.match(/\[SPLIT_PROPOSAL:\s*(.+?)\]/);
       if (splitMatch) { setProposedTeams([]); generateSplitProposal(); }
 
@@ -1707,6 +1820,33 @@ export default function Home() {
         </div>
       )}
 
+      {/* ★ 小説作成時のチケット消費モーダル */}
+      {novelSettingsModal && (
+        <div className="fixed inset-0 bg-black/80 z-[80] flex items-center justify-center p-4">
+          <div className="bg-slate-800 border border-emerald-700/50 rounded-xl p-6 w-full max-w-md shadow-2xl">
+            <h3 className="text-xl font-bold text-emerald-400 mb-4">📖 小説の執筆設定</h3>
+            <div className="space-y-4 mb-6">
+              <div>
+                <label className="text-xs text-slate-400 block mb-1">使用するAIモデル {isTicketSystemEnabled && <span className="text-amber-400 text-[10px]">※課金チケット消費</span>}</label>
+                <select 
+                  value={novelSettingsModal.aiModel} 
+                  onChange={(e) => setNovelSettingsModal({...novelSettingsModal, aiModel: e.target.value})} 
+                  className="w-full bg-slate-900 border border-slate-700 rounded p-2 text-sm text-white"
+                >
+                  <option value="flash">🟢 Gemini Flash {isTicketSystemEnabled ? "(消費: 課金チケット 3枚)" : "(無料)"}</option>
+                  <option value="pro">🟡 Gemini Pro {isTicketSystemEnabled ? "(消費: 課金チケット 5枚)" : "(無料)"}</option>
+                  <option value="claude">🟣 Claude 3.5 Sonnet {isTicketSystemEnabled ? "(消費: 課金チケット 15枚)" : "(無料)"}</option>
+                </select>
+              </div>
+            </div>
+            <div className="flex gap-4">
+              <button onClick={() => setNovelSettingsModal(null)} className="flex-1 bg-slate-700 hover:bg-slate-600 py-3 rounded text-sm font-bold">キャンセル</button>
+              <button onClick={handleStartNovel} className="flex-1 bg-emerald-600 hover:bg-emerald-500 py-3 rounded text-sm font-bold shadow-lg">執筆開始</button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {reportTarget && (
         <div className="fixed inset-0 bg-black/80 z-[60] flex items-center justify-center p-4">
           <div className="bg-slate-800 border border-red-700/50 rounded-xl p-6 w-full max-w-lg shadow-2xl">
@@ -1867,6 +2007,21 @@ export default function Home() {
                   ))}
                 </select>
               </div>
+
+              {/* ★ AIモデル（GM）の選択機能 */}
+              <div>
+                <label className="text-xs text-slate-400 block mb-1">AIモデル (GM) {isTicketSystemEnabled && <span className="text-amber-400 text-[10px]">※チケット消費</span>}</label>
+                <select 
+                  value={roomConfigModal.aiModel || "flash"} 
+                  onChange={(e) => setRoomConfigModal({...roomConfigModal, aiModel: e.target.value})} 
+                  className="w-full bg-slate-900 border border-slate-700 rounded p-2 text-sm text-white"
+                >
+                  <option value="flash">🟢 Gemini Flash {isTicketSystemEnabled ? "(シルバー 1枚)" : "(無料)"}</option>
+                  <option value="pro">🟡 Gemini Pro {isTicketSystemEnabled ? "(ゴールド 1枚)" : "(無料)"}</option>
+                  <option value="claude">🟣 Claude 3.5 Sonnet {isTicketSystemEnabled ? "(プラチナ 1枚)" : "(無料)"}</option>
+                </select>
+              </div>
+
               <div>
                 <label className="text-xs text-slate-400 block mb-1">ゲームルール（システム）</label>
                 <select 
