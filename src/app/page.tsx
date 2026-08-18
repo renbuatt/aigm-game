@@ -64,7 +64,7 @@ export default function Home() {
 
   const [banTargetUser, setBanTargetUser] = useState<UserProfile | null>(null);
   const [banReason, setBanReason] = useState("");
-  const [banAppeals, setBanApp appeals] = useState<BanAppeal[]>([]);
+  const [banAppeals, setBanAppeals] = useState<BanAppeal[]>([]);
   const [appealText, setAppealText] = useState("");
 
   const [userSearchQuery, setUserSearchQuery] = useState("");
@@ -942,7 +942,7 @@ export default function Home() {
     }
   };
 
-  const executeExport = async (title: string, sourceMessages: Message[], type: 'chat' | 'summary' | 'novel', options?: any) => {
+  const executeExport = async (title: string, sourceMessages: Message[], type: 'chat' | 'summary' | 'novel', options?: { archiveId?: string, modelName?: string, viewPoint?: 'third' | 'first', myCharacterName?: string, scenarioImage?: string, createdAt?: string, coPlayers?: string[], characters?: Character[] }) => {
     const printWindow = window.open('', '_blank');
     if (!printWindow) { alert("ポップアップがブロックされました。ブラウザの設定でポップアップを許可してください。"); return; }
     printWindow.document.write('<div style="padding: 20px; font-family: sans-serif; color: #333;">生成中...しばらくお待ちください。（AI執筆中の場合は数十秒かかることがあります）</div>');
@@ -1424,7 +1424,6 @@ export default function Home() {
          isChapterCleared = true;
       }
 
-      // ★ 体験版でAIが終了タグを忘れた場合のフォールバック処理
       if (activeRoom.is_trial && (cleanAiText.includes('本編でお楽しみください') || cleanAiText.includes('本編でお待ち')) && !cleanAiText.includes('[SCENARIO_END]')) {
         cleanAiText += '\n\n[SCENARIO_END]';
       }
@@ -1475,7 +1474,7 @@ export default function Home() {
           blockUser={blockUser}
           unblockUser={unblockUser}
           activeRooms={rooms}
-          executeSpectateWithAd={spectateRoom}
+          executeSpectateWithAd={(room: any) => setAdModal({ isOpen: true, step: 1, scenario: null, room: room, type: 'spectate' })}
           openRoomConfigModal={handleOpenRoomConfig}
         />
       )}
