@@ -41,6 +41,9 @@ export default function LobbyView({
   const [lobbyTab, setLobbyTab] = useState<'rooms' | 'scenarios' | 'trials' | 'ranking'>('rooms');
   const [rankingType, setRankingType] = useState<'played' | 'viewed' | 'creator'>('played');
   const [creatorProfiles, setCreatorProfiles] = useState<Record<string, {name: string, avatar: string}>>({});
+  
+  // ★ チケット交換モーダル用のステート
+  const [showTicketModal, setShowTicketModal] = useState(false);
 
   const trialScenarios = availableScenarios.filter(s => s.isTrialOk);
   const playableScenarios = availableScenarios.filter(s => s.isPlayableByOthers);
@@ -58,7 +61,6 @@ export default function LobbyView({
   useEffect(() => {
     if (lobbyTab === 'ranking' && rankingType === 'creator') {
       const fetchProfiles = async () => {
-        // ★ 修正: 公開されているシナリオの作者のみを取得
         const authorIds = Array.from(new Set(playableScenarios.map(s => s.authorId).filter(Boolean)));
         if (authorIds.length === 0) return;
         const { data } = await supabase.from('profiles').select('id, handle_name, avatar_url').in('id', authorIds as string[]);
@@ -79,8 +81,32 @@ export default function LobbyView({
     return <span className="text-xl font-bold text-slate-400">{idx + 1}</span>;
   };
 
+  // ★ チケット交換処理
+  const handleExchange = async (ticketType: 'silver' | 'gold' | 'platinum', cost: number) => {
+    if ((currentUser.points || 0) < cost) {
+      alert("ポイントが足りません！");
+      return;
+    }
+    
+    if (!confirm(`${cost}ptを消費してチケットを交換しますか？`)) return;
+
+    let updates: any = { points: (currentUser.points || 0) - cost };
+    if (ticketType === 'silver') updates.tickets_silver = (currentUser.ticketsSilver || 0) + 1;
+    if (ticketType === 'gold') updates.tickets_gold = (currentUser.ticketsGold || 0) + 1;
+    if (ticketType === 'platinum') updates.tickets_platinum = (currentUser.ticketsPlatinum || 0) + 1;
+
+    const { error } = await supabase.from('profiles').update(updates).eq('id', currentUser.id);
+    
+    if (error) {
+      alert("エラーが発生しました: " + error.message);
+    } else {
+      alert("チケットの交換が完了しました！");
+      window.location.reload(); // 手っ取り早くUIに反映
+    }
+  };
+
   return (
-    <div className="flex-1 flex flex-col p-4 md:p-6 max-w-7xl mx-auto w-full min-h-0 overflow-y-auto custom-scrollbar">
+    <div className="flex-1 flex flex-col p-4 md:p-6 max-w-7xl mx-auto w-full min-h-0 overflow-y-auto custom-scrollbar relative">
       <header className="mb-4 flex flex-col md:flex-row justify-between items-start md:items-end border-b border-slate-700 pb-4 gap-4">
         <div><h1 className="text-3xl font-extrabold text-emerald-400 mb-1">AI GM MORPG Lobby</h1></div>
         <div className="flex flex-wrap items-center gap-4">
@@ -265,7 +291,6 @@ export default function LobbyView({
               </div>
 
               <div className="flex-1 overflow-y-auto space-y-3 pr-2 custom-scrollbar">
-                {/* ★ 修正: playableScenarios（公開シナリオ）のみでランキングを作成 */}
                 {rankingType === 'played' && playableScenarios.slice().sort((a,b) => (b.playCount || 0) - (a.playCount || 0)).slice(0, 10).map((s, idx) => (
                   <div key={s.id} className="bg-slate-800 border border-slate-700 p-4 rounded-xl flex items-center gap-4">
                     <div className="w-10 flex justify-center items-center">{getRankIcon(idx)}</div>
@@ -278,7 +303,6 @@ export default function LobbyView({
                   </div>
                 ))}
 
-                {/* ★ 修正: playableScenarios（公開シナリオ）のみでランキングを作成 */}
                 {rankingType === 'viewed' && playableScenarios.slice().sort((a,b) => (b.viewCount || 0) - (a.viewCount || 0)).slice(0, 10).map((s, idx) => (
                   <div key={s.id} className="bg-slate-800 border border-slate-700 p-4 rounded-xl flex items-center gap-4">
                     <div className="w-10 flex justify-center items-center">{getRankIcon(idx)}</div>
@@ -291,7 +315,6 @@ export default function LobbyView({
                   </div>
                 ))}
 
-                {/* ★ 修正: playableScenarios（公開シナリオ）の作者のみをランキングの対象にする */}
                 {rankingType === 'creator' && (() => {
                   const creatorMap: Record<string, {id: string, pt: number, play: number, view: number}> = {};
                   playableScenarios.forEach(s => {
@@ -329,13 +352,14 @@ export default function LobbyView({
         </div>
 
         <div className="space-y-6">
-          <div className="bg-slate-800 border border-slate-700 rounded-xl p-4 shadow-lg">
+          <div className="bg-slate-800 border border-slate-700 rounded-xl p-4 shadow-lg flex flex-col h-full">
             <div className="flex justify-between items-center mb-3 border-b border-slate-700 pb-2">
               <h2 className="text-sm font-bold text-blue-400">👤 プレイヤー情報</h2>
               {currentUser.isAdmin && (
                 <button onClick={async () => { await fetchAdminData(); setCurrentView("admin"); }} className="text-[10px] bg-red-900/50 hover:bg-red-800 text-red-300 px-3 py-1 rounded font-bold border border-red-700/50 transition-colors">⚙️ 管理画面</button>
               )}
             </div>
+            
             <div 
               onClick={() => openUserProfile(currentUser.id)} 
               className="flex gap-4 items-center p-2 rounded-lg cursor-pointer hover:bg-slate-700 transition-colors"
@@ -345,6 +369,35 @@ export default function LobbyView({
                 <p className="text-lg font-bold text-white flex items-center gap-1">{currentUser.handleName}</p>
                 <p className="text-[10px] text-slate-500 mt-1">ID: {currentUser.id}</p>
               </div>
+            </div>
+
+            {/* ★ ここにチケット・ポイント情報を追加 */}
+            <div className="mt-3 pt-3 border-t border-slate-700/50 flex flex-col gap-2">
+               <div className="flex justify-between items-center px-1">
+                  <span className="text-xs text-slate-400">所持ポイント</span>
+                  <span className="text-sm font-bold text-amber-400">{currentUser.points || 0} pt</span>
+               </div>
+               <div className="flex justify-between items-center px-1">
+                  <span className="text-xs text-slate-400">課金チケット</span>
+                  <span className="text-sm font-bold text-white">{currentUser.ticketsNormal || 0} 枚</span>
+               </div>
+               <div className="grid grid-cols-3 gap-2 mt-1">
+                  <div className="bg-slate-900 border border-slate-700 rounded p-1.5 text-center shadow-inner">
+                     <span className="block text-[8px] text-slate-400">シルバー</span>
+                     <span className="block text-xs font-bold text-slate-300">{currentUser.ticketsSilver || 0}</span>
+                  </div>
+                  <div className="bg-amber-900/20 border border-amber-900/50 rounded p-1.5 text-center shadow-inner">
+                     <span className="block text-[8px] text-amber-500">ゴールド</span>
+                     <span className="block text-xs font-bold text-amber-400">{currentUser.ticketsGold || 0}</span>
+                  </div>
+                  <div className="bg-indigo-900/20 border border-indigo-900/50 rounded p-1.5 text-center shadow-inner">
+                     <span className="block text-[8px] text-indigo-400">プラチナ</span>
+                     <span className="block text-xs font-bold text-indigo-300">{currentUser.ticketsPlatinum || 0}</span>
+                  </div>
+               </div>
+               <button onClick={() => setShowTicketModal(true)} className="w-full mt-2 bg-slate-700 hover:bg-slate-600 text-white text-xs py-2.5 rounded font-bold transition-colors shadow">
+                  🎟️ チケット交換・購入
+               </button>
             </div>
           </div>
           
@@ -399,6 +452,70 @@ export default function LobbyView({
         <a href="/tokushoho" target="_blank" className="hover:text-white transition-colors">特定商取引法に基づく表記</a>
         <span className="ml-2">&copy; {new Date().getFullYear()} 五輪警備保障株式会社</span>
       </footer>
+
+      {/* ★ チケット交換モーダル */}
+      {showTicketModal && (
+        <div className="fixed inset-0 bg-black/80 z-[60] flex items-center justify-center p-4">
+          <div className="bg-slate-800 border border-slate-700 rounded-xl p-6 w-full max-w-md shadow-2xl">
+            <div className="flex justify-between items-center mb-4 border-b border-slate-700 pb-3">
+              <h3 className="text-lg font-bold text-amber-400">🎟️ チケット交換・購入</h3>
+              <button onClick={() => setShowTicketModal(false)} className="text-2xl text-slate-400 hover:text-white">×</button>
+            </div>
+            
+            <div className="bg-slate-900 border border-slate-700 rounded-lg p-4 mb-5 flex justify-between items-center shadow-inner">
+               <span className="text-sm text-slate-300">現在の所持ポイント</span>
+               <span className="text-xl font-bold text-amber-400">{currentUser.points || 0} pt</span>
+            </div>
+
+            <div className="space-y-3 max-h-[50vh] overflow-y-auto pr-2 custom-scrollbar">
+               {/* 課金チケット */}
+               <div className="bg-slate-700/30 border border-slate-600 p-4 rounded-lg flex justify-between items-center">
+                  <div>
+                    <h4 className="text-sm font-bold text-white">課金チケット (1枚)</h4>
+                    <p className="text-[10px] text-slate-400 mt-1">120円 (セッション保存等)</p>
+                  </div>
+                  <button onClick={() => alert("※現在は決済システム準備中です。")} className="bg-emerald-600 hover:bg-emerald-500 text-white text-xs px-4 py-2 rounded font-bold shadow">
+                     購入する
+                  </button>
+               </div>
+
+               {/* シルバー */}
+               <div className="bg-slate-700/30 border border-slate-600 p-4 rounded-lg flex justify-between items-center">
+                  <div>
+                    <h4 className="text-sm font-bold text-slate-300">シルバーチケット</h4>
+                    <p className="text-[10px] text-slate-400 mt-1">Flash専用 / 課金3枚相当</p>
+                  </div>
+                  <button onClick={() => handleExchange('silver', 50)} className="bg-amber-600 hover:bg-amber-500 text-white text-xs px-4 py-2 rounded font-bold shadow">
+                     50 pt で交換
+                  </button>
+               </div>
+
+               {/* ゴールド */}
+               <div className="bg-amber-900/10 border border-amber-700/50 p-4 rounded-lg flex justify-between items-center">
+                  <div>
+                    <h4 className="text-sm font-bold text-amber-400">ゴールドチケット</h4>
+                    <p className="text-[10px] text-amber-500/70 mt-1">Pro専用 / 課金5枚相当</p>
+                  </div>
+                  <button onClick={() => handleExchange('gold', 250)} className="bg-amber-600 hover:bg-amber-500 text-white text-xs px-4 py-2 rounded font-bold shadow">
+                     250 pt で交換
+                  </button>
+               </div>
+
+               {/* プラチナ */}
+               <div className="bg-indigo-900/10 border border-indigo-700/50 p-4 rounded-lg flex justify-between items-center">
+                  <div>
+                    <h4 className="text-sm font-bold text-indigo-300">プラチナチケット</h4>
+                    <p className="text-[10px] text-indigo-400/70 mt-1">Claude専用 / 課金15枚相当</p>
+                  </div>
+                  <button onClick={() => handleExchange('platinum', 800)} className="bg-amber-600 hover:bg-amber-500 text-white text-xs px-4 py-2 rounded font-bold shadow">
+                     800 pt で交換
+                  </button>
+               </div>
+            </div>
+          </div>
+        </div>
+      )}
+
     </div>
   );
 }

@@ -20,6 +20,11 @@ export type UserProfile = {
   email: string;
   friendIds?: string[];
   blockedUserIds?: string[];
+  points?: number;            // ★ 追加
+  ticketsNormal?: number;     // ★ 追加
+  ticketsSilver?: number;     // ★ 追加
+  ticketsGold?: number;       // ★ 追加
+  ticketsPlatinum?: number;   // ★ 追加
 };
 
 export type Character = {

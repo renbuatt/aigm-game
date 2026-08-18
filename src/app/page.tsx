@@ -56,10 +56,8 @@ export default function Home() {
 
   const [ratingScenario, setRatingScenario] = useState<number>(5);
   const [ratingGM, setRatingGM] = useState<number>(5);
-  
-  // ★ システム設定ステート
   const [isMaintenance, setIsMaintenance] = useState(false);
-  const [isTicketSystemEnabled, setIsTicketSystemEnabled] = useState(false);
+  const [isTicketSystemEnabled, setIsTicketSystemEnabled] = useState(false); // ★ チケットシステム状態
   
   const [allUsers, setAllUsers] = useState<UserProfile[]>([]);
   const [myNotifications, setMyNotifications] = useState<Notification[]>([]);
@@ -313,7 +311,30 @@ export default function Home() {
     }
 
     if (data) {
-      profileData = { id: data.id, handleName: data.handle_name, fullName: data.full_name, address: data.address, phone: data.phone, avatarUrl: data.avatar_url, bio: data.bio, discordId: data.discord_id, ratingSum: data.rating_sum || 0, ratingCount: data.rating_count || 0, isAdmin: data.is_admin || false, isTester: data.is_tester || false, isBanned: data.is_banned || false, email: data.email, friendIds: data.friend_ids || [], blockedUserIds: data.blocked_user_ids || [] };
+      // ★ チケットシステムの読み込み追加
+      profileData = { 
+        id: data.id, 
+        handleName: data.handle_name, 
+        fullName: data.full_name, 
+        address: data.address, 
+        phone: data.phone, 
+        avatarUrl: data.avatar_url, 
+        bio: data.bio, 
+        discordId: data.discord_id, 
+        ratingSum: data.rating_sum || 0, 
+        ratingCount: data.rating_count || 0, 
+        isAdmin: data.is_admin || false, 
+        isTester: data.is_tester || false, 
+        isBanned: data.is_banned || false, 
+        email: data.email, 
+        friendIds: data.friend_ids || [], 
+        blockedUserIds: data.blocked_user_ids || [],
+        points: data.points || 0,
+        ticketsNormal: data.tickets_normal || 0,
+        ticketsSilver: data.tickets_silver || 0,
+        ticketsGold: data.tickets_gold || 0,
+        ticketsPlatinum: data.tickets_platinum || 0
+      };
       if (data.email !== emailStr) await supabase.from('profiles').update({ email: emailStr }).eq('id', userId);
     } 
 
@@ -541,18 +562,11 @@ export default function Home() {
   };
 
   const toggleMaintenance = async () => { const newStatus = !isMaintenance; await supabase.from('app_settings').update({ is_maintenance: newStatus }).eq('id', 1); setIsMaintenance(newStatus); alert(`メンテナンスモードを ${newStatus ? "ON" : "OFF"} にしました。`); };
+  const toggleTicketSystem = async () => { const newStatus = !isTicketSystemEnabled; await supabase.from('app_settings').update({ is_ticket_system_enabled: newStatus }).eq('id', 1); setIsTicketSystemEnabled(newStatus); alert(`チケットシステムを ${newStatus ? "ON" : "OFF"} にしました。`); };
   const toggleAdminStatus = async (userId: string, currentStatus: boolean) => { const newStatus = !currentStatus; await supabase.from('profiles').update({ is_admin: newStatus }).eq('id', userId); setAllUsers(allUsers.map((u: any) => u.id === userId ? { ...u, isAdmin: newStatus } : u)); alert(newStatus ? "管理者権限を付与しました。" : "管理者権限を剥奪しました。"); };
   const executeBan = async () => { if(!banTargetUser || !banReason) return; await supabase.from('profiles').update({ is_banned: true }).eq('id', banTargetUser.id); await supabase.from('ban_appeals').insert({ user_id: banTargetUser.id, reason: banReason, status: 'banned' }); alert("BANを実行しました。"); setBanTargetUser(null); setBanReason(""); fetchAdminData(); };
   const unbanUser = async (userId: string) => { await supabase.from('profiles').update({ is_banned: false }).eq('id', userId); await supabase.from('ban_appeals').update({ status: 'resolved' }).eq('user_id', userId); alert("BANを解除しました。"); fetchAdminData(); };
   
-  // ★ チケットシステムの切り替え関数を追加
-  const toggleTicketSystem = async () => {
-    const newStatus = !isTicketSystemEnabled;
-    await supabase.from('app_settings').update({ is_ticket_system_enabled: newStatus }).eq('id', 1);
-    setIsTicketSystemEnabled(newStatus);
-    alert(`チケットシステムを ${newStatus ? "ON" : "OFF"} にしました。`);
-  };
-
   const executeScenarioBan = async (action: 'hard' | 'soft' | 'unban') => {
     if (!banTargetScenario) return;
     if (action === 'hard') {
@@ -1372,8 +1386,8 @@ export default function Home() {
             "このセッションは体験版（お試しプレイ）です。以下のルールを絶対に守ってください。",
             "1. 【文章量と進行度の指定（超重要）】1回のレスポンスにおける文章量（情景描写やNPCのセリフ）を通常の2倍に増やし、非常に詳細かつリッチに描写してください。また、進行自体は序盤の1〜2シーン程度に留め、ターン数も2倍程度に大幅に引っ張ってください。",
             "2. 【ネタバレの完全禁止】物語の核心などのネタバレは一切行わないでください。",
-            "3. 【人間PLへのダイスロール強制（超重要）】体験版の終了前に、AIではなく『人間プレイヤー』に必ず1回以上、ダイス判定（行動宣言タブからのダイスロール）を行わなければならない緊迫した状況を提示してください。",
-            "4. 【クリフハンガーでの強制終了】十分にターン数を稼ぎ、人間PLがダイスを振った後など、物語が一番面白く盛り上がってきた絶頂のタイミングを見計らって、バッサリと物語を強制終了させてください。",
+            "3. 【ダイスロールの強制】必ずセッション内で最低1回はPLにダイス判定を行わせてください。",
+            "4. 【クリフハンガーでの強制終了】十分にターン数を稼いでから、物語が一番面白く盛り上がってきた絶頂のタイミング（新たな脅威の出現や驚がくの事実の発覚など）を見計らって、プレイヤーの行動を待たずにバッサリと物語を強制終了させてください。",
             "5. 【終了時の必須タグ】終了の際は必ず文章の最後に「――この先は本編でお楽しみください！」という言葉を出力してください。"
           );
         }
