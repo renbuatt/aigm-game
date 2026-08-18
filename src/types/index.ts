@@ -19,7 +19,7 @@ export type UserProfile = {
   isBanned: boolean;
   email: string;
   friendIds?: string[];
-  blockedUserIds?: string[]; // ★ 追加：ブロックリスト
+  blockedUserIds?: string[];
 };
 
 export type Character = {
@@ -66,6 +66,8 @@ export type Scenario = {
   isTrialOk?: boolean;
   itemVisibility?: "all" | "self" | "none";
   requiredScenarioId?: string;
+  playCount?: number; // ★追加
+  viewCount?: number; // ★追加
 };
 
 export type Scene = {
@@ -99,7 +101,8 @@ export type Room = {
   item_visibility?: "all" | "self" | "none"; 
   inventories?: Record<string, string>;
   current_chapter_index?: number;
-  isWarning?: boolean; // ★ 追加：ブロック警告フラグ
+  isWarning?: boolean;
+  spectator_ids?: string[]; // ★追加
 };
 
 export type Message = {

@@ -10,15 +10,7 @@ type Props = {
   currentUser: UserProfile;
   joinedCharacter: Character | null;
   leaveGame: () => Promise<void>;
-  setReportTarget: React.Dispatch<React.SetStateAction<{
-    type: 'user' | 'scenario' | 'room';
-    id: string;
-    name: string;
-    roomId?: string;
-    scenarioId?: string;
-    scenarioName?: string;
-    availableUsers?: { id: string, name: string }[];
-  } | null>>;
+  setReportTarget: React.Dispatch<React.SetStateAction<any>>;
   rollDice: (targetValue: number, label: string, is1d100?: boolean) => Promise<void>;
   startGame: () => Promise<void>;
   startSplitting: () => Promise<void>;
@@ -73,6 +65,9 @@ export default function GameView({
   
   const chatContainerRef = useRef<HTMLDivElement>(null);
 
+  // ★ 閲覧者数の計算
+  const spectatorCount = activeRoom.spectator_ids ? activeRoom.spectator_ids.length : 0;
+
   useEffect(() => {
     const fetchNames = async () => {
       if (!activeRoom?.joined_users) return;
@@ -81,7 +76,7 @@ export default function GameView({
       const { data } = await supabase.from('profiles').select('id, handle_name').in('id', uids);
       if (data) {
         const map: Record<string, string> = {};
-        data.forEach(p => { map[p.id] = p.handle_name; });
+        data.forEach((p: any) => { map[p.id] = p.handle_name; });
         setPlayerNames(map);
       }
     };
@@ -172,7 +167,7 @@ export default function GameView({
                                 <input type="checkbox" checked={isChecked} onChange={(e) => {
                                   const nt = [...proposedTeams];
                                   if (e.target.checked) nt[tIdx].members.push(charId);
-                                  else nt[tIdx].members = nt[tIdx].members.filter(id => id !== charId);
+                                  else nt[tIdx].members = nt[tIdx].members.filter((id: string) => id !== charId);
                                   if (nt[tIdx].members.length > 0 && !nt[tIdx].members.includes(nt[tIdx].leader)) nt[tIdx].leader = nt[tIdx].members[0];
                                   setProposedTeams(nt);
                                 }} className="hidden" />
@@ -225,6 +220,13 @@ export default function GameView({
           <div className="flex items-center gap-2">
             <button onClick={leaveGame} className="text-xs bg-slate-700 hover:bg-slate-600 text-white px-3 py-1.5 rounded font-bold shadow">🚪 離脱 / 終了</button>
             
+            {/* ★ 閲覧者数の表示 */}
+            {spectatorCount > 0 && (
+              <span className="text-xs bg-slate-900 border border-slate-700 text-slate-300 px-2 py-1.5 rounded font-bold shadow flex items-center gap-1">
+                👁️ {spectatorCount}人が閲覧中
+              </span>
+            )}
+            
             {isHost && activeRoom.status === 'playing' && !isScenarioEnded && (
               <button onClick={togglePauseRoom} className={`text-xs px-3 py-1.5 rounded font-bold shadow transition-colors ${activeRoom.is_paused ? 'bg-amber-600 hover:bg-amber-500 text-white' : 'bg-slate-700 hover:bg-slate-600 text-slate-300'}`}>
                 {activeRoom.is_paused ? "▶️ セッション再開" : "⏸️ 中断(セーブ)"}
@@ -232,7 +234,6 @@ export default function GameView({
             )}
             <button onClick={() => setShowSummaryModal(true)} className="text-xs bg-slate-700 hover:bg-slate-600 text-slate-300 px-3 py-1.5 rounded font-bold shadow">📖 あらすじ</button>
             
-            {/* ★ 通報ボタンを追加 */}
             <button onClick={() => setReportTarget({
               type: 'room',
               id: activeRoom.id,
@@ -490,7 +491,7 @@ export default function GameView({
                 <span className="text-amber-400 text-sm font-bold">🎉 感想戦モード（AIは停止しています）</span>
                 <div className="flex gap-2">
                   {activeRoom.is_trial && activeRoom.scenario && (activeRoom.scenario.isPlayableByOthers || activeRoom.scenario.authorId === currentUser.id) && openRoomConfigModal && (
-                    <button onClick={() => openRoomConfigModal(activeRoom.scenario!)} className="bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold px-4 py-2 rounded shadow transition">
+                    <button onClick={() => handleOpenRoomConfig(activeRoom.scenario!)} className="bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold px-4 py-2 rounded shadow transition">
                       ✨ このまま本編の部屋を作る
                     </button>
                   )}
