@@ -72,7 +72,6 @@ export default function ScenarioEditView({ editingScenario, setEditingScenario, 
     }
   };
 
-  // ★ シナリオの内容から全自動で表紙を生成
   const handleGenerateCover = async () => {
     const info = `タイトル: ${editingScenario.title}\n世界観: ${editingScenario.setting}\nプロット: ${editingScenario.plot}`;
     if (!editingScenario.title) {
@@ -101,7 +100,7 @@ export default function ScenarioEditView({ editingScenario, setEditingScenario, 
     }
   };
 
-  // ★ キャラクターの入力情報から全自動で立ち絵を生成
+  // ★ バストアップ固定になるようプロンプトを大幅強化しました
   const handleGenerateChar = async (index: number) => {
     const char = editingScenario.presetCharacters[index];
     const info = `名前: ${char.name}\n職業: ${char.job}\n特徴: ${char.genderOrRace}\n性格: ${char.personality}`;
@@ -111,7 +110,7 @@ export default function ScenarioEditView({ editingScenario, setEditingScenario, 
     }
     setIsGeneratingImg(true);
     try {
-      const autoPromptReq = ["あなたはプロのイラストレーターです。以下のTRPGキャラクターの情報を元に、キャラクターの立ち絵となる魅力的で高画質な人物イラストを画像生成AI用のカンマ区切りの英語プロンプトに変換してください。","【絶対条件】","・文章ではなく、英単語のカンマ区切りで出力すること。","・不適切な画像が生成されるのを防ぐため、必ず最後に「SFW, fully clothed, masterpiece, high quality, character portrait, simple background」を含めること。","","【キャラクター情報】",info].join('\n');
+      const autoPromptReq = ["あなたはプロのイラストレーターです。以下のTRPGキャラクターの情報を元に、キャラクターの「バストアップ（胸から上）」となる魅力的で高画質な肖像画イラストを画像生成AI用のカンマ区切りの英語プロンプトに変換してください。","【絶対条件】","・必ず「胸から上のみ（バストアップ）」の肖像画として描画してください。全身（立ち絵）や背景の過度な描写は避けてください。","・文章ではなく、英単語のカンマ区切りで出力すること。","・不適切な画像が生成されるのを防ぐため、必ず最後に「bust-up portrait, upper body only, close-up on face and shoulders, looking at viewer, SFW, fully clothed, masterpiece, high quality, simple background」を含めること。","","【キャラクター情報】",info].join('\n');
       const englishPrompt = await generateAITextWithPrompt(autoPromptReq);
       const prompt = encodeURIComponent(`${englishPrompt}`);
       const seed = Math.floor(Math.random() * 100000);
@@ -195,9 +194,9 @@ export default function ScenarioEditView({ editingScenario, setEditingScenario, 
                 <div className="flex flex-col md:flex-row gap-4 items-start">
                   <div className="w-full md:w-48 flex-shrink-0">
                     {editingScenario.imageUrl ? (
-                       <img src={editingScenario.imageUrl} className="w-full h-32 object-cover border border-slate-600 rounded-lg shadow-md" />
+                        <img src={editingScenario.imageUrl} className="w-full h-32 object-cover border border-slate-600 rounded-lg shadow-md" />
                     ) : (
-                       <div className="w-full h-32 bg-slate-900 border border-dashed border-slate-600 rounded-lg flex items-center justify-center text-xs text-slate-500">No Image</div>
+                        <div className="w-full h-32 bg-slate-900 border border-dashed border-slate-600 rounded-lg flex items-center justify-center text-xs text-slate-500">No Image</div>
                     )}
                   </div>
                   <div className="flex-1 w-full space-y-3">
@@ -205,7 +204,6 @@ export default function ScenarioEditView({ editingScenario, setEditingScenario, 
                       <p className="text-[10px] text-slate-400 mb-1">📁 PCの画像をアップロードする</p>
                       <input type="file" accept="image/*" onChange={(e) => handleFileUpload(e, (url) => setEditingScenario({...editingScenario, imageUrl: url}))} className="text-xs text-slate-300 file:mr-2 file:py-1 file:px-3 file:rounded file:border-0 file:text-xs file:font-bold file:bg-slate-700 file:text-white hover:file:bg-slate-600 cursor-pointer" />
                     </div>
-                    {/* ★ ボタンのみの全自動生成UI */}
                     <div className="bg-slate-900/50 p-3 rounded border border-emerald-900/50">
                       <p className="text-[10px] text-emerald-400 mb-2">✨ 入力したシナリオの設定からAIが自動生成</p>
                       <button onClick={handleGenerateCover} disabled={isGeneratingImg} className="w-full bg-emerald-600 hover:bg-emerald-500 disabled:bg-slate-600 py-2 text-xs rounded text-white font-bold shadow">{isGeneratingImg ? "生成中..." : "パッケージ画像をAI生成する"}</button>
@@ -351,10 +349,10 @@ export default function ScenarioEditView({ editingScenario, setEditingScenario, 
                             const chars = [...editingScenario.presetCharacters]; chars[editingCharIndex].imageUrl = url; setEditingScenario({...editingScenario, presetCharacters: chars});
                           })} className="text-xs text-slate-300 file:mr-2 file:py-1 file:px-3 file:rounded file:border-0 file:text-xs file:font-bold file:bg-slate-700 file:text-white hover:file:bg-slate-600 cursor-pointer w-full" />
                         </div>
-                        {/* ★ ボタンのみの全自動生成UI */}
+                        {/* ★ ボタン表記を修正 */}
                         <div className="bg-slate-900/50 p-2 rounded border border-blue-900/50 flex flex-col gap-2 w-full">
-                          <span className="text-[10px] text-blue-400 text-center md:text-left">✨ 入力したキャラクターの設定からAIが自動生成</span>
-                          <button onClick={() => handleGenerateChar(editingCharIndex)} disabled={isGeneratingImg} className="w-full bg-blue-600 hover:bg-blue-500 disabled:bg-slate-600 py-2 text-xs rounded text-white font-bold shadow">{isGeneratingImg ? "生成中..." : "立ち絵をAI生成する"}</button>
+                          <span className="text-[10px] text-blue-400 text-center md:text-left">✨ 入力したキャラクターの設定からAIがバストアップ画像を自動生成</span>
+                          <button onClick={() => handleGenerateChar(editingCharIndex)} disabled={isGeneratingImg} className="w-full bg-blue-600 hover:bg-blue-500 disabled:bg-slate-600 py-2 text-xs rounded text-white font-bold shadow">{isGeneratingImg ? "生成中..." : "バストアップ画像をAI生成する"}</button>
                         </div>
                       </div>
                     </div>

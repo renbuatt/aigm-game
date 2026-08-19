@@ -1551,14 +1551,11 @@ export default function Home() {
         activeNpcListText
       });
 
-      // ★ アクション別の LLMルーティング処理
       let finalModel = forcedModel || activeRoom.ai_model || 'lite';
       
-      // AI相棒タブでのやりとりは強制的にLite固定
       if (!forcedModel && targetTab === "consult") {
         finalModel = 'lite';
       }
-      // システムタブ（GMへの質問など）も、プラチナ以上を除いてLite/Flashにダウングレード
       if (!forcedModel && targetTab === "gm") {
         if (['lite', 'flash', 'pro'].includes(activeRoom.ai_model || '')) finalModel = 'lite';
         else finalModel = 'flash';
@@ -1941,7 +1938,6 @@ export default function Home() {
         </div>
       )}
 
-      {/* ★ チケット購入ストアに「ブロンズ」を追加 */}
       {showTicketModal && (
         <div className="fixed inset-0 bg-black/80 z-[80] flex items-center justify-center p-4">
           <div className="bg-slate-800 border border-slate-700 rounded-xl p-6 w-full max-w-4xl shadow-2xl">
@@ -2089,7 +2085,6 @@ export default function Home() {
         </div>
       )}
 
-      {/* 以降のモーダル等（reportTarget, banTargetScenario等）は省略せずそのまま */}
       {reportTarget && (
         <div className="fixed inset-0 bg-black/80 z-[60] flex items-center justify-center p-4">
           <div className="bg-slate-800 border border-red-700/50 rounded-xl p-6 w-full max-w-lg shadow-2xl">

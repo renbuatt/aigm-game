@@ -30,7 +30,7 @@ type Props = {
   setScenarioAppealTarget: React.Dispatch<React.SetStateAction<Scenario | null>>;
   playArchives: PlayArchive[];
   setShowTicketModal: React.Dispatch<React.SetStateAction<boolean>>;
-  exchangeTicketWithPoints: (type: 'item'|'silver'|'gold'|'platinum'|'diamond', cost: number) => Promise<void>; // ★ 追加
+  exchangeTicketWithPoints: (type: 'bronze'|'item'|'silver'|'gold'|'platinum'|'diamond', cost: number) => Promise<void>; // ★ bronzeを追加
 };
 
 export default function LobbyView({
@@ -38,7 +38,7 @@ export default function LobbyView({
   rooms, searchedSecretRoom, setSearchedSecretRoom, executeJoinRoom, availableRooms,
   spectateRoom, setEditingScenario, setCurrentView, createdScenarios, deleteScenario, setRoomConfigModal,
   fetchAdminData, startTrialPlay, availableScenarios, openUserProfile, setScenarioAppealTarget, playArchives,
-  setShowTicketModal, exchangeTicketWithPoints // ★ 追加
+  setShowTicketModal, exchangeTicketWithPoints
 }: Props) {
   
   const [lobbyTab, setLobbyTab] = useState<'rooms' | 'scenarios' | 'trials' | 'ranking'>('rooms');
@@ -223,7 +223,7 @@ export default function LobbyView({
                             )}
                           </div>
                         ) : (
-                          <button onClick={() => setRoomConfigModal({ scenario: s, charId: "", privacy: "open", message: "", difficulty: "normal", rule: "coc_jp", itemVisibility: s.itemVisibility || "none", aiModel: 'flash' })} className="w-full bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold py-2 rounded shadow mt-2">
+                          <button onClick={() => setRoomConfigModal({ scenario: s, charId: "", privacy: "open", message: "", difficulty: "normal", rule: "coc_jp", itemVisibility: s.itemVisibility || "none", aiModel: 'lite' })} className="w-full bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold py-2 rounded shadow mt-2">
                             このシナリオで部屋を作成する
                           </button>
                         )}
@@ -274,7 +274,7 @@ export default function LobbyView({
                       <h3 className="font-bold text-white truncate">{s.title}</h3>
                       <p className="text-xs text-amber-400 mt-1">🎮 {s.playCount || 0} 回プレイ</p>
                     </div>
-                    <button onClick={() => setRoomConfigModal({ scenario: s, charId: "", privacy: "open", message: "", difficulty: "normal", rule: "coc_jp", itemVisibility: "none", aiModel: 'flash' })} className="text-[10px] bg-emerald-600 hover:bg-emerald-500 text-white px-3 py-2 rounded font-bold shadow whitespace-nowrap">部屋を作る</button>
+                    <button onClick={() => setRoomConfigModal({ scenario: s, charId: "", privacy: "open", message: "", difficulty: "normal", rule: "coc_jp", itemVisibility: "none", aiModel: 'lite' })} className="text-[10px] bg-emerald-600 hover:bg-emerald-500 text-white px-3 py-2 rounded font-bold shadow whitespace-nowrap">部屋を作る</button>
                   </div>
                 ))}
 
@@ -286,7 +286,7 @@ export default function LobbyView({
                       <h3 className="font-bold text-white truncate">{s.title}</h3>
                       <p className="text-xs text-blue-400 mt-1">👁️ {s.viewCount || 0} 回閲覧</p>
                     </div>
-                    <button onClick={() => setRoomConfigModal({ scenario: s, charId: "", privacy: "open", message: "", difficulty: "normal", rule: "coc_jp", itemVisibility: "none", aiModel: 'flash' })} className="text-[10px] bg-emerald-600 hover:bg-emerald-500 text-white px-3 py-2 rounded font-bold shadow whitespace-nowrap">部屋を作る</button>
+                    <button onClick={() => setRoomConfigModal({ scenario: s, charId: "", privacy: "open", message: "", difficulty: "normal", rule: "coc_jp", itemVisibility: "none", aiModel: 'lite' })} className="text-[10px] bg-emerald-600 hover:bg-emerald-500 text-white px-3 py-2 rounded font-bold shadow whitespace-nowrap">部屋を作る</button>
                   </div>
                 ))}
 
@@ -352,27 +352,32 @@ export default function LobbyView({
                   <span className="text-sm font-bold text-white">{currentUser.ticketsItem || 0} 枚</span>
                </div>
                
-               <div className="grid grid-cols-4 gap-2 mt-1">
-                  <div className="bg-slate-900 border border-slate-700 rounded p-1.5 text-center shadow-inner">
-                     <span className="block text-[8px] text-slate-400">シルバー</span>
-                     <span className="block text-xs font-bold text-slate-300">{currentUser.ticketsSilver || 0}</span>
+               {/* ★ ブロンズを含めた5列に変更しました */}
+               <div className="grid grid-cols-5 gap-1 mt-1">
+                  <div className="bg-stone-900 border border-stone-700 rounded p-1 text-center shadow-inner">
+                      <span className="block text-[7px] text-stone-400">ブロンズ</span>
+                      <span className="block text-xs font-bold text-stone-300">{currentUser.ticketsBronze || 0}</span>
                   </div>
-                  <div className="bg-amber-900/20 border border-amber-900/50 rounded p-1.5 text-center shadow-inner">
-                     <span className="block text-[8px] text-amber-500">ゴールド</span>
-                     <span className="block text-xs font-bold text-amber-400">{currentUser.ticketsGold || 0}</span>
+                  <div className="bg-slate-900 border border-slate-700 rounded p-1 text-center shadow-inner">
+                      <span className="block text-[7px] text-slate-400">シルバー</span>
+                      <span className="block text-xs font-bold text-slate-300">{currentUser.ticketsSilver || 0}</span>
                   </div>
-                  <div className="bg-indigo-900/20 border border-indigo-900/50 rounded p-1.5 text-center shadow-inner">
-                     <span className="block text-[8px] text-indigo-400">プラチナ</span>
-                     <span className="block text-xs font-bold text-indigo-300">{currentUser.ticketsPlatinum || 0}</span>
+                  <div className="bg-amber-900/20 border border-amber-900/50 rounded p-1 text-center shadow-inner">
+                      <span className="block text-[7px] text-amber-500">ゴールド</span>
+                      <span className="block text-xs font-bold text-amber-400">{currentUser.ticketsGold || 0}</span>
                   </div>
-                  <div className="bg-fuchsia-900/20 border border-fuchsia-900/50 rounded p-1.5 text-center shadow-inner">
-                     <span className="block text-[8px] text-fuchsia-400">ダイヤ</span>
-                     <span className="block text-xs font-bold text-fuchsia-300">{currentUser.ticketsDiamond || 0}</span>
+                  <div className="bg-indigo-900/20 border border-indigo-900/50 rounded p-1 text-center shadow-inner">
+                      <span className="block text-[7px] text-indigo-400">プラチナ</span>
+                      <span className="block text-xs font-bold text-indigo-300">{currentUser.ticketsPlatinum || 0}</span>
+                  </div>
+                  <div className="bg-fuchsia-900/20 border border-fuchsia-900/50 rounded p-1 text-center shadow-inner">
+                      <span className="block text-[7px] text-fuchsia-400">ダイヤ</span>
+                      <span className="block text-xs font-bold text-fuchsia-300">{currentUser.ticketsDiamond || 0}</span>
                   </div>
                </div>
                
                <button onClick={() => setShowTicketModal(true)} className="w-full mt-2 bg-slate-700 hover:bg-slate-600 text-white text-xs py-2.5 rounded font-bold transition-colors shadow">
-                  🎟️ チケット購入ストア
+                 🎟️ チケット購入ストア
                </button>
             </div>
           </div>
@@ -409,7 +414,7 @@ export default function LobbyView({
                         </div>
                       </div>
                       {!s.isBanned && (
-                        <button onClick={() => setRoomConfigModal({ scenario: s, charId: "", privacy: "open", message: "", difficulty: "normal", rule: "coc_jp", itemVisibility: s.itemVisibility || "none", aiModel: 'flash' })} className="w-full bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold py-2 rounded mt-2 shadow">
+                        <button onClick={() => setRoomConfigModal({ scenario: s, charId: "", privacy: "open", message: "", difficulty: "normal", rule: "coc_jp", itemVisibility: s.itemVisibility || "none", aiModel: 'lite' })} className="w-full bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold py-2 rounded mt-2 shadow">
                           部屋を立てる
                         </button>
                       )}
