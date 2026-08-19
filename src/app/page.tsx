@@ -125,7 +125,7 @@ export default function Home() {
   const isScenarioEnded = messages.some((m: any) => m.text.includes('[SCENARIO_END]')) || activeRoom?.status === 'finished';
 
   const handleOpenRoomConfig = (scenario: Scenario) => {
-    setRoomConfigModal({ scenario, charId: "", privacy: "open", message: "", difficulty: "normal", rule: "coc_jp", itemVisibility: "all", aiModel: "flash" });
+    setRoomConfigModal({ scenario, charId: "", privacy: "open", message: "", difficulty: "normal", rule: "coc_jp", itemVisibility: "all", aiModel: "lite" });
     setCurrentView("lobby");
   };
 
@@ -292,7 +292,7 @@ export default function Home() {
         current_summary: r.current_summary || "", difficulty: r.difficulty || "normal", rule: r.rule || "coc_jp",
         is_paused: r.is_paused || false, afk_users: r.afk_users || [], is_trial: r.is_trial || false,
         item_visibility: r.item_visibility || "none", inventories: r.inventories || {},
-        current_chapter_index: r.current_chapter_index || 0, spectator_ids: r.spectator_ids || [], ai_model: r.ai_model || 'flash'
+        current_chapter_index: r.current_chapter_index || 0, spectator_ids: r.spectator_ids || [], ai_model: r.ai_model || 'lite'
       })).filter((r: any) => r.scenario) as Room[];
       setRooms(formattedRooms);
     }
@@ -311,7 +311,7 @@ export default function Home() {
     }
     const profileData: UserProfile = { 
       id: data.id, handleName: data.handle_name, fullName: data.full_name, address: data.address, phone: data.phone, avatarUrl: data.avatar_url, bio: data.bio, discordId: data.discord_id, ratingSum: data.rating_sum || 0, ratingCount: data.rating_count || 0, isAdmin: data.is_admin || false, isTester: data.is_tester || false, isBanned: data.is_banned || false, email: data.email, friendIds: data.friend_ids || [], blockedUserIds: data.blocked_user_ids || [],
-      points: data.points || 0, ticketsNormal: data.tickets_normal || 0, ticketsSilver: data.tickets_silver || 0, ticketsGold: data.tickets_gold || 0, ticketsPlatinum: data.tickets_platinum || 0, ticketsDiamond: data.tickets_diamond || 0, ticketsItem: data.tickets_item || 0, imageGenCredits: data.image_gen_credits || 0
+      points: data.points || 0, ticketsNormal: data.tickets_normal || 0, ticketsBronze: data.tickets_bronze || 0, ticketsSilver: data.tickets_silver || 0, ticketsGold: data.tickets_gold || 0, ticketsPlatinum: data.tickets_platinum || 0, ticketsDiamond: data.tickets_diamond || 0, ticketsItem: data.tickets_item || 0, imageGenCredits: data.image_gen_credits || 0
     };
     if (data.email !== emailStr) await supabase.from('profiles').update({ email: emailStr }).eq('id', userId);
     setCurrentUser(profileData);
@@ -582,7 +582,7 @@ export default function Home() {
   const submitAppeal = async () => { if(!currentUser || !appealText) return; await supabase.from('ban_appeals').insert({ user_id: currentUser.id, reason: "不明", appeal_text: appealText, status: 'appealing' }); alert("調査依頼を送信しました。"); setAppealText(""); };
   const markNotificationAsRead = async (notifId: string) => { await supabase.from('notifications').update({ is_read: true }).eq('id', notifId); setMyNotifications(myNotifications.map((n: any) => n.id === notifId ? { ...n, isRead: true } : n)); };
 
-  const exchangeTicketWithPoints = async (type: 'item'|'silver'|'gold'|'platinum'|'diamond', cost: number) => {
+  const exchangeTicketWithPoints = async (type: 'bronze'|'item'|'silver'|'gold'|'platinum'|'diamond', cost: number) => {
     if (!currentUser) return;
     if ((currentUser.points || 0) < cost) {
       alert("ポイントが足りません！");
@@ -591,6 +591,7 @@ export default function Home() {
     if (!confirm(`${cost} ptを消費してチケットを交換しますか？`)) return;
 
     const updates: any = { points: currentUser.points! - cost };
+    if (type === 'bronze') updates.tickets_bronze = (currentUser.ticketsBronze || 0) + 1;
     if (type === 'item') updates.tickets_item = (currentUser.ticketsItem || 0) + 1;
     if (type === 'silver') updates.tickets_silver = (currentUser.ticketsSilver || 0) + 1;
     if (type === 'gold') updates.tickets_gold = (currentUser.ticketsGold || 0) + 1;
@@ -606,6 +607,7 @@ export default function Home() {
     setCurrentUser({
       ...currentUser,
       points: updates.points,
+      ticketsBronze: type === 'bronze' ? (currentUser.ticketsBronze || 0) + 1 : currentUser.ticketsBronze,
       ticketsItem: type === 'item' ? (currentUser.ticketsItem || 0) + 1 : currentUser.ticketsItem,
       ticketsSilver: type === 'silver' ? (currentUser.ticketsSilver || 0) + 1 : currentUser.ticketsSilver,
       ticketsGold: type === 'gold' ? (currentUser.ticketsGold || 0) + 1 : currentUser.ticketsGold,
@@ -652,7 +654,6 @@ export default function Home() {
       const recentLogs = memoryData?.reverse().map((m: any) => `${m.role === 'user' ? 'PL' : 'GM'}: ${m.content}`).join('\n') || "";
       const autoPromptReq = ["あなたはTRPGの情景描写AIです。以下の直近のログから、現在の「場所、雰囲気、見えているもの」を1〜2文の簡潔な日本語で描写してください。キャラクターのセリフや行動ではなく、空間のビジュアルに焦点を当ててください。","【直近のログ】",recentLogs].join('\n');
       
-      // ★ バックグラウンド処理はすべて Lite に固定（コスト削減）
       const targetPrompt = await generateAITextWithPrompt(autoPromptReq, 'flash-lite', 400, 0.7);
 
       const translationPrompt = ["以下の日本語の情景描写を、画像生成AI用のカンマ区切りの英語プロンプトに変換してください。","【絶対条件】","・文章ではなく、英単語のカンマ区切りで出力してください。","・不適切な画像が生成されるのを防ぐため、必ず最後に「SFW, fully clothed, masterpiece, high quality」を含めてください。","","情景描写：",targetPrompt].join('\n');
@@ -702,7 +703,6 @@ export default function Home() {
       const chars = activeRoom.scenario?.presetCharacters.filter((c: any) => Object.values(activeRoom.joined_users || {}).includes(c.id)).map((c: any) => `{"id": "${c.id}", "name": "${c.name}"}`).join(", ") || "";
       const prompt = ["あなたはTRPGのシステムAIです。以下の「現在参加しているキャラクター」と「直近のチャットログ」を分析し、物語の展開上、最も自然な【チーム分け（2つ以上のグループへの分割）の構成案】を作成してください。","【参加キャラクター】",chars,"","【直近のログ】",recentLogs,"","【出力形式（絶対遵守）】","必ず以下のJSONフォーマットのみを出力してください。余計な文章やマークダウン記号は一切含めないでください。",'{"teams": [{"action": "目的A", "members": ["キャラID1"]}, {"action": "目的B", "members": ["キャラID3"]}]}'].join('\n');
       
-      // ★ バックグラウンド処理はすべて Lite に固定（コスト削減）
       const aiResponse = await generateAITextWithPrompt(prompt, 'flash-lite', 800, 0.3);
       
       const jsonStr = aiResponse.replace(/```json/g, "").replace(/```/g, "").trim();
@@ -780,6 +780,7 @@ export default function Home() {
       let currentTickets = 0;
       let costName = '';
       
+      if (aiModel === 'lite') { requiredTicketKey = 'tickets_bronze'; currentTickets = currentUser.ticketsBronze || 0; costName = 'ブロンズ'; }
       if (aiModel === 'flash') { requiredTicketKey = 'tickets_silver'; currentTickets = currentUser.ticketsSilver || 0; costName = 'シルバー'; }
       if (aiModel === 'pro') { requiredTicketKey = 'tickets_gold'; currentTickets = currentUser.ticketsGold || 0; costName = 'ゴールド'; }
       if (aiModel === 'claude') { requiredTicketKey = 'tickets_platinum'; currentTickets = currentUser.ticketsPlatinum || 0; costName = 'プラチナ'; }
@@ -796,6 +797,7 @@ export default function Home() {
 
       setCurrentUser(prev => prev ? { 
         ...prev,
+        ticketsBronze: aiModel === 'lite' ? prev.ticketsBronze! - 1 : prev.ticketsBronze,
         ticketsSilver: aiModel === 'flash' ? prev.ticketsSilver! - 1 : prev.ticketsSilver,
         ticketsGold: aiModel === 'pro' ? prev.ticketsGold! - 1 : prev.ticketsGold,
         ticketsPlatinum: aiModel === 'claude' ? prev.ticketsPlatinum! - 1 : prev.ticketsPlatinum,
@@ -850,7 +852,7 @@ export default function Home() {
       scenario_id: scenario.id, host_name: currentUser.handleName, host_id: currentUser.id, status: "recruiting", scenes: initialScenes,
       privacy: 'secret', host_message: "お試しプレイ", joined_users: { [currentUser.id]: charId }, current_summary: "", difficulty: "normal", rule: "coc_jp",
       is_paused: false, afk_users: [], is_trial: true, item_visibility: "none", inventories: initialInventories,
-      current_chapter_index: 0, ai_model: 'flash' 
+      current_chapter_index: 0, ai_model: 'lite' 
     }).select().single();
     
     if (error) { alert("データベースエラーが発生しました: " + error.message); return; }
@@ -920,9 +922,17 @@ export default function Home() {
       let aiChars: Character[] = [];
       const takenIds = Object.values(activeRoom.joined_users || {});
       const emptyChars = activeRoom.scenario.presetCharacters.filter((c: any) => !takenIds.includes(c.id));
-      if (emptyChars.length > 0) {
-        if (activeRoom.is_trial) aiChars = emptyChars; 
-        else if (confirm(`参加していないキャラクターが ${emptyChars.length} 人います。\n彼らを「AIプレイヤー（相棒）」として参加させますか？\n（キャンセルを押すとソロプレイになります）`)) aiChars = emptyChars;
+      
+      // ★ ゴールド以上の部屋は「AIプレイヤー（相棒）」の召喚をブロック！
+      if (['pro', 'claude', 'opus'].includes(activeRoom.ai_model || '')) {
+         if (emptyChars.length > 0 && !activeRoom.is_trial) {
+           alert("【お知らせ】ゴールド（Gemini Pro）以上の部屋では、AIプレイヤー（相棒）の参加はできません。\nソロプレイ、または人間プレイヤーのみでの開始となります。");
+         }
+      } else {
+         if (emptyChars.length > 0) {
+           if (activeRoom.is_trial) aiChars = emptyChars; 
+           else if (confirm(`参加していないキャラクターが ${emptyChars.length} 人います。\n彼らを「AIプレイヤー（相棒）」として参加させますか？\n（キャンセルを押すとソロプレイになります）`)) aiChars = emptyChars;
+         }
       }
       setAiPlayersList(aiChars);
 
@@ -1074,8 +1084,12 @@ export default function Home() {
           if (chatTab === "gm") promptSuffix = "この結果を踏まえて、システム・ルールの裁定やヒントの提示を行ってください。";
           else if (chatTab === "consult") promptSuffix = "この結果を踏まえて、AI相棒としてリアクションを返してください。";
           
-          // ★ ダイス判定などの軽い処理は Lite版に逃がす（コスト削減）
-          await callAIGM(`【システム判定結果】${joinedCharacter.name}が${label}ロールを行いました。\n結果: ${msgText}\n${promptSuffix}`, chatTab, false, 'flash-lite');
+          // ★ LLMルーティング：ダイス結果の処理は強制的に安いモデルへ逃がす
+          let diceModel = 'flash-lite';
+          if (activeRoom.ai_model === 'claude' || activeRoom.ai_model === 'opus') {
+            diceModel = 'flash'; // プラチナ・ダイヤは 3.6 Flash にダウングレード
+          }
+          await callAIGM(`【システム判定結果】${joinedCharacter.name}が${label}ロールを行いました。\n結果: ${msgText}\n${promptSuffix}`, chatTab, false, diceModel);
       }
     } finally {
       isRequestingRef.current = false;
@@ -1419,8 +1433,7 @@ export default function Home() {
       let currentMemory = memoryDataRaw || [];
       let currentSummary = activeRoom.current_summary || "";
 
-      // ★ コンテキスト長の動的制御（高級モデルは記憶多め、軽量モデルは少なめ）
-      const aiModelType = forcedModel || activeRoom.ai_model || 'flash';
+      const aiModelType = forcedModel || activeRoom.ai_model || 'lite';
       const contextLimit = (['pro', 'opus', 'claude'].includes(aiModelType)) ? 20 : 10;
 
       if (currentMemory.length > 30) {
@@ -1429,7 +1442,6 @@ export default function Home() {
         const logText = logsToCompress.map((m: any) => `${m.role === 'user' ? 'PL' : 'GM'}: ${m.content}`).join('\n');
         const compressionPrompt = ["あなたはTRPGの優秀な記録係です。以下の「現在のあらすじ」と「追加のチャットログ」を統合し、AI GMが今後の展開を処理するための【詳細な最新のあらすじ】を作成してください。","【絶対条件】","・重要な出来事、NPCとの会話結果、得たアイテムやヒント、PLの目的は絶対に漏らさないこと。","・システムやダイスの結果等のメタな情報は省略し、物語の進行を中心にまとめること。","","【現在のあらすじ】",currentSummary || "なし（最初の要約です）","","【追加のチャットログ】",logText].join('\n');
         try {
-          // ★ バックグラウンド処理はすべて Lite版 固定（コスト削減）
           currentSummary = await generateAITextWithPrompt(compressionPrompt, 'flash-lite', 1000, 0.3);
           await supabase.from('rooms').update({ current_summary: currentSummary }).eq('id', activeRoom.id);
           setActiveRoom(prev => prev ? { ...prev, current_summary: currentSummary } : null);
@@ -1442,14 +1454,13 @@ export default function Home() {
         }
       }
 
-      // ★ RAG: NPCの動的情報注入（現在のシーンに不要なNPC情報を弾き、トークンを大幅削減）
       let activeNpcListText = "";
       if (activeRoom.scenario?.npcList) {
          try {
             const recentLogsContext = currentMemory.slice(-5).map((m: any) => m.content).join('\n');
             const npcFilterPrompt = `以下の【全NPCリスト】から、直近のログと現在のあらすじに登場している、または今後すぐに関わりそうなNPCの情報だけを抜粋してそのまま出力してください。不要なNPCは省いてください。\n\n【全NPCリスト】\n${activeRoom.scenario.npcList}\n\n【あらすじとログ】\n${currentSummary}\n${recentLogsContext}`;
             activeNpcListText = await generateAITextWithPrompt(npcFilterPrompt, 'flash-lite', 500, 0.2);
-         } catch(e) { activeNpcListText = activeRoom.scenario?.npcList; } // 失敗時はそのまま送る
+         } catch(e) { activeNpcListText = activeRoom.scenario?.npcList; }
       }
 
       const history = currentMemory.map((m: any) => ({ role: m.role === 'assistant' ? 'model' : 'user', parts: [{ text: m.content }] }));
@@ -1521,7 +1532,7 @@ export default function Home() {
       }
       const ruleSpec = ruleSpecLines.join('\n'); const gmStyle = gmStyleLines.join('\n');
 
-      const sysPrompt = getGMSystemPrompt(activeRoom.ai_model || 'flash', {
+      const sysPrompt = getGMSystemPrompt(activeRoom.ai_model || 'lite', {
         title: activeRoom.scenario?.title,
         setting: activeRoom.scenario?.setting,
         scenarioPlotText,
@@ -1537,32 +1548,40 @@ export default function Home() {
         isSplitMode,
         afkInstruction,
         targetTab,
-        activeNpcListText // ★ 抽出したNPC情報
+        activeNpcListText
       });
 
-      let finalModel = forcedModel || activeRoom.ai_model || 'flash';
+      // ★ アクション別の LLMルーティング処理
+      let finalModel = forcedModel || activeRoom.ai_model || 'lite';
+      
+      // AI相棒タブでのやりとりは強制的にLite固定
       if (!forcedModel && targetTab === "consult") {
-        finalModel = 'flash-lite'; // ★ 相談タブ（AIプレイヤー）は強制Lite固定
+        finalModel = 'lite';
       }
+      // システムタブ（GMへの質問など）も、プラチナ以上を除いてLite/Flashにダウングレード
+      if (!forcedModel && targetTab === "gm") {
+        if (['lite', 'flash', 'pro'].includes(activeRoom.ai_model || '')) finalModel = 'lite';
+        else finalModel = 'flash';
+      }
+
       let apiModelString = finalModel;
-      if (finalModel === 'flash') {
+      if (finalModel === 'lite') {
+        apiModelString = 'flash-lite';
+      } else if (finalModel === 'flash') {
         apiModelString = geminiFlashModel === '3.5-lite' ? 'flash-lite' : 'flash';
       }
 
-      // ★ JSON出力を想定し、長文防止のため maxTokens=1500, temperature=0.7 を設定
       const aiTextRaw = await generateAIResponse(sysPrompt, history, apiModelString, 1500, 0.7);
       
-      // ★ 構造化出力（JSON Mode）のパース処理
       let parsedAI = { text: "", statusUpdates: [], inventoryUpdates: [], chapterClear: false };
       try {
         const jsonStr = aiTextRaw.replace(/```json/g, "").replace(/```/g, "").trim();
         parsedAI = JSON.parse(jsonStr);
       } catch (e) {
         console.error("JSONパースに失敗。フォールバック処理を実行", e);
-        parsedAI.text = aiTextRaw; // 失敗時はそのままテキストとして表示
+        parsedAI.text = aiTextRaw;
       }
 
-      // ステータス更新（JSONから反映）
       if (parsedAI.statusUpdates && Array.isArray(parsedAI.statusUpdates)) {
         let hpSanUpdated = false;
         parsedAI.statusUpdates.forEach((upd: any) => {
@@ -1578,7 +1597,6 @@ export default function Home() {
         });
       }
 
-      // インベントリ更新（JSONから反映）
       let invUpdated = false;
       let newInventories = { ...(activeRoom.inventories || {}) };
       if (parsedAI.inventoryUpdates && Array.isArray(parsedAI.inventoryUpdates)) {
@@ -1597,7 +1615,6 @@ export default function Home() {
       let cleanAiText = parsedAI.text || aiTextRaw;
       let isChapterCleared = parsedAI.chapterClear === true;
 
-      // 古い分割コマンドが入ってしまった場合のフォールバック
       const splitMatch = cleanAiText.match(/\[SPLIT_PROPOSAL:\s*(.+?)\]/);
       if (splitMatch) { setProposedTeams([]); generateSplitProposal(); cleanAiText = cleanAiText.replace(/\[SPLIT_PROPOSAL:.*?\]/g, '').trim(); }
       cleanAiText = cleanAiText.replace(/\[STATUS_UPDATE:.*?\]/g, '').replace(/\[INVENTORY_UPDATE:.*?\]/g, '').trim();
@@ -1886,7 +1903,6 @@ export default function Home() {
           <div className="bg-slate-800 border border-emerald-700/50 rounded-xl p-6 w-full max-w-md shadow-2xl">
             <h3 className="text-xl font-bold text-emerald-400 mb-4">📖 小説の執筆設定</h3>
             
-            {/* ★ ここに文体（トーン）の選択肢を追加しました */}
             <div className="space-y-4 mb-6">
               <div>
                 <label className="text-xs text-slate-400 block mb-1">文体（トーン）</label>
@@ -1908,10 +1924,11 @@ export default function Home() {
                   onChange={(e) => setNovelSettingsModal({...novelSettingsModal, aiModel: e.target.value})} 
                   className="w-full bg-slate-900 border border-slate-700 rounded p-2 text-sm text-white"
                 >
-                  <option value="flash">🟢 Gemini Flash {isTicketSystemEnabled ? "(消費: アイテムチケット 1枚)" : "(無料)"}</option>
-                  <option value="pro">🟡 Gemini Pro {isTicketSystemEnabled ? "(消費: アイテムチケット 1枚)" : "(無料)"}</option>
-                  <option value="claude">🟣 Claude 3.5 Sonnet {isTicketSystemEnabled ? "(消費: アイテムチケット 1枚)" : "(無料)"}</option>
-                  <option value="opus">💎 Claude 3 Opus {isTicketSystemEnabled ? "(消費: アイテムチケット 1枚)" : "(無料)"}</option>
+                  <option value="lite">🟤 Gemini Flash Lite {isTicketSystemEnabled ? "(消費: ブロンズチケット 1枚)" : "(無料)"}</option>
+                  <option value="flash">⚪ Gemini Flash {isTicketSystemEnabled ? "(消費: シルバーチケット 1枚)" : "(無料)"}</option>
+                  <option value="pro">🟡 Gemini Pro {isTicketSystemEnabled ? "(消費: ゴールドチケット 1枚)" : "(無料)"}</option>
+                  <option value="claude">🟣 Claude 3.5 Sonnet {isTicketSystemEnabled ? "(消費: プラチナチケット 1枚)" : "(無料)"}</option>
+                  <option value="opus">💎 Claude 3 Opus {isTicketSystemEnabled ? "(消費: ダイヤモンドチケット 1枚)" : "(無料)"}</option>
                 </select>
               </div>
             </div>
@@ -1924,9 +1941,10 @@ export default function Home() {
         </div>
       )}
 
+      {/* ★ チケット購入ストアに「ブロンズ」を追加 */}
       {showTicketModal && (
         <div className="fixed inset-0 bg-black/80 z-[80] flex items-center justify-center p-4">
-          <div className="bg-slate-800 border border-slate-700 rounded-xl p-6 w-full max-w-2xl shadow-2xl">
+          <div className="bg-slate-800 border border-slate-700 rounded-xl p-6 w-full max-w-4xl shadow-2xl">
             <div className="flex justify-between items-center mb-4 border-b border-slate-700 pb-3">
               <h3 className="text-xl font-bold text-emerald-400">🎟️ チケット購入・交換ストア</h3>
               <button onClick={() => setShowTicketModal(false)} className="text-2xl text-slate-400 hover:text-white">×</button>
@@ -1937,33 +1955,26 @@ export default function Home() {
                <span className="text-xl font-bold text-yellow-400">🪙 {currentUser?.points || 0} pt</span>
             </div>
 
-            <p className="text-xs text-slate-300 mb-4">
-              セッションや、各種機能を利用するためのチケットです。<br/>
-              <span className="text-amber-400 font-bold">※ポイントを消費して無料で交換することも可能です。</span>
-            </p>
-
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 max-h-[50vh] overflow-y-auto pr-2 custom-scrollbar">
-               {/* アイテムチケット */}
-               <div className="bg-slate-700/30 border border-slate-600 p-4 rounded-xl flex flex-col justify-between">
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 max-h-[55vh] overflow-y-auto pr-2 custom-scrollbar">
+               
+               {/* ブロンズチケット (NEW) */}
+               <div className="bg-stone-800/50 border border-stone-600 p-4 rounded-xl flex flex-col justify-between">
                   <div>
                     <div className="flex justify-between items-center mb-2">
-                      <h4 className="text-lg font-bold text-white">アイテム</h4>
-                      <span className="bg-slate-500 text-white text-[10px] px-2 py-1 rounded font-bold">便利機能用</span>
+                      <h4 className="text-lg font-bold text-stone-300">ブロンズ</h4>
+                      <span className="bg-stone-600 text-white text-[10px] px-2 py-1 rounded font-bold">Flash Lite</span>
                     </div>
-                    <p className="text-[11px] text-slate-400">高品質画像生成(3回分)や、<br/>小説執筆、書庫保存などに使用します。</p>
+                    <p className="text-[11px] text-stone-400">日常的な探索やテストプレイに。<br/>超高速・低コストな最安プラン。</p>
                   </div>
-                  <div className="mt-4 pt-3 border-t border-slate-600">
+                  <div className="mt-4 pt-3 border-t border-stone-600">
                     <div className="flex gap-2 mb-2">
-                      <button onClick={() => alert("※決済システム準備中")} className="flex-1 bg-slate-600 hover:bg-slate-500 text-white text-xs py-2 rounded font-bold shadow">
-                         ¥120 で購入
+                      <button onClick={() => alert("※決済システム準備中")} className="flex-1 bg-stone-600 hover:bg-stone-500 text-white text-xs py-2 rounded font-bold shadow">
+                         ¥240 で購入
                       </button>
-                      <button onClick={() => exchangeTicketWithPoints('item', 300)} className="flex-[1.5] bg-yellow-600 hover:bg-yellow-500 text-white text-xs py-2 rounded font-bold shadow flex items-center justify-center gap-1">
-                         🪙 300 ptで交換
+                      <button onClick={() => exchangeTicketWithPoints('bronze', 60)} className="flex-[1.5] bg-yellow-600 hover:bg-yellow-500 text-white text-xs py-2 rounded font-bold shadow flex items-center justify-center gap-1">
+                         🪙 60 ptで交換
                       </button>
                     </div>
-                    <button onClick={() => alert("※決済システム準備中")} className="w-full bg-slate-800 border border-slate-500 hover:bg-slate-700 text-slate-300 text-[10px] py-1.5 rounded font-bold">
-                       3枚セット - ¥320 (約11%OFF)
-                    </button>
                   </div>
                </div>
 
@@ -1985,9 +1996,6 @@ export default function Home() {
                          🪙 100 ptで交換
                       </button>
                     </div>
-                    <button onClick={() => alert("※決済システム準備中")} className="w-full bg-slate-800 border border-slate-500 hover:bg-slate-700 text-slate-300 text-[10px] py-1.5 rounded font-bold">
-                       3枚セット - ¥980 (10%OFF)
-                    </button>
                   </div>
                </div>
 
@@ -1998,7 +2006,7 @@ export default function Home() {
                       <h4 className="text-lg font-bold text-amber-400">ゴールド</h4>
                       <span className="bg-amber-600 text-white text-[10px] px-2 py-1 rounded font-bold">Gemini Pro</span>
                     </div>
-                    <p className="text-[11px] text-amber-500/70">論理的で緻密なシナリオ向け。<br/>NPCの思惑が絡み合うミステリーに最適。</p>
+                    <p className="text-[11px] text-amber-500/70">論理的で緻密なシナリオ向け。<br/>※AIプレイヤーは参加できません。</p>
                   </div>
                   <div className="mt-4 pt-3 border-t border-amber-900/50">
                     <div className="flex gap-2 mb-2">
@@ -2009,9 +2017,6 @@ export default function Home() {
                          🪙 300 ptで交換
                       </button>
                     </div>
-                    <button onClick={() => alert("※決済システム準備中")} className="w-full bg-slate-800 border border-amber-700/50 hover:bg-slate-700 text-amber-300 text-[10px] py-1.5 rounded font-bold">
-                       3枚セット - ¥1,620 (10%OFF)
-                    </button>
                   </div>
                </div>
 
@@ -2022,7 +2027,7 @@ export default function Home() {
                       <h4 className="text-lg font-bold text-indigo-300">プラチナ</h4>
                       <span className="bg-indigo-600 text-white text-[10px] px-2 py-1 rounded font-bold">Claude Sonnet</span>
                     </div>
-                    <p className="text-[11px] text-indigo-400/70">エモーショナルな体験を求める方向け。<br/>文学的で美しい情景・心理描写。</p>
+                    <p className="text-[11px] text-indigo-400/70">エモーショナルな体験を求める方向け。<br/>※AIプレイヤーは参加できません。</p>
                   </div>
                   <div className="mt-4 pt-3 border-t border-indigo-900/50">
                     <div className="flex gap-2 mb-2">
@@ -2033,21 +2038,18 @@ export default function Home() {
                          🪙 900 ptで交換
                       </button>
                     </div>
-                    <button onClick={() => alert("※決済システム準備中")} className="w-full bg-slate-800 border border-indigo-700/50 hover:bg-slate-700 text-indigo-300 text-[10px] py-1.5 rounded font-bold">
-                       3枚セット - ¥3,240 (10%OFF)
-                    </button>
                   </div>
                </div>
 
                {/* ダイヤモンドチケット */}
-               <div className="bg-gradient-to-br from-fuchsia-900/40 to-rose-900/20 border-2 border-fuchsia-500/50 p-4 rounded-xl flex flex-col justify-between relative overflow-hidden md:col-span-2">
+               <div className="bg-gradient-to-br from-fuchsia-900/40 to-rose-900/20 border-2 border-fuchsia-500/50 p-4 rounded-xl flex flex-col justify-between relative overflow-hidden lg:col-span-2">
                   <div className="absolute top-0 right-0 bg-fuchsia-600 text-white text-[8px] font-bold px-4 py-1 rotate-45 translate-x-3 translate-y-2 shadow-lg">最高級</div>
                   <div>
                     <div className="flex justify-between items-center mb-2">
                       <h4 className="text-lg font-bold text-fuchsia-300">ダイヤモンド</h4>
                       <span className="bg-fuchsia-600 text-white text-[10px] px-2 py-1 rounded font-bold">Claude Opus</span>
                     </div>
-                    <p className="text-[11px] text-fuchsia-200/80">最高峰のVIP TRPG体験。人間を超える神業GMで、絶対に失敗できない究極のセッションを。</p>
+                    <p className="text-[11px] text-fuchsia-200/80">最高峰のVIP TRPG体験。人間を超える神業GMで、絶対に失敗できない究極のセッションを。<br/>※AIプレイヤーは参加できません。</p>
                   </div>
                   <div className="mt-4 pt-3 border-t border-fuchsia-900/50">
                     <div className="flex gap-2 mb-2">
@@ -2058,16 +2060,36 @@ export default function Home() {
                          🪙 1200 ptで交換
                       </button>
                     </div>
-                    <button onClick={() => alert("※決済システム準備中")} className="w-full bg-slate-800 border border-fuchsia-700/50 hover:bg-slate-700 text-fuchsia-300 text-[10px] py-1.5 rounded font-bold">
-                       3枚セット - ¥4,860 (10%OFF)
-                    </button>
                   </div>
                </div>
+               
+               {/* アイテムチケット */}
+               <div className="bg-slate-700/30 border border-slate-600 p-4 rounded-xl flex flex-col justify-between">
+                  <div>
+                    <div className="flex justify-between items-center mb-2">
+                      <h4 className="text-lg font-bold text-white">アイテム</h4>
+                      <span className="bg-slate-500 text-white text-[10px] px-2 py-1 rounded font-bold">便利機能用</span>
+                    </div>
+                    <p className="text-[11px] text-slate-400">高品質画像生成(3回分)や、<br/>小説執筆、書庫保存などに使用します。</p>
+                  </div>
+                  <div className="mt-4 pt-3 border-t border-slate-600">
+                    <div className="flex gap-2 mb-2">
+                      <button onClick={() => alert("※決済システム準備中")} className="flex-1 bg-slate-600 hover:bg-slate-500 text-white text-xs py-2 rounded font-bold shadow">
+                         ¥120 で購入
+                      </button>
+                      <button onClick={() => exchangeTicketWithPoints('item', 300)} className="flex-[1.5] bg-yellow-600 hover:bg-yellow-500 text-white text-xs py-2 rounded font-bold shadow flex items-center justify-center gap-1">
+                         🪙 300 ptで交換
+                      </button>
+                    </div>
+                  </div>
+               </div>
+
             </div>
           </div>
         </div>
       )}
 
+      {/* 以降のモーダル等（reportTarget, banTargetScenario等）は省略せずそのまま */}
       {reportTarget && (
         <div className="fixed inset-0 bg-black/80 z-[60] flex items-center justify-center p-4">
           <div className="bg-slate-800 border border-red-700/50 rounded-xl p-6 w-full max-w-lg shadow-2xl">
@@ -2232,14 +2254,15 @@ export default function Home() {
               <div>
                 <label className="text-xs text-slate-400 block mb-1">AIモデル (GM) {isTicketSystemEnabled && <span className="text-amber-400 text-[10px]">※チケット消費</span>}</label>
                 <select 
-                  value={roomConfigModal.aiModel || "flash"} 
+                  value={roomConfigModal.aiModel || "lite"} 
                   onChange={(e) => setRoomConfigModal({...roomConfigModal, aiModel: e.target.value})} 
                   className="w-full bg-slate-900 border border-slate-700 rounded p-2 text-sm text-white"
                 >
-                  <option value="flash">🟢 Gemini Flash {isTicketSystemEnabled ? "(シルバー 1枚)" : "(無料)"}</option>
-                  <option value="pro">🟡 Gemini Pro {isTicketSystemEnabled ? "(ゴールド 1枚)" : "(無料)"}</option>
-                  <option value="claude">🟣 Claude 3.5 Sonnet {isTicketSystemEnabled ? "(プラチナ 1枚)" : "(無料)"}</option>
-                  <option value="opus">💎 Claude 3 Opus {isTicketSystemEnabled ? "(ダイヤモンド 1枚)" : "(無料)"}</option>
+                  <option value="lite">🟤 ブロンズ (Flash Lite) {isTicketSystemEnabled ? "(1枚消費)" : "(無料)"}</option>
+                  <option value="flash">⚪ シルバー (Gemini Flash) {isTicketSystemEnabled ? "(1枚消費)" : "(無料)"}</option>
+                  <option value="pro">🟡 ゴールド (Gemini Pro) {isTicketSystemEnabled ? "(1枚消費)" : "(無料)"}</option>
+                  <option value="claude">🟣 プラチナ (Claude Sonnet) {isTicketSystemEnabled ? "(1枚消費)" : "(無料)"}</option>
+                  <option value="opus">💎 ダイヤモンド (Claude Opus) {isTicketSystemEnabled ? "(1枚消費)" : "(無料)"}</option>
                 </select>
               </div>
 
