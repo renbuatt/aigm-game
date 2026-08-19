@@ -103,7 +103,6 @@ export default function GameView({
     setIsGeneratingImg(false);
   };
 
-  // ★ GameView内でアイテムチケットからクレジットをチャージするロジック
   const chargeImageCredits = async () => {
     if (!currentUser) return;
     if ((currentUser.ticketsItem || 0) < 1) {
@@ -114,13 +113,12 @@ export default function GameView({
     
     const updates: any = { 
       image_gen_credits: (currentUser.imageGenCredits || 0) + 3,
-      tickets_item: currentUser.ticketsItem - 1
+      tickets_item: (currentUser.ticketsItem || 0) - 1
     };
 
     const { error } = await supabase.from('profiles').update(updates).eq('id', currentUser.id);
     if (error) { alert("チケットの消費に失敗しました。"); return; }
     
-    // この時点でDBは更新されるため、次回再取得時に反映されますが即時反映にはページ側からの更新が必要です
     alert("3回分の高品質画像生成権をチャージしました！画面を更新すると反映されます。");
   };
 
@@ -403,7 +401,6 @@ export default function GameView({
               <button onClick={startGame} className="bg-pink-600 hover:bg-pink-500 text-white text-[10px] font-bold px-4 py-2 rounded animate-pulse ml-2 shadow-lg shadow-pink-900/50">▶ お試し開始</button>
             )}
 
-            {/* ★ 画像生成ボタンのUI調整 */}
             {isHost && activeRoom.status === "playing" && !isScenarioEnded && !activeRoom.is_trial && (
                <div className="flex gap-2 ml-2">
                  {imageCount < 3 && (
@@ -412,7 +409,6 @@ export default function GameView({
                        {isGeneratingImg ? "⏳ 生成中..." : "🖼️ 無料で情景生成"}
                      </button>
                      
-                     {/* ★ 0の場合はチャージボタン、それ以外は高品質生成ボタン */}
                      {(currentUser?.imageGenCredits || 0) > 0 ? (
                        <button onClick={() => handleGenerateImage("premium")} disabled={isGeneratingImg} className="relative bg-orange-600 hover:bg-orange-500 disabled:bg-slate-600 text-white text-[10px] font-bold px-3 py-1.5 rounded shadow-lg transition">
                          ✨ 高品質な情景生成
@@ -450,7 +446,6 @@ export default function GameView({
         
         {messages.filter((msg: Message) => {
           if (msg.type === "system") return true;
-          // ★ 画像メッセージは「行動宣言（story）」タブでのみ表示
           if (msg.type === "image") return chatTab === "story"; 
           if (!isSplitMode) return msg.channel === chatTab;
           return (!msg.sceneId || msg.sceneId === 'scene_main' || msg.sceneId === myScene.id) && msg.channel === chatTab;
