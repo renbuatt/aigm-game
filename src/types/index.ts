@@ -22,6 +22,7 @@ export type UserProfile = {
   blockedUserIds?: string[];
   points?: number;            
   ticketsNormal?: number;     
+  ticketsBronze?: number;    // ★ 追加：ブロンズチケット（Flash Lite用）
   ticketsSilver?: number;     
   ticketsGold?: number;       
   ticketsPlatinum?: number;
