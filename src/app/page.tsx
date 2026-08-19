@@ -860,6 +860,42 @@ export default function Home() {
 
   const executeJoinRoom = async (room: Room, charId: string) => {
     if (!currentUser || !room || !charId) return;
+
+    // ★ ゲスト入室時もチケットを消費するロジックの追加
+    const isAuthor = room.scenario?.authorId === currentUser.id;
+    if (isTicketSystemEnabled && !isAuthor && !room.is_trial) {
+      let requiredTicketKey = '';
+      let currentTickets = 0;
+      let costName = '';
+      
+      if (room.ai_model === 'lite') { requiredTicketKey = 'tickets_bronze'; currentTickets = currentUser.ticketsBronze || 0; costName = 'ブロンズ'; }
+      if (room.ai_model === 'flash') { requiredTicketKey = 'tickets_silver'; currentTickets = currentUser.ticketsSilver || 0; costName = 'シルバー'; }
+      if (room.ai_model === 'pro') { requiredTicketKey = 'tickets_gold'; currentTickets = currentUser.ticketsGold || 0; costName = 'ゴールド'; }
+      if (room.ai_model === 'claude') { requiredTicketKey = 'tickets_platinum'; currentTickets = currentUser.ticketsPlatinum || 0; costName = 'プラチナ'; }
+      if (room.ai_model === 'opus') { requiredTicketKey = 'tickets_diamond'; currentTickets = currentUser.ticketsDiamond || 0; costName = 'ダイヤモンド'; }
+
+      if (currentTickets < 1) {
+        alert(`入室するためのチケットが足りません！\n（${costName}チケットが1枚必要です）\nロビーの「チケット購入ストア」から入手してください。`);
+        setShowTicketModal(true);
+        return;
+      }
+
+      if (!confirm(`この部屋に入室するには ${costName}チケット を1枚消費します。よろしいですか？`)) return;
+
+      const { error: tErr } = await supabase.from('profiles').update({ [requiredTicketKey]: currentTickets - 1 }).eq('id', currentUser.id);
+      if (tErr) { alert("チケットの消費処理に失敗しました。"); return; }
+
+      setCurrentUser(prev => prev ? { 
+        ...prev,
+        ticketsBronze: room.ai_model === 'lite' ? (prev.ticketsBronze || 0) - 1 : prev.ticketsBronze,
+        ticketsSilver: room.ai_model === 'flash' ? (prev.ticketsSilver || 0) - 1 : prev.ticketsSilver,
+        ticketsGold: room.ai_model === 'pro' ? (prev.ticketsGold || 0) - 1 : prev.ticketsGold,
+        ticketsPlatinum: room.ai_model === 'claude' ? (prev.ticketsPlatinum || 0) - 1 : prev.ticketsPlatinum,
+        ticketsDiamond: room.ai_model === 'opus' ? (prev.ticketsDiamond || 0) - 1 : prev.ticketsDiamond
+      } : null);
+    }
+    // ---------------------------------------------
+
     const { data: latestRoom } = await supabase.from('rooms').select('joined_users, inventories').eq('id', room.id).single();
     const currentUsers = latestRoom?.joined_users || {};
     const currentInventories = latestRoom?.inventories || {};
@@ -1488,13 +1524,13 @@ export default function Home() {
 
       let difficultyInstruction = "";
       switch (activeRoom.difficulty) {
-        case "beginner": difficultyInstruction = "【難易度：初心者】接待プレイです。困っていればヒントや選択肢を出しても構いません。"; break;
-        case "easy": difficultyInstruction = "【難易度：簡単】判定が通りやすく、探索で見つかる情報を多めに描写してください。ただし露骨な解法の指示は避けてください。"; break;
-        case "normal": difficultyInstruction = "【難易度：普通】【ヒント・誘導・選択肢の提示・次期目標の指示は完全禁止】純粋な情景描写と結果のみを出力してください。「次は〜が残されています」「〜しましょう」といったタスクリストや次期目標の提示、解法の匂わせ（「※〜があるかもしれません」「〜が必要」等）は絶対に書かないでください。"; break;
-        case "hard": difficultyInstruction = "【難易度：難しい】【ノーヒント・厳格】解法のヒントや補足、目標の提示は一切禁止。PLから具体的な探索宣言がない限りオブジェクトの存在すら明かさないでください。判定失敗時は即座に状況を悪化させてください。"; break;
-        case "pro": difficultyInstruction = "【難易度：プロ】【容赦ない本格派】一切のヒントや誘導を禁止。PLの軽率な行動には即座に致命的なペナルティやロストの危機を与えてください。"; break;
-        case "oni": difficultyInstruction = "【難易度：鬼】【理不尽・極限】一切の手加減・ヒントを排除。死と隣り合わせの無慈悲な描写を徹底してください。"; break;
-        default: difficultyInstruction = "【難易度：普通】【ヒント・誘導・選択肢の提示・次期目標の指示は完全禁止】純粋な情景描写と結果のみを出力してください。";
+        case "beginner": difficultyInstruction = "【難易度：初心者】接待プレイです。敵の攻撃頻度は低く、ロスト(死亡)リスクは0%です。ダイス失敗時も致命傷にはせず、優しい結果にしてください。"; break;
+        case "easy": difficultyInstruction = "【難易度：簡単】敵は攻撃してきますが威力は控えめです。ロストリスクはほぼ0%。ダイス失敗時は軽傷や小さな不利にとどめてください。"; break;
+        case "normal": difficultyInstruction = "【難易度：普通】標準的なTRPGバランスです。敵は明確な殺意を持って攻撃してきます。ダイス失敗時は容赦なく手痛いペナルティ（SAN値の減少、ダメージ、アイテムの喪失など）を与えてください。"; break;
+        case "hard": difficultyInstruction = "【難易度：難しい】敵のステータスに強力なバフがかかっています。ダイス失敗時は致命的なペナルティを与え、常にロスト（死亡）の危険を意識させる厳しい判定を行ってください。"; break;
+        case "pro": difficultyInstruction = "【難易度：プロ】一切の容赦・手加減は禁止です。敵の攻撃は極めて苛烈で、軽率な行動やダイス失敗は即座にロスト（死亡）に直結する絶望的な難易度にしてください。"; break;
+        case "oni": difficultyInstruction = "【難易度：鬼】理不尽なまでの極限難易度。敵は最強のバフを得ており、生き残ることが奇跡であるかのように無慈悲なダメージとペナルティを与え続けてください。"; break;
+        default: difficultyInstruction = "【難易度：普通】標準的なTRPGバランスです。敵は攻撃してきます。失敗時は容赦なくペナルティを与えてください。";
       }
 
       let ruleSpecLines: string[] = []; let gmStyleLines: string[] = [];
@@ -1615,12 +1651,20 @@ export default function Home() {
       await pushMessage(activeRoom.id, { sender: msgSender, text: cleanAiText, type: targetTab === "gm" ? "ooc" : "ic", sceneId: myScene?.id, charName: targetTab === "consult" ? "AI相棒" : "AI GM", channel: targetTab });
 
       if (isChapterCleared && !isLastChapter) {
-         const nextIndex = currentChapIndex + 1;
-         await supabase.from('rooms').update({ current_chapter_index: nextIndex }).eq('id', activeRoom.id);
-         setActiveRoom(prev => prev ? { ...prev, current_chapter_index: nextIndex } : null);
-         await pushMessage(activeRoom.id, { sender: "system", text: `【システム】チャプター「${currentChapter.title}」をクリアしました！\n物語は次章「${chapters[nextIndex].title}」へ進行します...`, type: "system", sceneId: myScene?.id, channel: "system" }, false);
-         
-         await supabase.from('ai_memory').insert({ room_id: activeRoom.id, role: 'user', content: `【システム情報：第${nextIndex+1}章（${chapters[nextIndex].title}）に突入しました。これまでの状況を踏まえ、次の展開を描写してください】\n\n【絶対条件：章開始の超絶リッチ描写】\nここは新しい章の開始シーンです。参加人数に関係なく、あなたの持てる最大の語彙力と文字数（最低1000文字〜最大3000文字）を使い切り、場面転換に伴う新たな情景描写や空気感の変化を圧倒的かつガッツリと描写してください。絶対に端折らないこと。` });
+         if (activeRoom.is_trial) {
+           // ★ お試しプレイの場合は第1章クリア時点で強制終了
+           const endText = '【お試しプレイはここまでです！続きはチケットを消費して本編の部屋を作成してお楽しみください】\n\n[SCENARIO_END]';
+           await supabase.from('ai_memory').insert({ room_id: activeRoom.id, role: 'assistant', content: endText });
+           await pushMessage(activeRoom.id, { sender: "system", text: endText, type: "system", sceneId: myScene?.id, channel: "system" }, false);
+           await supabase.from('rooms').update({ status: 'finished' }).eq('id', activeRoom.id);
+           setActiveRoom(prev => prev ? { ...prev, status: 'finished' } : null);
+         } else {
+           const nextIndex = currentChapIndex + 1;
+           await supabase.from('rooms').update({ current_chapter_index: nextIndex }).eq('id', activeRoom.id);
+           setActiveRoom(prev => prev ? { ...prev, current_chapter_index: nextIndex } : null);
+           await pushMessage(activeRoom.id, { sender: "system", text: `【システム】チャプター「${currentChapter.title}」をクリアしました！\n物語は次章「${chapters[nextIndex].title}」へ進行します...`, type: "system", sceneId: myScene?.id, channel: "system" }, false);
+           await supabase.from('ai_memory').insert({ room_id: activeRoom.id, role: 'user', content: `【システム情報：第${nextIndex+1}章（${chapters[nextIndex].title}）に突入しました。これまでの状況を踏まえ、次の展開を描写してください】\n\n【絶対条件：章開始の超絶リッチ描写】\nここは新しい章の開始シーンです。参加人数に関係なく、あなたの持てる最大の語彙力と文字数（最低1000文字〜最大3000文字）を使い切り、場面転換に伴う新たな情景描写や空気感の変化を圧倒的かつガッツリと描写してください。絶対に端折らないこと。` });
+         }
       } else if (isChapterCleared && isLastChapter) {
          await supabase.from('rooms').update({ status: 'finished' }).eq('id', activeRoom.id);
          setActiveRoom(prev => prev ? { ...prev, status: 'finished' } : null);
