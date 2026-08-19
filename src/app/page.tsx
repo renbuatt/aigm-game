@@ -617,6 +617,28 @@ export default function Home() {
     alert("チケットを交換しました！");
   };
 
+  // ★ 追加：GameViewの「チャージボタン」から呼ばれる処理
+  const chargeImageCredits = async () => {
+    if (!currentUser) return;
+    if ((currentUser.ticketsItem || 0) < 1) {
+      alert("アイテムチケットが足りません！\nロビーの「チケット購入ストア」から入手してください。");
+      setShowTicketModal(true);
+      return;
+    }
+    if (!confirm("アイテムチケットを1枚消費して、高品質画像生成を3回分チャージしますか？")) return;
+    
+    const updates: any = { 
+      image_gen_credits: (currentUser.imageGenCredits || 0) + 3,
+      tickets_item: currentUser.ticketsItem! - 1
+    };
+
+    const { error } = await supabase.from('profiles').update(updates).eq('id', currentUser.id);
+    if (error) { alert("チケットの消費に失敗しました。"); return; }
+    
+    setCurrentUser(prev => prev ? { ...prev, imageGenCredits: updates.image_gen_credits, ticketsItem: updates.tickets_item } : null);
+    alert("3回分の高品質画像生成権をチャージしました！");
+  };
+
   const generateSceneImage = async (imageType: 'free' | 'premium') => {
     if (!activeRoom || !myScene || !currentUser || isRequestingRef.current) return;
     isRequestingRef.current = true;
@@ -626,27 +648,13 @@ export default function Home() {
       if (imageType === 'premium') {
         if (isTicketSystemEnabled) {
           if ((currentUser.imageGenCredits || 0) < 1) {
-            if ((currentUser.ticketsItem || 0) < 1) {
-              alert("アイテムチケットが足りません！\nロビーの「チケット購入ストア」から入手してください。");
-              setShowTicketModal(true);
-              return;
-            }
-            if (!confirm("高品質画像生成の回数がありません。\nアイテムチケットを1枚消費して、3回分チャージしますか？")) return;
-            
-            const updates: any = { 
-              image_gen_credits: (currentUser.imageGenCredits || 0) + 3,
-              tickets_item: currentUser.ticketsItem! - 1
-            };
-
-            const { error } = await supabase.from('profiles').update(updates).eq('id', currentUser.id);
-            if (error) { alert("チケットの消費に失敗しました。"); return; }
-            
-            setCurrentUser(prev => prev ? { ...prev, imageGenCredits: (prev.imageGenCredits || 0) + 3, ticketsItem: updates.tickets_item ?? prev.ticketsItem } : null);
-            alert("3回分の高品質画像生成権をチャージしました！");
-          } else {
-            const { error } = await supabase.from('profiles').update({ image_gen_credits: currentUser.imageGenCredits! - 1 }).eq('id', currentUser.id);
-            if (!error) setCurrentUser(prev => prev ? { ...prev, imageGenCredits: prev.imageGenCredits! - 1 } : null);
+            alert("画像生成の回数がありません。「チャージ」ボタンから補充してください。");
+            isRequestingRef.current = false;
+            setIsLoading(false);
+            return;
           }
+          const { error } = await supabase.from('profiles').update({ image_gen_credits: currentUser.imageGenCredits! - 1 }).eq('id', currentUser.id);
+          if (!error) setCurrentUser(prev => prev ? { ...prev, imageGenCredits: prev.imageGenCredits! - 1 } : null);
         }
       }
 
@@ -1421,6 +1429,28 @@ export default function Home() {
     setChatTab(tab); setUnreadIndicators(prev => ({ ...prev, [tab]: false }));
   };
 
+  // ★ GameViewからのチケット消費処理を追加
+  const chargeImageCredits = async () => {
+    if (!currentUser) return;
+    if ((currentUser.ticketsItem || 0) < 1) {
+      alert("アイテムチケットが足りません！\nロビーの「チケット購入ストア」から入手してください。");
+      setShowTicketModal(true);
+      return;
+    }
+    if (!confirm("アイテムチケットを1枚消費して、高品質画像生成を3回分チャージしますか？")) return;
+    
+    const updates: any = { 
+      image_gen_credits: (currentUser.imageGenCredits || 0) + 3,
+      tickets_item: currentUser.ticketsItem! - 1
+    };
+
+    const { error } = await supabase.from('profiles').update(updates).eq('id', currentUser.id);
+    if (error) { alert("チケットの消費に失敗しました。"); return; }
+    
+    setCurrentUser(prev => prev ? { ...prev, imageGenCredits: updates.image_gen_credits, ticketsItem: updates.tickets_item } : null);
+    alert("3回分の高品質画像生成権をチャージしました！");
+  };
+
   const callAIGM = async (extraUserContext?: string, targetTab: ChatTab = "story", isStarting: boolean = false, forcedModel?: string) => {
     if (!activeRoom || !joinedCharacter || !myScene) return;
     if (!isStarting && activeRoom.status !== 'playing') return;
@@ -1563,10 +1593,11 @@ export default function Home() {
       if (finalModel === 'lite') {
         apiModelString = 'flash-lite';
       } else if (finalModel === 'flash') {
-        apiModelString = 'flash';
+        apiModelString = geminiFlashModel === '3.5-lite' ? 'flash-lite' : 'flash';
       }
 
-      const outputTokens = ['pro', 'claude', 'opus'].includes(activeRoom.ai_model || '') ? 3000 : 1500;
+      // ★ 出力制限を全体的に大幅引き上げ
+      const outputTokens = 3000;
       const aiTextRaw = await generateAIResponse(sysPrompt, history, apiModelString, outputTokens, 0.7);
       
       let parsedAI = { text: "", statusUpdates: [], inventoryUpdates: [], chapterClear: false };
