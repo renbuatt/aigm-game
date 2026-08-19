@@ -616,6 +616,7 @@ export default function Home() {
     });
     alert("チケットを交換しました！");
   };
+
   const generateSceneImage = async (imageType: 'free' | 'premium') => {
     if (!activeRoom || !myScene || !currentUser || isRequestingRef.current) return;
     isRequestingRef.current = true;
@@ -925,7 +926,7 @@ export default function Home() {
       setActiveRoom(updatedRoom);
       await pushMessage(activeRoom.id, { sender: "system", text: `【システム】ゲームを開始しました。AI GMを呼び出しています...`, type: "system", sceneId: myScene.id, channel: "system" });
       
-      const extraUserContext = `【システムコマンド】セッションが開始されました。\n以下の【設定されたプロローグ情報】に従い（無ければ本編プロットから推測して）、導入部分の情景描写を行ってください。\n\n【設定されたプロローグ情報】\n${activeRoom.scenario.prologue || "特になし"}\n\nまた、この導入部において、事態の把握や最初の試練として【必ずプレイヤー全員が最低1回はダイス判定を行わなければならない状況】を発生させてください。`;
+      const extraUserContext = `【システムコマンド】セッションが開始されました。\n以下の【設定されたプロローグ情報】に従い（無ければ本編プロットから推測して）、導入部分の情景描写を行ってください。\n\n【絶対条件：プロローグの超絶リッチ描写】\nここは物語の始まり（導入）です。参加人数やテンポに関係なく、あなたの持てる最大の語彙力と文字数（最低1000文字〜最大3000文字）を使い切り、五感（視覚、聴覚、嗅覚、温度など）やその場の空気感、キャラクターの心理描写を圧倒的かつガッツリと描写してください。絶対に端折らないこと。\n\n【設定されたプロローグ情報】\n${activeRoom.scenario.prologue || "特になし"}\n\nまた、この重厚な導入部を描写した上で、事態の把握や最初の試練として【必ずプレイヤー全員が最低1回はダイス判定を行わなければならない状況】を最後に提示してください。`;
       await callAIGM(extraUserContext, "story", true);
     } finally {
       isRequestingRef.current = false;
@@ -1619,7 +1620,7 @@ export default function Home() {
          setActiveRoom(prev => prev ? { ...prev, current_chapter_index: nextIndex } : null);
          await pushMessage(activeRoom.id, { sender: "system", text: `【システム】チャプター「${currentChapter.title}」をクリアしました！\n物語は次章「${chapters[nextIndex].title}」へ進行します...`, type: "system", sceneId: myScene?.id, channel: "system" }, false);
          
-         await supabase.from('ai_memory').insert({ room_id: activeRoom.id, role: 'user', content: `【システム情報：第${nextIndex+1}章（${chapters[nextIndex].title}）に突入しました。これまでの状況を踏まえ、次の展開を描写してください】` });
+         await supabase.from('ai_memory').insert({ room_id: activeRoom.id, role: 'user', content: `【システム情報：第${nextIndex+1}章（${chapters[nextIndex].title}）に突入しました。これまでの状況を踏まえ、次の展開を描写してください】\n\n【絶対条件：章開始の超絶リッチ描写】\nここは新しい章の開始シーンです。参加人数に関係なく、あなたの持てる最大の語彙力と文字数（最低1000文字〜最大3000文字）を使い切り、場面転換に伴う新たな情景描写や空気感の変化を圧倒的かつガッツリと描写してください。絶対に端折らないこと。` });
       } else if (isChapterCleared && isLastChapter) {
          await supabase.from('rooms').update({ status: 'finished' }).eq('id', activeRoom.id);
          setActiveRoom(prev => prev ? { ...prev, status: 'finished' } : null);
