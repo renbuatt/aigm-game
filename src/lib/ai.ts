@@ -1,9 +1,16 @@
+// 環境変数からAPIキーを取得（※GitHubのブロックを防ぐため、必ず .env.local に設定してください）
 const GEMINI_API_KEY = process.env.NEXT_PUBLIC_GEMINI_API_KEY;
 const CLAUDE_API_KEY = process.env.NEXT_PUBLIC_CLAUDE_API_KEY;
 const NANOBANANA_API_KEY = process.env.NEXT_PUBLIC_NANOBANANA_API_KEY;
 
 // ★ maxTokens と temperature を引数で細かく制御できるように追加
-export const generateAIResponse = async (systemPrompt: string, history: any[], model: string = 'flash', maxTokens: number = 2500, temperature: number = 0.7) => {
+export const generateAIResponse = async (
+  systemPrompt: string, 
+  history: any[], 
+  model: string = 'flash', 
+  maxTokens: number = 2500, 
+  temperature: number = 0.7
+) => {
   
   const normalizedHistory: any[] = [];
   for (const msg of history) {
@@ -16,11 +23,14 @@ export const generateAIResponse = async (systemPrompt: string, history: any[], m
     }
   }
 
+  // APIエラーを防ぐためのダミー発言
   if (normalizedHistory.length > 0 && normalizedHistory[normalizedHistory.length - 1].role === 'model') {
     normalizedHistory.push({ role: 'user', parts: [{ text: '（待機しています。続けてください）' }] });
   }
 
-  // ▼ Gemini API
+  // ----------------------------------------------------
+  // ▼ Gemini (3.5 Flash Lite / 3.6 Flash / 3.1 Pro) のAPI呼び出し
+  // ----------------------------------------------------
   if (model === 'flash' || model === 'flash-lite' || model === 'pro') {
     let targetModel = 'gemini-3.6-flash';
     if (model === 'pro') targetModel = 'gemini-3.1-pro';
@@ -43,7 +53,9 @@ export const generateAIResponse = async (systemPrompt: string, history: any[], m
     return data.candidates[0].content.parts[0].text;
   }
   
-  // ▼ Claude API
+  // ----------------------------------------------------
+  // ▼ Claude (Sonnet / Opus) のAPI呼び出し
+  // ----------------------------------------------------
   if (model === 'claude' || model === 'opus') {
     const targetModel = model === 'opus' ? 'claude-3-opus-20240229' : 'claude-3-5-sonnet-20240620';
     const claudeHistory = normalizedHistory.map(h => ({ role: h.role === 'model' ? 'assistant' : 'user', content: h.parts[0].text }));
@@ -73,10 +85,12 @@ export const generateAIResponse = async (systemPrompt: string, history: any[], m
   return "エラー：不明なモデルが選択されました。";
 };
 
+// 要約や翻訳など、単発のAI処理用関数
 export const generateAITextWithPrompt = async (prompt: string, model: string = 'flash', maxTokens: number = 1000, temperature: number = 0.7) => {
   return generateAIResponse("あなたは優秀なアシスタントです。指示に従って出力してください。", [{ role: "user", parts: [{ text: prompt }] }], model, maxTokens, temperature);
 };
 
+// ▼ 無料の画像生成API (Pollinations.ai)
 export const generateFreeImage = async (prompt: string): Promise<string> => {
   const seed = Math.floor(Math.random() * 100000);
   const url = `https://image.pollinations.ai/prompt/${encodeURIComponent(prompt)}?nologo=true&seed=${seed}&safe=true`;
@@ -91,7 +105,43 @@ export const generateFreeImage = async (prompt: string): Promise<string> => {
   });
 };
 
+// ▼ プレミアム画像生成API (Nano Banana Pro / Gemini 3 Pro Image)
 export const generatePremiumImage = async (prompt: string): Promise<string> => {
-  console.log(`[Premium Image] Key: ${NANOBANANA_API_KEY}`);
-  return generateFreeImage(prompt + ", masterpiece, high quality, highly detailed");
+  console.log(`[Premium Image] Model: Nano Banana Pro (Gemini 3 Pro Image) / Key: ${NANOBANANA_API_KEY}`);
+  
+  // ★ ここに Nano Banana Pro の実際のエンドポイントURLを指定します
+  const url = "https://api.nanobanana.com/v1/images/generate"; 
+  
+  try {
+    /* 
+    // =====================================================================
+    // ▼ 本番用：実際のAPIが用意できたらこちらのコメントアウトを外して使用してください
+    // =====================================================================
+    const res = await fetch(url, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${NANOBANANA_API_KEY}`
+      },
+      body: JSON.stringify({ 
+        prompt: prompt, 
+        model: "gemini-3-pro-image",
+        aspect_ratio: "16:9" // TRPGの情景向け
+      })
+    });
+    
+    if (!res.ok) throw new Error("Nano Banana API エラー");
+    const data = await res.json();
+    return data.imageUrl; // APIの仕様に合わせてBase64やURLを返してください
+    */
+
+    // =====================================================================
+    // ▼ テスト用モック（本番APIを繋ぐまでは無料サーバーに高品質タグを盛って代用します）
+    // =====================================================================
+    return generateFreeImage(prompt + ", masterpiece, high quality, highly detailed, photorealistic, 8k resolution, volumetric lighting");
+    
+  } catch (err) {
+    console.error("高品質画像の生成に失敗しました:", err);
+    throw new Error("高品質画像の生成に失敗しました");
+  }
 };

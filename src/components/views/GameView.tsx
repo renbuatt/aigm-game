@@ -31,7 +31,7 @@ type Props = {
   isChatDisabled: boolean;
   mergeTeam: () => Promise<void>;
   executeMergeAll: () => Promise<void>;
-  generateSceneImage: (imageType: 'free' | 'premium') => Promise<void>; // ★ 引数を追加
+  generateSceneImage: (imageType: 'free' | 'premium') => Promise<void>;
   proposedTeams: {id: string, action: string, members: string[], leader: string}[];
   setProposedTeams: React.Dispatch<React.SetStateAction<{id: string, action: string, members: string[], leader: string}[]>>;
   isGeneratingSplit: boolean;
@@ -96,7 +96,6 @@ export default function GameView({
     }
   }, [messages, activeRoom.status, activeRoom.is_paused, isHost, isScenarioEnded, triggerAutoAction]);
 
-  // ★ 画像生成呼び出し（引数で切り替え）
   const handleGenerateImage = async (type: 'free' | 'premium') => {
     if (imageCount >= 3 || isGeneratingImg) return;
     setIsGeneratingImg(true);
@@ -260,7 +259,7 @@ export default function GameView({
             
             <div className="flex items-center gap-2 mt-1">
               <div className="flex gap-1">
-                {Object.entries(activeRoom.joined_users).map(([uid, cid]) => {
+                {Object.entries(activeRoom.joined_users || {}).map(([uid, cid]) => {
                   const c = activeRoom.scenario?.presetCharacters.find((pc: any) => pc.id === cid);
                   const isUserAfk = activeRoom.afk_users?.includes(uid);
                   if (!c) return null;
@@ -268,7 +267,7 @@ export default function GameView({
                     <div key={uid} className={`relative flex items-center justify-center w-6 h-6 rounded-full border ${isUserAfk ? 'border-red-500 opacity-50' : 'border-slate-500'}`} title={c.name}>
                       <img src={c.imageUrl || DEFAULT_AVATAR} className="w-full h-full rounded-full object-cover" />
                       {isUserAfk && <span className="absolute -top-2 -right-2 text-[8px] bg-red-600 px-1 rounded font-bold">AFK</span>}
-                      {isHost && isUserAfk && uid !== currentUser.id && (
+                      {isHost && isUserAfk && uid !== currentUser?.id && (
                         <button onClick={() => toggleAFK(uid, true)} className="absolute -bottom-2 -right-1 text-[8px] bg-slate-800 text-white px-1 border border-slate-500 rounded z-10 hover:bg-slate-600">解除</button>
                       )}
                     </div>
@@ -276,7 +275,7 @@ export default function GameView({
                 })}
               </div>
               
-              {!isScenarioEnded && joinedCharacter && (
+              {!isScenarioEnded && joinedCharacter && currentUser && (
                 <button onClick={() => toggleAFK(currentUser.id)} className={`text-[10px] px-2 py-1 rounded font-bold border transition-colors ml-2 ${isAfk ? 'bg-red-900/80 border-red-500 text-red-200 shadow-[0_0_8px_rgba(239,68,68,0.5)]' : 'bg-slate-800 border-slate-600 text-slate-400 hover:bg-slate-700'}`}>
                   {isAfk ? "☕ 離席中(解除)" : "☕ 離席(AFK)"}
                 </button>
@@ -323,7 +322,7 @@ export default function GameView({
                     </label>
                     <div className="max-h-48 overflow-y-auto custom-scrollbar space-y-2">
                       {visibility === 'all' ? (
-                        activeRoom.scenario?.presetCharacters.filter((c: any) => Object.values(activeRoom.joined_users).includes(c.id) || aiPlayersList.find(a=>a.id===c.id)).map(c => (
+                        activeRoom.scenario?.presetCharacters.filter((c: any) => Object.values(activeRoom.joined_users || {}).includes(c.id) || aiPlayersList.find(a=>a.id===c.id)).map(c => (
                           <div key={c.id} className="text-xs">
                             <span className="text-blue-300 font-bold">{c.name}</span>
                             <p className="text-slate-300 ml-1 leading-tight">{activeRoom.inventories?.[c.id] || c.items || "特になし"}</p>
@@ -348,27 +347,27 @@ export default function GameView({
                 </div>
                 {rule === 'dnd' && (
                   <>
-                    <button onClick={() => rollDice(joinedCharacter.str, "STR")} className="bg-red-700 hover:bg-red-600 text-white text-[10px] px-2 py-1.5 rounded font-bold shadow-lg">🎲 STR(1d20)</button>
-                    <button onClick={() => rollDice(joinedCharacter.dex, "DEX")} className="bg-green-700 hover:bg-green-600 text-white text-[10px] px-2 py-1.5 rounded font-bold shadow-lg">🎲 DEX(1d20)</button>
-                    <button onClick={() => rollDice(joinedCharacter.int, "INT")} className="bg-purple-700 hover:bg-purple-600 text-white text-[10px] px-2 py-1.5 rounded font-bold shadow-lg">🎲 INT(1d20)</button>
-                    <button onClick={() => rollDice(joinedCharacter.con, "CON")} className="bg-amber-700 hover:bg-amber-600 text-white text-[10px] px-2 py-1.5 rounded font-bold shadow-lg">🎲 CON(1d20)</button>
+                    <button onClick={() => rollDice(joinedCharacter.str || 10, "STR")} className="bg-red-700 hover:bg-red-600 text-white text-[10px] px-2 py-1.5 rounded font-bold shadow-lg">🎲 STR(1d20)</button>
+                    <button onClick={() => rollDice(joinedCharacter.dex || 10, "DEX")} className="bg-green-700 hover:bg-green-600 text-white text-[10px] px-2 py-1.5 rounded font-bold shadow-lg">🎲 DEX(1d20)</button>
+                    <button onClick={() => rollDice(joinedCharacter.int || 10, "INT")} className="bg-purple-700 hover:bg-purple-600 text-white text-[10px] px-2 py-1.5 rounded font-bold shadow-lg">🎲 INT(1d20)</button>
+                    <button onClick={() => rollDice(joinedCharacter.con || 10, "CON")} className="bg-amber-700 hover:bg-amber-600 text-white text-[10px] px-2 py-1.5 rounded font-bold shadow-lg">🎲 CON(1d20)</button>
                   </>
                 )}
                 {(rule === 'coc_en' || rule === 'coc_jp') && (
                   <>
-                    <button onClick={() => rollDice(joinedCharacter.san, "SAN", true)} className="bg-cyan-700 hover:bg-cyan-600 text-white text-[10px] px-2 py-1.5 rounded font-bold shadow-lg">🎲 SAN({joinedCharacter.san}%)</button>
-                    <button onClick={() => rollDice(joinedCharacter.str, "STR", false)} className="bg-red-700 hover:bg-red-600 text-white text-[10px] px-2 py-1.5 rounded font-bold shadow-lg">🎲 STR({joinedCharacter.str})</button>
-                    <button onClick={() => rollDice(joinedCharacter.dex, "DEX", false)} className="bg-green-700 hover:bg-green-600 text-white text-[10px] px-2 py-1.5 rounded font-bold shadow-lg">🎲 DEX({joinedCharacter.dex})</button>
-                    <button onClick={() => rollDice(joinedCharacter.int, "INT", false)} className="bg-purple-700 hover:bg-purple-600 text-white text-[10px] px-2 py-1.5 rounded font-bold shadow-lg">🎲 INT({joinedCharacter.int})</button>
-                    <button onClick={() => rollDice(joinedCharacter.con, "CON", false)} className="bg-amber-700 hover:bg-amber-600 text-white text-[10px] px-2 py-1.5 rounded font-bold shadow-lg">🎲 CON({joinedCharacter.con})</button>
+                    <button onClick={() => rollDice(joinedCharacter.san || 50, "SAN", true)} className="bg-cyan-700 hover:bg-cyan-600 text-white text-[10px] px-2 py-1.5 rounded font-bold shadow-lg">🎲 SAN({joinedCharacter.san || 50}%)</button>
+                    <button onClick={() => rollDice(joinedCharacter.str || 50, "STR", false)} className="bg-red-700 hover:bg-red-600 text-white text-[10px] px-2 py-1.5 rounded font-bold shadow-lg">🎲 STR({joinedCharacter.str})</button>
+                    <button onClick={() => rollDice(joinedCharacter.dex || 50, "DEX", false)} className="bg-green-700 hover:bg-green-600 text-white text-[10px] px-2 py-1.5 rounded font-bold shadow-lg">🎲 DEX({joinedCharacter.dex})</button>
+                    <button onClick={() => rollDice(joinedCharacter.int || 50, "INT", false)} className="bg-purple-700 hover:bg-purple-600 text-white text-[10px] px-2 py-1.5 rounded font-bold shadow-lg">🎲 INT({joinedCharacter.int})</button>
+                    <button onClick={() => rollDice(joinedCharacter.con || 50, "CON", false)} className="bg-amber-700 hover:bg-amber-600 text-white text-[10px] px-2 py-1.5 rounded font-bold shadow-lg">🎲 CON({joinedCharacter.con})</button>
                   </>
                 )}
                 {rule === 'sw25' && (
                   <>
-                    <button onClick={() => rollDice(joinedCharacter.str, "STR")} className="bg-red-700 hover:bg-red-600 text-white text-[10px] px-2 py-1.5 rounded font-bold shadow-lg">🎲 STR(2d6)</button>
-                    <button onClick={() => rollDice(joinedCharacter.dex, "DEX")} className="bg-green-700 hover:bg-green-600 text-white text-[10px] px-2 py-1.5 rounded font-bold shadow-lg">🎲 DEX(2d6)</button>
-                    <button onClick={() => rollDice(joinedCharacter.int, "INT")} className="bg-purple-700 hover:bg-purple-600 text-white text-[10px] px-2 py-1.5 rounded font-bold shadow-lg">🎲 INT(2d6)</button>
-                    <button onClick={() => rollDice(joinedCharacter.con, "CON")} className="bg-amber-700 hover:bg-amber-600 text-white text-[10px] px-2 py-1.5 rounded font-bold shadow-lg">🎲 CON(2d6)</button>
+                    <button onClick={() => rollDice(joinedCharacter.str || 10, "STR")} className="bg-red-700 hover:bg-red-600 text-white text-[10px] px-2 py-1.5 rounded font-bold shadow-lg">🎲 STR(2d6)</button>
+                    <button onClick={() => rollDice(joinedCharacter.dex || 10, "DEX")} className="bg-green-700 hover:bg-green-600 text-white text-[10px] px-2 py-1.5 rounded font-bold shadow-lg">🎲 DEX(2d6)</button>
+                    <button onClick={() => rollDice(joinedCharacter.int || 10, "INT")} className="bg-purple-700 hover:bg-purple-600 text-white text-[10px] px-2 py-1.5 rounded font-bold shadow-lg">🎲 INT(2d6)</button>
+                    <button onClick={() => rollDice(joinedCharacter.con || 10, "CON")} className="bg-amber-700 hover:bg-amber-600 text-white text-[10px] px-2 py-1.5 rounded font-bold shadow-lg">🎲 CON(2d6)</button>
                   </>
                 )}
                 {rule === 'storytelling' && (
@@ -383,7 +382,7 @@ export default function GameView({
               <button onClick={startGame} className="bg-pink-600 hover:bg-pink-500 text-white text-[10px] font-bold px-4 py-2 rounded animate-pulse ml-2 shadow-lg shadow-pink-900/50">▶ お試し開始</button>
             )}
 
-            {/* ★ ここで画像生成ボタンを2種類に分けました */}
+            {/* ★ ここで画像生成ボタンを2種類に分け、プレミアムボタンを追加 */}
             {isHost && activeRoom.status === "playing" && !isScenarioEnded && !activeRoom.is_trial && (
                <div className="flex gap-2 ml-2">
                  {imageCount < 3 && (
@@ -391,8 +390,13 @@ export default function GameView({
                      <button onClick={() => handleGenerateImage("free")} disabled={isGeneratingImg} className="bg-purple-700 hover:bg-purple-600 disabled:bg-slate-600 text-white text-[10px] font-bold px-3 py-1.5 rounded shadow-lg transition">
                        {isGeneratingImg ? "⏳ 生成中..." : "🖼️ 無料で情景生成"}
                      </button>
-                     <button onClick={() => handleGenerateImage("premium")} disabled={isGeneratingImg} className="bg-amber-600 hover:bg-amber-500 disabled:bg-slate-600 text-white text-[10px] font-bold px-3 py-1.5 rounded shadow-lg transition">
+                     
+                     {/* ★ プレミアムボタン（オレンジ）と残りクレジットのバッジを追加 */}
+                     <button onClick={() => handleGenerateImage("premium")} disabled={isGeneratingImg} className="relative bg-orange-600 hover:bg-orange-500 disabled:bg-slate-600 text-white text-[10px] font-bold px-3 py-1.5 rounded shadow-lg transition">
                        ✨ 高品質な情景生成
+                       <span className="absolute -top-2 -right-2 bg-red-600 text-white text-[9px] px-1.5 py-0.5 rounded-full border border-slate-800 shadow-sm">
+                         残 {currentUser?.imageGenCredits || 0}
+                       </span>
                      </button>
                    </>
                  )}
@@ -457,7 +461,7 @@ export default function GameView({
                     {msg.type && ` [${msg.type.toUpperCase()}]`}
                   </span>
                 )}
-                {displayText && <p className={`text-sm whitespace-pre-wrap leading-relaxed ${isSystem && 'text-xs text-slate-300'}`}>{displayText}</p>}
+                {displayText && <p className={`text-sm whitespace-pre-wrap leading-relaxed ${isSystem ? 'text-xs text-slate-300' : ''}`}>{displayText}</p>}
                 {msg.type === 'image' && msg.imageUrl && (
                   <div className="mt-2 border border-slate-600 rounded-lg overflow-hidden bg-black/50">
                     <img src={msg.imageUrl} alt="生成された情景" className="w-full h-auto max-h-64 object-contain" />
@@ -494,7 +498,7 @@ export default function GameView({
               <div className="flex justify-between items-center">
                 <span className="text-amber-400 text-sm font-bold">🎉 感想戦モード（AIは停止しています）</span>
                 <div className="flex gap-2">
-                  {activeRoom.is_trial && activeRoom.scenario && (activeRoom.scenario.isPlayableByOthers || activeRoom.scenario.authorId === currentUser.id) && openRoomConfigModal && (
+                  {activeRoom.is_trial && activeRoom.scenario && (activeRoom.scenario.isPlayableByOthers || activeRoom.scenario.authorId === currentUser?.id) && openRoomConfigModal && (
                     <button onClick={() => openRoomConfigModal(activeRoom.scenario!)} className="bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold px-4 py-2 rounded shadow transition">
                       ✨ このまま本編の部屋を作る
                     </button>
