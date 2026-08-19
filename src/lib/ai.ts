@@ -1,16 +1,14 @@
-// 環境変数からAPIキーを取得（※GitHubのブロックを防ぐため、必ず .env.local に設定してください！）
 const GEMINI_API_KEY = process.env.NEXT_PUBLIC_GEMINI_API_KEY;
 const CLAUDE_API_KEY = process.env.NEXT_PUBLIC_CLAUDE_API_KEY;
 const NANOBANANA_API_KEY = process.env.NEXT_PUBLIC_NANOBANANA_API_KEY;
 
-export const generateAIResponse = async (systemPrompt: string, history: any[], model: string = 'flash') => {
+// ★ maxTokens と temperature を引数で細かく制御できるように追加
+export const generateAIResponse = async (systemPrompt: string, history: any[], model: string = 'flash', maxTokens: number = 2500, temperature: number = 0.7) => {
   
-  // ★履歴の自動整列（連続したユーザー発言をまとめる安全処理）
   const normalizedHistory: any[] = [];
   for (const msg of history) {
     const role = (msg.role === 'assistant' || msg.role === 'model') ? 'model' : 'user';
     const text = msg.parts?.[0]?.text || msg.content || "";
-    
     if (normalizedHistory.length > 0 && normalizedHistory[normalizedHistory.length - 1].role === role) {
       normalizedHistory[normalizedHistory.length - 1].parts[0].text += `\n\n${text}`;
     } else {
@@ -18,22 +16,15 @@ export const generateAIResponse = async (systemPrompt: string, history: any[], m
     }
   }
 
-  // APIエラーを防ぐためのダミー発言
   if (normalizedHistory.length > 0 && normalizedHistory[normalizedHistory.length - 1].role === 'model') {
     normalizedHistory.push({ role: 'user', parts: [{ text: '（待機しています。続けてください）' }] });
   }
 
-  // ----------------------------------------------------
-  // ▼ Gemini (3.5 Flash Lite / 3.6 Flash / 3.1 Pro) のAPI呼び出し
-  // ----------------------------------------------------
+  // ▼ Gemini API
   if (model === 'flash' || model === 'flash-lite' || model === 'pro') {
-    // 管理画面のスイッチャー設定に応じて、Liteと通常版を切り替える
     let targetModel = 'gemini-3.6-flash';
-    if (model === 'pro') {
-      targetModel = 'gemini-3.1-pro';
-    } else if (model === 'flash-lite') {
-      targetModel = 'gemini-3.5-flash-lite';
-    }
+    if (model === 'pro') targetModel = 'gemini-3.1-pro';
+    else if (model === 'flash-lite') targetModel = 'gemini-3.5-flash-lite';
     
     const url = `https://generativelanguage.googleapis.com/v1beta/models/${targetModel}:generateContent?key=${GEMINI_API_KEY}`;
     
@@ -41,36 +32,21 @@ export const generateAIResponse = async (systemPrompt: string, history: any[], m
       system_instruction: { parts: [{ text: systemPrompt }] },
       contents: normalizedHistory,
       generationConfig: { 
-        temperature: 0.7,
-        maxOutputTokens: 2500,
+        temperature: temperature,
+        maxOutputTokens: maxTokens,
       }
     };
 
-    const res = await fetch(url, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(body)
-    });
-
-    if (!res.ok) {
-      const errText = await res.text();
-      throw new Error(`Gemini API エラー: ${errText}`);
-    }
-
+    const res = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+    if (!res.ok) throw new Error(`Gemini API エラー: ${await res.text()}`);
     const data = await res.json();
     return data.candidates[0].content.parts[0].text;
   }
   
-  // ----------------------------------------------------
-  // ▼ Claude (Sonnet / Opus) のAPI呼び出し
-  // ----------------------------------------------------
+  // ▼ Claude API
   if (model === 'claude' || model === 'opus') {
     const targetModel = model === 'opus' ? 'claude-3-opus-20240229' : 'claude-3-5-sonnet-20240620';
-    
-    const claudeHistory = normalizedHistory.map(h => ({
-      role: h.role === 'model' ? 'assistant' : 'user',
-      content: h.parts[0].text
-    }));
+    const claudeHistory = normalizedHistory.map(h => ({ role: h.role === 'model' ? 'assistant' : 'user', content: h.parts[0].text }));
 
     const res = await fetch('https://api.anthropic.com/v1/messages', {
       method: 'POST',
@@ -82,18 +58,14 @@ export const generateAIResponse = async (systemPrompt: string, history: any[], m
       },
       body: JSON.stringify({
         model: targetModel,
-        max_tokens: 3000,
+        max_tokens: maxTokens,
         system: systemPrompt,
         messages: claudeHistory,
-        temperature: 0.7
+        temperature: temperature
       })
     });
 
-    if (!res.ok) {
-      const errText = await res.text();
-      throw new Error(`Claude API エラー: ${errText}`);
-    }
-
+    if (!res.ok) throw new Error(`Claude API エラー: ${await res.text()}`);
     const data = await res.json();
     return data.content[0].text;
   }
@@ -101,9 +73,8 @@ export const generateAIResponse = async (systemPrompt: string, history: any[], m
   return "エラー：不明なモデルが選択されました。";
 };
 
-// 要約や翻訳など、単発のAI処理用関数
-export const generateAITextWithPrompt = async (prompt: string, model: string = 'flash') => {
-  return generateAIResponse("あなたは優秀なアシスタントです。指示に従って出力してください。", [{ role: "user", parts: [{ text: prompt }] }], model);
+export const generateAITextWithPrompt = async (prompt: string, model: string = 'flash', maxTokens: number = 1000, temperature: number = 0.7) => {
+  return generateAIResponse("あなたは優秀なアシスタントです。指示に従って出力してください。", [{ role: "user", parts: [{ text: prompt }] }], model, maxTokens, temperature);
 };
 
 export const generateFreeImage = async (prompt: string): Promise<string> => {

@@ -58,7 +58,6 @@ export default function Home() {
   const [ratingScenario, setRatingScenario] = useState<number>(5);
   const [ratingGM, setRatingGM] = useState<number>(5);
   
-  // ★ システム設定 State
   const [isMaintenance, setIsMaintenance] = useState(false);
   const [isTicketSystemEnabled, setIsTicketSystemEnabled] = useState(false);
   const [geminiFlashModel, setGeminiFlashModel] = useState<'3.5-lite' | '3.6'>('3.5-lite');
@@ -307,27 +306,14 @@ export default function Home() {
 
   const fetchProfile = async (userId: string, emailStr: string, currentMaintenance: boolean, roomsData: Room[]) => {
     const { data } = await supabase.from('profiles').select('*').eq('id', userId).single();
-    
     if (!data || !data.full_name) {
-      setEmail(emailStr); 
-      setCurrentView("onboarding");
-      return;
+      setEmail(emailStr); setCurrentView("onboarding"); return;
     }
-
     const profileData: UserProfile = { 
       id: data.id, handleName: data.handle_name, fullName: data.full_name, address: data.address, phone: data.phone, avatarUrl: data.avatar_url, bio: data.bio, discordId: data.discord_id, ratingSum: data.rating_sum || 0, ratingCount: data.rating_count || 0, isAdmin: data.is_admin || false, isTester: data.is_tester || false, isBanned: data.is_banned || false, email: data.email, friendIds: data.friend_ids || [], blockedUserIds: data.blocked_user_ids || [],
-      points: data.points || 0, 
-      ticketsNormal: data.tickets_normal || 0, 
-      ticketsSilver: data.tickets_silver || 0, 
-      ticketsGold: data.tickets_gold || 0, 
-      ticketsPlatinum: data.tickets_platinum || 0,
-      ticketsDiamond: data.tickets_diamond || 0,
-      ticketsItem: data.tickets_item || 0,
-      imageGenCredits: data.image_gen_credits || 0
+      points: data.points || 0, ticketsNormal: data.tickets_normal || 0, ticketsSilver: data.tickets_silver || 0, ticketsGold: data.tickets_gold || 0, ticketsPlatinum: data.tickets_platinum || 0, ticketsDiamond: data.tickets_diamond || 0, ticketsItem: data.tickets_item || 0, imageGenCredits: data.image_gen_credits || 0
     };
-
     if (data.email !== emailStr) await supabase.from('profiles').update({ email: emailStr }).eq('id', userId);
-
     setCurrentUser(profileData);
     await fetchNotifications(userId);
 
@@ -356,11 +342,8 @@ export default function Home() {
         }
       }
       setCurrentView("lobby");
-    } else if (profileData.isBanned) {
-      setCurrentView("banned");
-    } else {
-      setCurrentView("maintenance");
-    }
+    } else if (profileData.isBanned) { setCurrentView("banned"); } 
+    else { setCurrentView("maintenance"); }
   };
 
   useEffect(() => {
@@ -369,17 +352,11 @@ export default function Home() {
       const currentMaintenance = appData ? appData.is_maintenance : false;
       const currentTicketSystem = appData ? appData.is_ticket_system_enabled : false;
       const currentFlashModel = appData?.gemini_flash_model || '3.5-lite';
-      
-      setIsMaintenance(currentMaintenance);
-      setIsTicketSystemEnabled(currentTicketSystem);
-      setGeminiFlashModel(currentFlashModel);
+      setIsMaintenance(currentMaintenance); setIsTicketSystemEnabled(currentTicketSystem); setGeminiFlashModel(currentFlashModel);
 
       const { formattedRooms } = await fetchData();
       const { data: { session } } = await supabase.auth.getSession();
-      
-      if (session?.user) {
-        await fetchProfile(session.user.id, session.user.email || "", currentMaintenance, formattedRooms);
-      }
+      if (session?.user) await fetchProfile(session.user.id, session.user.email || "", currentMaintenance, formattedRooms);
     };
     initApp();
   }, []);
@@ -675,18 +652,14 @@ export default function Home() {
       const recentLogs = memoryData?.reverse().map((m: any) => `${m.role === 'user' ? 'PL' : 'GM'}: ${m.content}`).join('\n') || "";
       const autoPromptReq = ["あなたはTRPGの情景描写AIです。以下の直近のログから、現在の「場所、雰囲気、見えているもの」を1〜2文の簡潔な日本語で描写してください。キャラクターのセリフや行動ではなく、空間のビジュアルに焦点を当ててください。","【直近のログ】",recentLogs].join('\n');
       
-      let apiModelString = activeRoom.ai_model || 'flash';
-      if (apiModelString === 'flash') {
-        apiModelString = geminiFlashModel === '3.5-lite' ? 'flash-lite' : 'flash';
-      }
-
-      const targetPrompt = await generateAITextWithPrompt(autoPromptReq, apiModelString);
+      // ★ バックグラウンド処理はすべて Lite に固定（コスト削減）
+      const targetPrompt = await generateAITextWithPrompt(autoPromptReq, 'flash-lite', 400, 0.7);
 
       const translationPrompt = ["以下の日本語の情景描写を、画像生成AI用のカンマ区切りの英語プロンプトに変換してください。","【絶対条件】","・文章ではなく、英単語のカンマ区切りで出力してください。","・不適切な画像が生成されるのを防ぐため、必ず最後に「SFW, fully clothed, masterpiece, high quality」を含めてください。","","情景描写：",targetPrompt].join('\n');
       
       let englishPrompt = "";
       try { 
-        englishPrompt = await generateAITextWithPrompt(translationPrompt, apiModelString); 
+        englishPrompt = await generateAITextWithPrompt(translationPrompt, 'flash-lite', 200, 0.3); 
       } catch (err) { englishPrompt = `${targetPrompt}, SFW, fully clothed, masterpiece, high quality`; }
       
       let base64data = "";
@@ -729,12 +702,8 @@ export default function Home() {
       const chars = activeRoom.scenario?.presetCharacters.filter((c: any) => Object.values(activeRoom.joined_users || {}).includes(c.id)).map((c: any) => `{"id": "${c.id}", "name": "${c.name}"}`).join(", ") || "";
       const prompt = ["あなたはTRPGのシステムAIです。以下の「現在参加しているキャラクター」と「直近のチャットログ」を分析し、物語の展開上、最も自然な【チーム分け（2つ以上のグループへの分割）の構成案】を作成してください。","【参加キャラクター】",chars,"","【直近のログ】",recentLogs,"","【出力形式（絶対遵守）】","必ず以下のJSONフォーマットのみを出力してください。余計な文章やマークダウン記号は一切含めないでください。",'{"teams": [{"action": "目的A", "members": ["キャラID1"]}, {"action": "目的B", "members": ["キャラID3"]}]}'].join('\n');
       
-      let apiModelString = activeRoom.ai_model || 'flash';
-      if (apiModelString === 'flash') {
-        apiModelString = geminiFlashModel === '3.5-lite' ? 'flash-lite' : 'flash';
-      }
-
-      const aiResponse = await generateAITextWithPrompt(prompt, apiModelString);
+      // ★ バックグラウンド処理はすべて Lite に固定（コスト削減）
+      const aiResponse = await generateAITextWithPrompt(prompt, 'flash-lite', 800, 0.3);
       
       const jsonStr = aiResponse.replace(/```json/g, "").replace(/```/g, "").trim();
       const parsed = JSON.parse(jsonStr);
@@ -1070,32 +1039,23 @@ export default function Home() {
         if (res === 1) isSuccess = false;
         const modStr = modifier >= 0 ? `+${modifier}` : `${modifier}`;
         msgText = `🎲 ${label}判定 (1d20${modStr}) ➔ 出目: ${res} (計: ${total}) vs DC${dc} 【${isSuccess ? "成功" : "失敗"}】`;
-        if (res === 20) msgText += " ✨クリティカル！";
-        if (res === 1) msgText += " 💀ファンブル！";
       } else if (rule === "sw25") {
         const d1 = Math.floor(Math.random() * 6) + 1; const d2 = Math.floor(Math.random() * 6) + 1;
         res = d1 + d2;
         const bonus = Math.floor(targetValue / 6) || 0; 
         const total = res + bonus; const target = 10;
         isSuccess = total >= target;
-        if (res === 12) isSuccess = true;
-        if (res === 2) isSuccess = false;
         const bonusStr = bonus >= 0 ? `+${bonus}` : `${bonus}`;
         msgText = `🎲 ${label}判定 (2d6${bonusStr}) ➔ 出目: ${res}[${d1},${d2}] (計: ${total}) vs 目標${target} 【${isSuccess ? "成功" : "失敗"}】`;
-        if (res === 12) msgText += " ✨クリティカル！";
-        if (res === 2) msgText += " 💀ファンブル！";
       } else if (rule === "storytelling") {
         res = Math.floor(Math.random() * 6) + 1;
         isSuccess = res >= 4;
         msgText = `🎲 ${label}判定 (1d6) ➔ 出目: ${res} 【${isSuccess ? "成功" : "失敗"}】`;
-        if (res === 6) msgText += " ✨奇跡の転機！";
       } else {
         if (is1d100) {
           res = Math.floor(Math.random() * 100) + 1;
           isSuccess = res <= targetValue;
           msgText = `🎲 ${label} (1d100 ≦ ${targetValue}%) ➔ 出目: ${res} 【${isSuccess ? "成功" : "失敗"}】`;
-          if (rule === "coc_en" && res === 1) msgText += " ✨クリティカル！";
-          if (rule === "coc_en" && res >= 96) msgText += " 💀ファンブル！";
         } else {
           const d1 = Math.floor(Math.random() * 6) + 1; const d2 = Math.floor(Math.random() * 6) + 1; const d3 = Math.floor(Math.random() * 6) + 1;
           res = d1 + d2 + d3;
@@ -1113,7 +1073,9 @@ export default function Home() {
           let promptSuffix = "この結果を踏まえてGMとして情景描写を行ってください。";
           if (chatTab === "gm") promptSuffix = "この結果を踏まえて、システム・ルールの裁定やヒントの提示を行ってください。";
           else if (chatTab === "consult") promptSuffix = "この結果を踏まえて、AI相棒としてリアクションを返してください。";
-          await callAIGM(`【システム判定結果】${joinedCharacter.name}が${label}ロールを行いました。\n結果: ${msgText}\n${promptSuffix}`, chatTab, false);
+          
+          // ★ ダイス判定などの軽い処理は Lite版に逃がす（コスト削減）
+          await callAIGM(`【システム判定結果】${joinedCharacter.name}が${label}ロールを行いました。\n結果: ${msgText}\n${promptSuffix}`, chatTab, false, 'flash-lite');
       }
     } finally {
       isRequestingRef.current = false;
@@ -1121,10 +1083,10 @@ export default function Home() {
     }
   };
 
-  const executeExport = async (title: string, sourceMessages: Message[], type: 'chat' | 'summary' | 'novel', options?: { archiveId?: string, modelName?: string, viewPoint?: 'third' | 'first', myCharacterName?: string, scenarioImage?: string, createdAt?: string, coPlayers?: string[], characters?: Character[], scenarioId?: string, authorId?: string, aiModelConfirmed?: boolean, aiModel?: string }) => {
+  const executeExport = async (title: string, sourceMessages: Message[], type: 'chat' | 'summary' | 'novel', options?: { archiveId?: string, modelName?: string, viewPoint?: 'third' | 'first', myCharacterName?: string, scenarioImage?: string, createdAt?: string, coPlayers?: string[], characters?: Character[], scenarioId?: string, authorId?: string, aiModelConfirmed?: boolean, aiModel?: string, tone?: string }) => {
     
     if (type === 'novel' && !options?.aiModelConfirmed) {
-      setNovelSettingsModal({ title, sourceMessages, type, options, aiModel: 'flash' });
+      setNovelSettingsModal({ title, sourceMessages, type, options: { ...options, tone: 'light' }, aiModel: 'flash' });
       return;
     }
     
@@ -1258,7 +1220,7 @@ export default function Home() {
       const uniqueCharNames = Array.from(new Set(targetMessages.filter((m: any) => m.sender === 'player' || m.sender === 'ai_player').map((m: any) => m.charName).filter(Boolean)));
       const charNamesStr = uniqueCharNames.length > 0 ? `登場キャラクター（${uniqueCharNames.join('、')}）` : '各キャラクター';
 
-      const prompt = getNovelPrompt(options?.aiModel || 'flash', viewpointInstruction, charNamesStr);
+      const prompt = getNovelPrompt(options?.aiModel || 'flash', viewpointInstruction, charNamesStr, options?.tone || 'light');
       
       try {
         let aiModelToUse = options?.aiModel || 'flash'; 
@@ -1266,7 +1228,7 @@ export default function Home() {
           aiModelToUse = geminiFlashModel === '3.5-lite' ? 'flash-lite' : 'flash';
         }
         
-        const generatedText = await generateAITextWithPrompt(prompt + "\n\n【チャットログ】\n" + logTextForAI, aiModelToUse);
+        const generatedText = await generateAITextWithPrompt(prompt + "\n\n【チャットログ】\n" + logTextForAI, aiModelToUse, 3000, 0.8);
         
         let introMap: Record<string, string> = {};
         let finalNovelText = generatedText;
@@ -1447,7 +1409,7 @@ export default function Home() {
     setChatTab(tab); setUnreadIndicators(prev => ({ ...prev, [tab]: false }));
   };
 
-  const callAIGM = async (extraUserContext?: string, targetTab: ChatTab = "story", isStarting: boolean = false) => {
+  const callAIGM = async (extraUserContext?: string, targetTab: ChatTab = "story", isStarting: boolean = false, forcedModel?: string) => {
     if (!activeRoom || !joinedCharacter || !myScene) return;
     if (!isStarting && activeRoom.status !== 'playing') return;
     
@@ -1457,26 +1419,37 @@ export default function Home() {
       let currentMemory = memoryDataRaw || [];
       let currentSummary = activeRoom.current_summary || "";
 
+      // ★ コンテキスト長の動的制御（高級モデルは記憶多め、軽量モデルは少なめ）
+      const aiModelType = forcedModel || activeRoom.ai_model || 'flash';
+      const contextLimit = (['pro', 'opus', 'claude'].includes(aiModelType)) ? 20 : 10;
+
       if (currentMemory.length > 30) {
-        const logsToCompress = currentMemory.slice(0, currentMemory.length - 10);
-        const recentLogs = currentMemory.slice(-10);
+        const logsToCompress = currentMemory.slice(0, currentMemory.length - contextLimit);
+        const recentLogs = currentMemory.slice(-contextLimit);
         const logText = logsToCompress.map((m: any) => `${m.role === 'user' ? 'PL' : 'GM'}: ${m.content}`).join('\n');
         const compressionPrompt = ["あなたはTRPGの優秀な記録係です。以下の「現在のあらすじ」と「追加のチャットログ」を統合し、AI GMが今後の展開を処理するための【詳細な最新のあらすじ】を作成してください。","【絶対条件】","・重要な出来事、NPCとの会話結果、得たアイテムやヒント、PLの目的は絶対に漏らさないこと。","・システムやダイスの結果等のメタな情報は省略し、物語の進行を中心にまとめること。","","【現在のあらすじ】",currentSummary || "なし（最初の要約です）","","【追加のチャットログ】",logText].join('\n');
         try {
-          let apiModelString = activeRoom.ai_model || 'flash';
-          if (apiModelString === 'flash') {
-            apiModelString = geminiFlashModel === '3.5-lite' ? 'flash-lite' : 'flash';
-          }
-          currentSummary = await generateAITextWithPrompt(compressionPrompt, apiModelString);
+          // ★ バックグラウンド処理はすべて Lite版 固定（コスト削減）
+          currentSummary = await generateAITextWithPrompt(compressionPrompt, 'flash-lite', 1000, 0.3);
           await supabase.from('rooms').update({ current_summary: currentSummary }).eq('id', activeRoom.id);
           setActiveRoom(prev => prev ? { ...prev, current_summary: currentSummary } : null);
           const idsToDelete = logsToCompress.map((m: any) => m.id);
           if (idsToDelete.length > 0) await supabase.from('ai_memory').delete().in('id', idsToDelete);
           currentMemory = recentLogs;
         } catch(e) {
-          console.error("要約APIでエラーが発生しました。無限ループを防ぐため、履歴を強制カットします:", e);
-          currentMemory = currentMemory.slice(-15);
+          console.error("要約APIでエラー", e);
+          currentMemory = currentMemory.slice(-(contextLimit + 5));
         }
+      }
+
+      // ★ RAG: NPCの動的情報注入（現在のシーンに不要なNPC情報を弾き、トークンを大幅削減）
+      let activeNpcListText = "";
+      if (activeRoom.scenario?.npcList) {
+         try {
+            const recentLogsContext = currentMemory.slice(-5).map((m: any) => m.content).join('\n');
+            const npcFilterPrompt = `以下の【全NPCリスト】から、直近のログと現在のあらすじに登場している、または今後すぐに関わりそうなNPCの情報だけを抜粋してそのまま出力してください。不要なNPCは省いてください。\n\n【全NPCリスト】\n${activeRoom.scenario.npcList}\n\n【あらすじとログ】\n${currentSummary}\n${recentLogsContext}`;
+            activeNpcListText = await generateAITextWithPrompt(npcFilterPrompt, 'flash-lite', 500, 0.2);
+         } catch(e) { activeNpcListText = activeRoom.scenario?.npcList; } // 失敗時はそのまま送る
       }
 
       const history = currentMemory.map((m: any) => ({ role: m.role === 'assistant' ? 'model' : 'user', parts: [{ text: m.content }] }));
@@ -1563,59 +1536,77 @@ export default function Home() {
         mySceneName: myScene.name,
         isSplitMode,
         afkInstruction,
-        targetTab 
+        targetTab,
+        activeNpcListText // ★ 抽出したNPC情報
       });
 
-      let finalModel = activeRoom.ai_model || 'flash';
-      if (targetTab === "consult") {
-        finalModel = finalModel === 'flash' ? 'flash' : 'pro';
+      let finalModel = forcedModel || activeRoom.ai_model || 'flash';
+      if (!forcedModel && targetTab === "consult") {
+        finalModel = 'flash-lite'; // ★ 相談タブ（AIプレイヤー）は強制Lite固定
       }
       let apiModelString = finalModel;
       if (finalModel === 'flash') {
         apiModelString = geminiFlashModel === '3.5-lite' ? 'flash-lite' : 'flash';
       }
 
-      const aiText = await generateAIResponse(sysPrompt, history, apiModelString);
+      // ★ JSON出力を想定し、長文防止のため maxTokens=1500, temperature=0.7 を設定
+      const aiTextRaw = await generateAIResponse(sysPrompt, history, apiModelString, 1500, 0.7);
       
-      const splitMatch = aiText.match(/\[SPLIT_PROPOSAL:\s*(.+?)\]/);
-      if (splitMatch) { setProposedTeams([]); generateSplitProposal(); }
-
-      const statusRegex = /\[STATUS_UPDATE:\s*(.+?),\s*(\d+),\s*(\d+)\]/g;
-      let match;
-      while ((match = statusRegex.exec(aiText)) !== null) {
-         const targetName = match[1].trim().replace(/\s+/g, '');
-         const newHp = parseInt(match[2], 10); const newSan = parseInt(match[3], 10);
-         if (joinedCharacter && joinedCharacter.name.replace(/\s+/g, '').includes(targetName)) setJoinedCharacter(prev => prev ? { ...prev, hp: newHp, san: newSan } : null);
-         setAiPlayersList(prev => prev.map((p: any) => p.name.replace(/\s+/g, '').includes(targetName) ? { ...p, hp: newHp, san: newSan } : p));
+      // ★ 構造化出力（JSON Mode）のパース処理
+      let parsedAI = { text: "", statusUpdates: [], inventoryUpdates: [], chapterClear: false };
+      try {
+        const jsonStr = aiTextRaw.replace(/```json/g, "").replace(/```/g, "").trim();
+        parsedAI = JSON.parse(jsonStr);
+      } catch (e) {
+        console.error("JSONパースに失敗。フォールバック処理を実行", e);
+        parsedAI.text = aiTextRaw; // 失敗時はそのままテキストとして表示
       }
 
-      const invRegex = /\[INVENTORY_UPDATE:\s*([^,]+),\s*([^\]]+)\]/g;
-      let invMatch;
-      let newInventories = { ...(activeRoom.inventories || {}) };
+      // ステータス更新（JSONから反映）
+      if (parsedAI.statusUpdates && Array.isArray(parsedAI.statusUpdates)) {
+        let hpSanUpdated = false;
+        parsedAI.statusUpdates.forEach((upd: any) => {
+           if (upd.name && joinedCharacter && joinedCharacter.name.replace(/\s+/g, '').includes(upd.name.replace(/\s+/g, ''))) {
+             setJoinedCharacter(prev => prev ? { ...prev, hp: upd.hp, san: upd.san } : null);
+           }
+           setAiPlayersList(prev => {
+             const newAi = [...prev];
+             const idx = newAi.findIndex(p => p.name.replace(/\s+/g, '').includes(upd.name.replace(/\s+/g, '')));
+             if (idx !== -1) { newAi[idx] = { ...newAi[idx], hp: upd.hp, san: upd.san }; hpSanUpdated = true; }
+             return newAi;
+           });
+        });
+      }
+
+      // インベントリ更新（JSONから反映）
       let invUpdated = false;
-      while ((invMatch = invRegex.exec(aiText)) !== null) {
-         const targetName = invMatch[1].trim().replace(/\s+/g, '');
-         const newItems = invMatch[2].trim();
-         const char = activeRoom.scenario?.presetCharacters.find((c: any) => c.name.replace(/\s+/g, '').includes(targetName));
-         if (char) { newInventories[char.id] = newItems; invUpdated = true; }
+      let newInventories = { ...(activeRoom.inventories || {}) };
+      if (parsedAI.inventoryUpdates && Array.isArray(parsedAI.inventoryUpdates)) {
+        parsedAI.inventoryUpdates.forEach((upd: any) => {
+           if (upd.name && upd.items) {
+             const char = activeRoom.scenario?.presetCharacters.find((c: any) => c.name.replace(/\s+/g, '').includes(upd.name.replace(/\s+/g, '')));
+             if (char) { newInventories[char.id] = upd.items; invUpdated = true; }
+           }
+        });
       }
       if (invUpdated) {
          await supabase.from('rooms').update({ inventories: newInventories }).eq('id', activeRoom.id);
          setActiveRoom(prev => prev ? { ...prev, inventories: newInventories } : null);
       }
 
-      let cleanAiText = aiText.replace(/\[SPLIT_PROPOSAL:.*?\]/g, '').replace(/\[STATUS_UPDATE:.*?\]/g, '').replace(/\[INVENTORY_UPDATE:.*?\]/g, '').trim();
-      let isChapterCleared = false;
-      if (cleanAiText.includes('[CHAPTER_CLEAR]')) {
-         cleanAiText = cleanAiText.replace(/\[CHAPTER_CLEAR\]/g, '').trim();
-         isChapterCleared = true;
-      }
+      let cleanAiText = parsedAI.text || aiTextRaw;
+      let isChapterCleared = parsedAI.chapterClear === true;
+
+      // 古い分割コマンドが入ってしまった場合のフォールバック
+      const splitMatch = cleanAiText.match(/\[SPLIT_PROPOSAL:\s*(.+?)\]/);
+      if (splitMatch) { setProposedTeams([]); generateSplitProposal(); cleanAiText = cleanAiText.replace(/\[SPLIT_PROPOSAL:.*?\]/g, '').trim(); }
+      cleanAiText = cleanAiText.replace(/\[STATUS_UPDATE:.*?\]/g, '').replace(/\[INVENTORY_UPDATE:.*?\]/g, '').trim();
 
       if (activeRoom.is_trial && (cleanAiText.includes('本編でお楽しみください') || cleanAiText.includes('本編でお待ち')) && !cleanAiText.includes('[SCENARIO_END]')) {
         cleanAiText += '\n\n[SCENARIO_END]';
       }
 
-      await supabase.from('ai_memory').insert({ room_id: activeRoom.id, role: 'assistant', content: aiText });
+      await supabase.from('ai_memory').insert({ room_id: activeRoom.id, role: 'assistant', content: cleanAiText });
       const msgSender = targetTab === "consult" ? "ai_player" : "gm";
       await pushMessage(activeRoom.id, { sender: msgSender, text: cleanAiText, type: targetTab === "gm" ? "ooc" : "ic", sceneId: myScene?.id, charName: targetTab === "consult" ? "AI相棒" : "AI GM", channel: targetTab });
 
@@ -1687,7 +1678,6 @@ export default function Home() {
         />
       )}
 
-      {/* ★ ここにあった古い重複とフローティングを取り除きました */}
       {currentView === "admin" && currentUser?.isAdmin && (
         <AdminView
           isMaintenance={isMaintenance}
@@ -1895,7 +1885,22 @@ export default function Home() {
         <div className="fixed inset-0 bg-black/80 z-[80] flex items-center justify-center p-4">
           <div className="bg-slate-800 border border-emerald-700/50 rounded-xl p-6 w-full max-w-md shadow-2xl">
             <h3 className="text-xl font-bold text-emerald-400 mb-4">📖 小説の執筆設定</h3>
+            
+            {/* ★ ここに文体（トーン）の選択肢を追加しました */}
             <div className="space-y-4 mb-6">
+              <div>
+                <label className="text-xs text-slate-400 block mb-1">文体（トーン）</label>
+                <select 
+                  value={novelSettingsModal.options?.tone || 'light'} 
+                  onChange={(e) => setNovelSettingsModal({...novelSettingsModal, options: {...novelSettingsModal.options, tone: e.target.value}})} 
+                  className="w-full bg-slate-900 border border-slate-700 rounded p-2 text-sm text-white"
+                >
+                  <option value="light">ライトノベル風（会話多め・テンポ重視）</option>
+                  <option value="literature">純文学風（情景・心理描写を重厚に）</option>
+                  <option value="hardboiled">ハードボイルド風（渋く簡潔な表現）</option>
+                </select>
+              </div>
+
               <div>
                 <label className="text-xs text-slate-400 block mb-1">使用するAIモデル</label>
                 <select 
@@ -1910,6 +1915,7 @@ export default function Home() {
                 </select>
               </div>
             </div>
+
             <div className="flex gap-4">
               <button onClick={() => setNovelSettingsModal(null)} className="flex-1 bg-slate-700 hover:bg-slate-600 py-3 rounded text-sm font-bold">キャンセル</button>
               <button onClick={handleStartNovel} className="flex-1 bg-emerald-600 hover:bg-emerald-500 py-3 rounded text-sm font-bold shadow-lg">執筆開始</button>
