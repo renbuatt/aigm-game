@@ -9,6 +9,9 @@ type Props = {
   toggleMaintenance: () => Promise<void>;
   isTicketSystemEnabled: boolean;
   toggleTicketSystem: () => Promise<void>;
+  // ★ 追加：Gemini Flashのスイッチャー用Props
+  geminiFlashModel: '3.5-lite' | '3.6';
+  toggleGeminiFlashModel: (newModel: '3.5-lite' | '3.6') => Promise<void>;
   reports: Report[];
   allUsers: UserProfile[];
   scenarios: Scenario[];
@@ -29,6 +32,7 @@ type Props = {
 
 export default function AdminView({
   isMaintenance, toggleMaintenance, isTicketSystemEnabled, toggleTicketSystem,
+  geminiFlashModel, toggleGeminiFlashModel, // ★ 追加
   reports, allUsers, scenarios, resolveReport, setBanTargetUser, setBanReason,
   setBanTargetScenario, setScenarioBanReason, unbanScenarioFromAppeal,
   userSearchQuery, setUserSearchQuery, toggleAdminStatus,
@@ -169,6 +173,26 @@ export default function AdminView({
 
         {adminTab === 'settings' && (
           <div className="space-y-6">
+            
+            {/* ★ ここにモデルスイッチャーを綺麗に埋め込みました */}
+            <div className="bg-slate-800 border border-slate-700 p-6 rounded-xl shadow-lg">
+              <h3 className="text-lg font-bold text-emerald-400 mb-2 border-b border-slate-700 pb-2">⚙️ AIモデル詳細設定</h3>
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                <div>
+                  <p className="text-sm font-bold text-white">Gemini Flash の裏側モデル</p>
+                  <p className="text-xs text-slate-400 mt-1">ゲームの「Flash」選択時に実際に使われるモデルを指定します。<br/>Lite版は軽量・低コストで要約が強く、3.6版は高品質で表現豊かです。</p>
+                </div>
+                <select 
+                  value={geminiFlashModel}
+                  onChange={(e) => toggleGeminiFlashModel(e.target.value as '3.5-lite' | '3.6')}
+                  className="bg-slate-900 border border-slate-600 rounded p-2 text-sm text-white font-bold cursor-pointer outline-none hover:bg-slate-700 transition-colors shadow-lg"
+                >
+                  <option value="3.5-lite">3.5 Flash Lite (軽量・多回数)</option>
+                  <option value="3.6">3.6 Flash (通常・高品質)</option>
+                </select>
+              </div>
+            </div>
+
             <div className="bg-slate-800 border border-slate-700 p-6 rounded-xl shadow-lg">
               <h3 className="text-lg font-bold text-amber-400 mb-2 border-b border-slate-700 pb-2">🎟️ 経済圏（チケットシステム）設定</h3>
               <div className="flex items-center justify-between gap-4">
