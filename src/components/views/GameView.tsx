@@ -445,7 +445,6 @@ export default function GameView({
         )}
         
         {messages.filter((msg: Message) => {
-          // ★ 画像メッセージは「行動宣言（story）」タブでのみ表示されるように優先判定
           if (msg.type === "image" || msg.imageUrl) return chatTab === "story"; 
           if (msg.type === "system") return true;
           if (!isSplitMode) return msg.channel === chatTab;

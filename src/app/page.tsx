@@ -628,7 +628,7 @@ export default function Home() {
 
       const aiModelType = forcedModel || activeRoom.ai_model || 'lite';
       const contextLimit = (['pro', 'opus', 'claude'].includes(aiModelType)) ? 20 : 10;
-      const compressionThreshold = contextLimit + 5; // ★ しきい値を最適化（15〜25ターンで要約発生）
+      const compressionThreshold = contextLimit + 5; 
 
       if (currentMemory.length > compressionThreshold) {
         const logsToCompress = currentMemory.slice(0, currentMemory.length - contextLimit);
@@ -815,7 +815,6 @@ export default function Home() {
         cleanAiText += '\n\n[SCENARIO_END]';
       }
 
-      // ★ 最終章クリア時に自動で終了フラグを立てる
       if (isChapterCleared && isLastChapter && !cleanAiText.includes('[SCENARIO_END]')) {
         cleanAiText += '\n\n[SCENARIO_END]';
       }
@@ -832,7 +831,6 @@ export default function Home() {
          
          await supabase.from('ai_memory').insert({ room_id: activeRoom.id, role: 'user', content: `【システム情報：第${nextIndex+1}章（${chapters[nextIndex].title}）に突入しました。これまでの状況を踏まえ、次の展開を描写してください】` });
       } else if (isChapterCleared && isLastChapter) {
-         // ★ 最終章のクリア演出完了時、自動でステータスをfinishedにする
          await supabase.from('rooms').update({ status: 'finished' }).eq('id', activeRoom.id);
          setActiveRoom(prev => prev ? { ...prev, status: 'finished' } : null);
          await pushMessage(activeRoom.id, { sender: "system", text: `【システム】全シナリオをクリアしました！お疲れ様でした。\nこれより「感想戦モード」になります。`, type: "system", sceneId: myScene?.id, channel: "system" }, false);
