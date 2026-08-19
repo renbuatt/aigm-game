@@ -923,7 +923,6 @@ export default function Home() {
       const takenIds = Object.values(activeRoom.joined_users || {});
       const emptyChars = activeRoom.scenario.presetCharacters.filter((c: any) => !takenIds.includes(c.id));
       
-      // ★ ゴールド以上の部屋は「AIプレイヤー（相棒）」の召喚をブロック！
       if (['pro', 'claude', 'opus'].includes(activeRoom.ai_model || '')) {
          if (emptyChars.length > 0 && !activeRoom.is_trial) {
            alert("【お知らせ】ゴールド（Gemini Pro）以上の部屋では、AIプレイヤー（相棒）の参加はできません。\nソロプレイ、または人間プレイヤーのみでの開始となります。");
@@ -1084,10 +1083,9 @@ export default function Home() {
           if (chatTab === "gm") promptSuffix = "この結果を踏まえて、システム・ルールの裁定やヒントの提示を行ってください。";
           else if (chatTab === "consult") promptSuffix = "この結果を踏まえて、AI相棒としてリアクションを返してください。";
           
-          // ★ LLMルーティング：ダイス結果の処理は強制的に安いモデルへ逃がす
           let diceModel = 'flash-lite';
           if (activeRoom.ai_model === 'claude' || activeRoom.ai_model === 'opus') {
-            diceModel = 'flash'; // プラチナ・ダイヤは 3.6 Flash にダウングレード
+            diceModel = 'flash';
           }
           await callAIGM(`【システム判定結果】${joinedCharacter.name}が${label}ロールを行いました。\n結果: ${msgText}\n${promptSuffix}`, chatTab, false, diceModel);
       }
@@ -1565,10 +1563,11 @@ export default function Home() {
       if (finalModel === 'lite') {
         apiModelString = 'flash-lite';
       } else if (finalModel === 'flash') {
-        apiModelString = geminiFlashModel === '3.5-lite' ? 'flash-lite' : 'flash';
+        apiModelString = 'flash';
       }
 
-      const aiTextRaw = await generateAIResponse(sysPrompt, history, apiModelString, 1500, 0.7);
+      const outputTokens = ['pro', 'claude', 'opus'].includes(activeRoom.ai_model || '') ? 3000 : 1500;
+      const aiTextRaw = await generateAIResponse(sysPrompt, history, apiModelString, outputTokens, 0.7);
       
       let parsedAI = { text: "", statusUpdates: [], inventoryUpdates: [], chapterClear: false };
       try {
@@ -2071,12 +2070,15 @@ export default function Home() {
                   <div className="mt-4 pt-3 border-t border-slate-600">
                     <div className="flex gap-2 mb-2">
                       <button onClick={() => alert("※決済システム準備中")} className="flex-1 bg-slate-600 hover:bg-slate-500 text-white text-xs py-2 rounded font-bold shadow">
-                         ¥120 で購入
+                         ¥200 で購入
                       </button>
-                      <button onClick={() => exchangeTicketWithPoints('item', 300)} className="flex-[1.5] bg-yellow-600 hover:bg-yellow-500 text-white text-xs py-2 rounded font-bold shadow flex items-center justify-center gap-1">
-                         🪙 300 ptで交換
+                      <button onClick={() => exchangeTicketWithPoints('item', 500)} className="flex-[1.5] bg-yellow-600 hover:bg-yellow-500 text-white text-xs py-2 rounded font-bold shadow flex items-center justify-center gap-1">
+                         🪙 500 ptで交換
                       </button>
                     </div>
+                    <button onClick={() => alert("※決済システム準備中")} className="w-full bg-slate-800 border border-slate-500 hover:bg-slate-700 text-slate-300 text-[10px] py-1.5 rounded font-bold">
+                       3枚セット - ¥540 (10%OFF)
+                    </button>
                   </div>
                </div>
 
