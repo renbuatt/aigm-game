@@ -548,12 +548,10 @@ export default function Home() {
     if (reportsData) setReports(reportsData.map((d: any) => ({ id: d.id, reporterId: d.reporter_id, targetType: d.target_type, targetId: d.target_id, roomId: d.room_id || null, reason: d.reason, status: d.status, createdAt: d.created_at })));
   };
 
-  // ★ 管理機能のトグル処理
   const toggleMaintenance = async () => { const newStatus = !isMaintenance; await supabase.from('app_settings').update({ is_maintenance: newStatus }).eq('id', 1); setIsMaintenance(newStatus); alert(`メンテナンスモードを ${newStatus ? "ON" : "OFF"} にしました。`); };
   const toggleTicketSystem = async () => { const newStatus = !isTicketSystemEnabled; await supabase.from('app_settings').update({ is_ticket_system_enabled: newStatus }).eq('id', 1); setIsTicketSystemEnabled(newStatus); alert(`チケットシステムを ${newStatus ? "ON" : "OFF"} にしました。`); };
   const toggleAdminStatus = async (userId: string, currentStatus: boolean) => { const newStatus = !currentStatus; await supabase.from('profiles').update({ is_admin: newStatus }).eq('id', userId); setAllUsers(allUsers.map((u: any) => u.id === userId ? { ...u, isAdmin: newStatus } : u)); alert(newStatus ? "管理者権限を付与しました。" : "管理者権限を剥奪しました。"); };
   
-  // ★ Gemini Flash モデルのトグル処理
   const toggleGeminiFlashModel = async (newModel: '3.5-lite' | '3.6') => { 
     const { error } = await supabase.from('app_settings').update({ gemini_flash_model: newModel }).eq('id', 1); 
     if (error) {
@@ -677,7 +675,6 @@ export default function Home() {
       const recentLogs = memoryData?.reverse().map((m: any) => `${m.role === 'user' ? 'PL' : 'GM'}: ${m.content}`).join('\n') || "";
       const autoPromptReq = ["あなたはTRPGの情景描写AIです。以下の直近のログから、現在の「場所、雰囲気、見えているもの」を1〜2文の簡潔な日本語で描写してください。キャラクターのセリフや行動ではなく、空間のビジュアルに焦点を当ててください。","【直近のログ】",recentLogs].join('\n');
       
-      // ★ スイッチャー設定の反映
       let apiModelString = activeRoom.ai_model || 'flash';
       if (apiModelString === 'flash') {
         apiModelString = geminiFlashModel === '3.5-lite' ? 'flash-lite' : 'flash';
@@ -732,7 +729,6 @@ export default function Home() {
       const chars = activeRoom.scenario?.presetCharacters.filter((c: any) => Object.values(activeRoom.joined_users || {}).includes(c.id)).map((c: any) => `{"id": "${c.id}", "name": "${c.name}"}`).join(", ") || "";
       const prompt = ["あなたはTRPGのシステムAIです。以下の「現在参加しているキャラクター」と「直近のチャットログ」を分析し、物語の展開上、最も自然な【チーム分け（2つ以上のグループへの分割）の構成案】を作成してください。","【参加キャラクター】",chars,"","【直近のログ】",recentLogs,"","【出力形式（絶対遵守）】","必ず以下のJSONフォーマットのみを出力してください。余計な文章やマークダウン記号は一切含めないでください。",'{"teams": [{"action": "目的A", "members": ["キャラID1"]}, {"action": "目的B", "members": ["キャラID3"]}]}'].join('\n');
       
-      // ★ スイッチャー設定の反映
       let apiModelString = activeRoom.ai_model || 'flash';
       if (apiModelString === 'flash') {
         apiModelString = geminiFlashModel === '3.5-lite' ? 'flash-lite' : 'flash';
@@ -1691,45 +1687,32 @@ export default function Home() {
         />
       )}
 
-      {/* ★ 管理画面（レイアウト崩れを防ぐためそのまま表示し、スイッチャーはフローティングで表示） */}
+      {/* ★ ここにあった古い重複とフローティングを取り除きました */}
       {currentView === "admin" && currentUser?.isAdmin && (
-        <>
-          <AdminView
-            isMaintenance={isMaintenance}
-            toggleMaintenance={toggleMaintenance}
-            isTicketSystemEnabled={isTicketSystemEnabled}
-            toggleTicketSystem={toggleTicketSystem}
-            reports={reports}
-            allUsers={allUsers}
-            scenarios={scenarios}
-            resolveReport={resolveReport}
-            setBanTargetUser={setBanTargetUser}
-            setBanReason={setBanReason}
-            setBanTargetScenario={setBanTargetScenario}
-            setScenarioBanReason={setScenarioBanReason}
-            unbanScenarioFromAppeal={unbanScenarioFromAppeal}
-            userSearchQuery={userSearchQuery}
-            setUserSearchQuery={setUserSearchQuery}
-            toggleAdminStatus={toggleAdminStatus}
-            scenarioSearchQuery={scenarioSearchQuery}
-            setScenarioSearchQuery={setScenarioSearchQuery}
-            setCurrentView={setCurrentView}
-            executeCreateTester={executeCreateTester}
-          />
-          
-          {/* ★ フローティングスイッチャー（画面右下に常に浮いて表示されます） */}
-          <div className="fixed bottom-6 right-6 bg-slate-800 border border-emerald-500 p-4 rounded-xl shadow-[0_0_20px_rgba(16,185,129,0.3)] z-[100] flex flex-col gap-2">
-            <h2 className="font-bold text-sm text-emerald-400">⚙️ Gemini Flash モデル切替</h2>
-            <select 
-              value={geminiFlashModel}
-              onChange={(e) => toggleGeminiFlashModel(e.target.value as '3.5-lite' | '3.6')}
-              className="bg-slate-900 border border-slate-600 rounded p-2 text-sm text-white font-bold cursor-pointer outline-none hover:bg-slate-700 transition-colors"
-            >
-              <option value="3.5-lite">3.5 Flash Lite (軽量・多回数・要約強め)</option>
-              <option value="3.6">3.6 Flash (通常・高品質・表現豊か)</option>
-            </select>
-          </div>
-        </>
+        <AdminView
+          isMaintenance={isMaintenance}
+          toggleMaintenance={toggleMaintenance}
+          isTicketSystemEnabled={isTicketSystemEnabled}
+          toggleTicketSystem={toggleTicketSystem}
+          geminiFlashModel={geminiFlashModel}
+          toggleGeminiFlashModel={toggleGeminiFlashModel}
+          reports={reports}
+          allUsers={allUsers}
+          scenarios={scenarios}
+          resolveReport={resolveReport}
+          setBanTargetUser={setBanTargetUser}
+          setBanReason={setBanReason}
+          setBanTargetScenario={setBanTargetScenario}
+          setScenarioBanReason={setScenarioBanReason}
+          unbanScenarioFromAppeal={unbanScenarioFromAppeal}
+          userSearchQuery={userSearchQuery}
+          setUserSearchQuery={setUserSearchQuery}
+          toggleAdminStatus={toggleAdminStatus}
+          scenarioSearchQuery={scenarioSearchQuery}
+          setScenarioSearchQuery={setScenarioSearchQuery}
+          setCurrentView={setCurrentView}
+          executeCreateTester={executeCreateTester}
+        />
       )}
 
       {currentView === "banned" && <BannedView handleLogout={handleLogout} />}
@@ -1935,7 +1918,6 @@ export default function Home() {
         </div>
       )}
 
-      {/* ★ 全画面共通：チケット購入ストア */}
       {showTicketModal && (
         <div className="fixed inset-0 bg-black/80 z-[80] flex items-center justify-center p-4">
           <div className="bg-slate-800 border border-slate-700 rounded-xl p-6 w-full max-w-2xl shadow-2xl">
