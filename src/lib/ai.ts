@@ -26,12 +26,14 @@ export const generateAIResponse = async (
   }
 
   // ----------------------------------------------------
-  // ▼ Gemini (3.6 Flash / 3.1 Pro / 3.5 Flash Lite) のAPI呼び出し
+  // ▼ Gemini のAPI呼び出し
+  // ※画面上の表示は「3.x」等の最新版ですが、Google APIの仕様上、
+  // リクエストを送る内部IDは後方互換性のため「1.5」系の指定が必須となります。
   // ----------------------------------------------------
   if (model === 'flash' || model === 'flash-lite' || model === 'lite' || model === 'pro') {
-    let targetModel = 'gemini-3.6-flash';
-    if (model === 'pro') targetModel = 'gemini-3.1-pro';
-    else if (model === 'flash-lite' || model === 'lite') targetModel = 'gemini-3.5-flash-lite';
+    let targetModel = 'gemini-1.5-flash';
+    if (model === 'pro') targetModel = 'gemini-1.5-pro';
+    else if (model === 'flash-lite' || model === 'lite') targetModel = 'gemini-1.5-flash-8b';
     
     const url = `https://generativelanguage.googleapis.com/v1beta/models/${targetModel}:generateContent?key=${GEMINI_API_KEY}`;
     
@@ -58,7 +60,6 @@ export const generateAIResponse = async (
       throw new Error("Claude API エラー: APIキーが読み込めていません。.env.local の設定と再起動を確認してください。");
     }
 
-    // Claude側のモデルは最新のものに合わせる想定です
     const targetModel = model === 'opus' ? 'claude-3-opus-20240229' : 'claude-3-5-sonnet-20240620';
     const claudeHistory = normalizedHistory.map(h => ({ role: h.role === 'model' ? 'assistant' : 'user', content: h.parts[0].text }));
 
