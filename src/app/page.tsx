@@ -21,7 +21,6 @@ import LobbyView from "../components/views/LobbyView";
 import GameView from "../components/views/GameView";
 import UserProfileView from "../components/views/UserProfileView";
 import LibraryView from "../components/views/LibraryView";
-import MyPageView from "../components/views/MyPageView";
 
 const NO_IMAGE_SCENARIO = "https://images.unsplash.com/photo-1614729939124-03290b5609ce?auto=format&fit=crop&w=400&q=80";
 const DEFAULT_AVATAR = "https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&w=150&q=80";
@@ -67,6 +66,12 @@ export default function Home() {
   const [allUsers, setAllUsers] = useState<UserProfile[]>([]);
   const [myNotifications, setMyNotifications] = useState<Notification[]>([]);
   const [showMailbox, setShowMailbox] = useState(false);
+
+  // ★ 管理画面用：個別ユーザーアクション
+  const [adminActionUser, setAdminActionUser] = useState<UserProfile | null>(null);
+  const [adminTicketType, setAdminTicketType] = useState("silver");
+  const [adminTicketAmount, setAdminTicketAmount] = useState(1);
+  const [adminMailBody, setAdminMailBody] = useState("");
 
   const [banTargetUser, setBanTargetUser] = useState<UserProfile | null>(null);
   const [banReason, setBanReason] = useState("");
@@ -421,17 +426,26 @@ export default function Home() {
     await pushMessage(activeRoom.id, { sender: "system", text: msg, type: "system", channel: "system" }, false); 
   };
 
+  const kickUser = async (uid: string) => {
+    if (!activeRoom || !currentUser || activeRoom.host_id !== currentUser.id) return;
+    if (!confirm("このユーザーを部屋から強制退出させますか？")) return;
+    const newUsers = { ...activeRoom.joined_users };
+    const charId = newUsers[uid];
+    delete newUsers[uid];
+    let newAfk = [...(activeRoom.afk_users || [])].filter((id: string) => id !== uid);
+    await supabase.from('rooms').update({ joined_users: newUsers, afk_users: newAfk }).eq('id', activeRoom.id);
+    setActiveRoom({ ...activeRoom, joined_users: newUsers, afk_users: newAfk });
+    const charName = activeRoom.scenario?.presetCharacters.find((c: any) => c.id === charId)?.name || "プレイヤー";
+    await pushMessage(activeRoom.id, { sender: "system", text: `【システム】一定時間応答がなかったため、ホストによって ${charName} が追放されました。残りの役割はAIが引き継ぎます。`, type: "system", channel: "system" }, true);
+  };
+
   const triggerAutoAction = async () => {
     if (!activeRoom || activeRoom.is_paused || activeRoom.status !== 'playing' || isScenarioEnded || isRequestingRef.current) return;
-    isRequestingRef.current = true;
-    setIsLoading(true);
+    isRequestingRef.current = true; setIsLoading(true);
     try {
       const extraUserContext = ["【システムコマンド：タイムアウト自動行動】", "最後の行動から5分間、PLからの入力がありませんでした。", "物語の進行を促すため、現在AFKではないキャラクター（およびAI相棒）の行動をAI GMが自動で決定・描写し、事態を強制的に前進させてください。", "必要であればダイスロール結果もAI自身が捏造して構いません。"].join('\n');
       await callAIGM(extraUserContext, "story");
-    } finally {
-      isRequestingRef.current = false;
-      setIsLoading(false);
-    }
+    } finally { isRequestingRef.current = false; setIsLoading(false); }
   };
 
   const deleteScenario = async (id: string) => {
@@ -567,6 +581,32 @@ export default function Home() {
   const resolveReport = async (reportId: string) => { await supabase.from('reports').update({ status: 'resolved' }).eq('id', reportId); fetchAdminData(); };
   const submitAppeal = async () => { if(!currentUser || !appealText) return; await supabase.from('ban_appeals').insert({ user_id: currentUser.id, reason: "不明", appeal_text: appealText, status: 'appealing' }); alert("調査依頼を送信しました。"); setAppealText(""); };
   const markNotificationAsRead = async (notifId: string) => { await supabase.from('notifications').update({ is_read: true }).eq('id', notifId); setMyNotifications(myNotifications.map((n: any) => n.id === notifId ? { ...n, isRead: true } : n)); };
+  
+  const grantTickets = async () => {
+    if (!adminActionUser || !adminTicketAmount) return;
+    const { data } = await supabase.from('profiles').select('*').eq('id', adminActionUser.id).single();
+    if (!data) return;
+    let key = 'tickets_silver';
+    if (adminTicketType === 'bronze') key = 'tickets_bronze';
+    if (adminTicketType === 'gold') key = 'tickets_gold';
+    if (adminTicketType === 'platinum') key = 'tickets_platinum';
+    if (adminTicketType === 'diamond') key = 'tickets_diamond';
+    if (adminTicketType === 'item') key = 'tickets_item';
+    const currentVal = data[key] || 0;
+    const { error } = await supabase.from('profiles').update({ [key]: currentVal + Number(adminTicketAmount) }).eq('id', adminActionUser.id);
+    if (error) { alert("付与失敗: " + error.message); return; }
+    await supabase.from('notifications').insert({ user_id: adminActionUser.id, title: '🎁 チケット付与のお知らせ', message: `運営よりチケットが配布されました。\n・${adminTicketType}チケット × ${adminTicketAmount}枚` });
+    alert("チケットを付与しました！");
+    setAdminActionUser(null);
+  };
+
+  const sendMail = async () => {
+    if (!adminActionUser || !adminMailBody.trim()) return;
+    const { error } = await supabase.from('notifications').insert({ user_id: adminActionUser.id, title: '✉️ 運営からのお知らせ', message: adminMailBody });
+    if (error) alert("送信失敗: " + error.message);
+    else { alert("メールを送信しました！"); setAdminMailBody(""); setAdminActionUser(null); }
+  };
+
   const exchangeTicketWithPoints = async (type: 'bronze'|'item'|'silver'|'gold'|'platinum'|'diamond', cost: number) => {
     if (!currentUser) return;
     if ((currentUser.points || 0) < cost) { alert("ポイントが足りません！"); return; }
@@ -598,8 +638,7 @@ export default function Home() {
 
   const generateSceneImage = async (imageType: 'free' | 'premium') => {
     if (!activeRoom || !myScene || !currentUser || isRequestingRef.current) return;
-    isRequestingRef.current = true;
-    setIsLoading(true);
+    isRequestingRef.current = true; setIsLoading(true);
     try {
       if (imageType === 'premium') {
         if (isTicketSystemEnabled) {
@@ -616,15 +655,11 @@ export default function Home() {
       const autoPromptReq = ["あなたはTRPGの情景描写AIです。以下の直近のログから、現在の「場所、雰囲気、見えているもの」を1〜2文の簡潔な日本語で描写してください。キャラクターのセリフや行動ではなく、空間のビジュアルに焦点を当ててください。","【直近のログ】",recentLogs].join('\n');
       const targetPrompt = await generateAITextWithPrompt(autoPromptReq, 'flash-lite', 400, 0.7);
       const translationPrompt = ["以下の日本語の情景描写を、画像生成AI用のカンマ区切りの英語プロンプトに変換してください。","【絶対条件】","・文章ではなく、英単語のカンマ区切りで出力してください。","・不適切な画像が生成されるのを防ぐため、必ず最後に「SFW, fully clothed, masterpiece, high quality」を含めてください。","","情景描写：",targetPrompt].join('\n');
-      
       let englishPrompt = "";
-      try { englishPrompt = await generateAITextWithPrompt(translationPrompt, 'flash-lite', 200, 0.3); } 
-      catch (err) { englishPrompt = `${targetPrompt}, SFW, fully clothed, masterpiece, high quality`; }
-      
+      try { englishPrompt = await generateAITextWithPrompt(translationPrompt, 'flash-lite', 200, 0.3); } catch (err) { englishPrompt = `${targetPrompt}, SFW, fully clothed, masterpiece, high quality`; }
       let base64data = "";
       if (imageType === 'free') base64data = await generateFreeImage(englishPrompt);
       else base64data = await generatePremiumImage(englishPrompt);
-      
       await pushMessage(activeRoom.id, { sender: "gm", text: `【ホストが情景画像を生成しました】\n「${targetPrompt}」`, type: "image", imageUrl: base64data, sceneId: myScene.id, channel: "story" });
     } catch (err: any) { alert("画像の生成に失敗しました。\n少し時間をおいて再度お試しください。"); } finally { isRequestingRef.current = false; setIsLoading(false); }
   };
@@ -662,7 +697,6 @@ export default function Home() {
     const validTeams = proposedTeams.filter((t: any) => t.action && t.members.length > 0);
     if (validTeams.length === 0) { alert("有効なチームがありません。"); return; }
     for (const t of validTeams) { if (!t.members.includes(joinedCharacter?.id || "") && !t.leader) { alert("ホストが含まれないチームにはリーダーを指定してください。"); return; } }
-    
     isRequestingRef.current = true; setIsLoading(true);
     try {
       const newScenes: Scene[] = [{ id: 'scene_main', name: 'メインルーム', memberIds: [] }, ...validTeams.map((t: any) => ({ id: t.id, name: t.action, memberIds: t.members, leaderId: t.leader, isMerged: false }))];
@@ -722,12 +756,7 @@ export default function Home() {
       if (tErr) { alert("チケットの消費処理に失敗しました。"); return; }
 
       setCurrentUser(prev => prev ? { 
-        ...prev,
-        ticketsBronze: aiModel === 'lite' ? (prev.ticketsBronze || 0) - 1 : prev.ticketsBronze,
-        ticketsSilver: aiModel === 'flash' ? (prev.ticketsSilver || 0) - 1 : prev.ticketsSilver,
-        ticketsGold: aiModel === 'pro' ? (prev.ticketsGold || 0) - 1 : prev.ticketsGold,
-        ticketsPlatinum: aiModel === 'claude' ? (prev.ticketsPlatinum || 0) - 1 : prev.ticketsPlatinum,
-        ticketsDiamond: aiModel === 'opus' ? (prev.ticketsDiamond || 0) - 1 : prev.ticketsDiamond
+        ...prev, ticketsBronze: aiModel === 'lite' ? (prev.ticketsBronze || 0) - 1 : prev.ticketsBronze, ticketsSilver: aiModel === 'flash' ? (prev.ticketsSilver || 0) - 1 : prev.ticketsSilver, ticketsGold: aiModel === 'pro' ? (prev.ticketsGold || 0) - 1 : prev.ticketsGold, ticketsPlatinum: aiModel === 'claude' ? (prev.ticketsPlatinum || 0) - 1 : prev.ticketsPlatinum, ticketsDiamond: aiModel === 'opus' ? (prev.ticketsDiamond || 0) - 1 : prev.ticketsDiamond
       } : null);
     }
 
@@ -739,17 +768,13 @@ export default function Home() {
     scenario.presetCharacters.forEach((c: any) => { initialInventories[c.id] = c.items || "特になし"; });
 
     const { data, error } = await supabase.from('rooms').insert({ 
-      scenario_id: scenario.id, host_name: currentUser.handleName, host_id: currentUser.id, status: "recruiting", scenes: initialScenes,
-      privacy: privacy, host_message: message, joined_users: { [currentUser.id]: charId }, current_summary: "", difficulty: difficulty, rule: rule,
-      is_paused: false, afk_users: [], is_trial: false, item_visibility: itemVisibility, inventories: initialInventories,
-      current_chapter_index: 0, ai_model: aiModel 
+      scenario_id: scenario.id, host_name: currentUser.handleName, host_id: currentUser.id, status: "recruiting", scenes: initialScenes, privacy: privacy, host_message: message, joined_users: { [currentUser.id]: charId }, current_summary: "", difficulty: difficulty, rule: rule, is_paused: false, afk_users: [], is_trial: false, item_visibility: itemVisibility, inventories: initialInventories, current_chapter_index: 0, ai_model: aiModel 
     }).select().single();
     
     if (error) { alert("データベースエラーが発生しました: " + error.message); return; }
     if (data) {
       const currentSc = scenarios.find((s: any) => s.id === scenario.id);
       if (currentSc) await supabase.from('scenarios').update({ play_count: (currentSc.playCount || 0) + 1 }).eq('id', scenario.id);
-
       setRoomConfigModal(null); await fetchData();
       const newRoom: Room = { id: data.id, scenario_id: data.scenario_id, scenario: scenario, host_name: data.host_name, host_id: data.host_id, status: data.status, scenes: data.scenes, privacy: data.privacy, host_message: data.host_message, joined_users: data.joined_users, current_summary: "", difficulty: data.difficulty, rule: data.rule, is_paused: false, afk_users: [], is_trial: false, item_visibility: data.item_visibility, inventories: data.inventories, current_chapter_index: 0, ai_model: data.ai_model };
       await supabase.from('ai_memory').delete().eq('room_id', newRoom.id);
@@ -773,17 +798,13 @@ export default function Home() {
     scenario.presetCharacters.forEach((c: any) => { initialInventories[c.id] = c.items || "特になし"; });
 
     const { data, error } = await supabase.from('rooms').insert({ 
-      scenario_id: scenario.id, host_name: currentUser.handleName, host_id: currentUser.id, status: "recruiting", scenes: initialScenes,
-      privacy: 'secret', host_message: "お試しプレイ", joined_users: { [currentUser.id]: charId }, current_summary: "", difficulty: "normal", rule: "coc_jp",
-      is_paused: false, afk_users: [], is_trial: true, item_visibility: "none", inventories: initialInventories,
-      current_chapter_index: 0, ai_model: 'lite' 
+      scenario_id: scenario.id, host_name: currentUser.handleName, host_id: currentUser.id, status: "recruiting", scenes: initialScenes, privacy: 'secret', host_message: "お試しプレイ", joined_users: { [currentUser.id]: charId }, current_summary: "", difficulty: "normal", rule: "coc_jp", is_paused: false, afk_users: [], is_trial: true, item_visibility: "none", inventories: initialInventories, current_chapter_index: 0, ai_model: 'lite' 
     }).select().single();
     
     if (error) { alert("データベースエラーが発生しました: " + error.message); return; }
     if (data) {
       const currentSc = scenarios.find((s: any) => s.id === scenario.id);
       if (currentSc) await supabase.from('scenarios').update({ play_count: (currentSc.playCount || 0) + 1 }).eq('id', scenario.id);
-
       await fetchData();
       const newRoom: Room = { id: data.id, scenario_id: data.scenario_id, scenario: scenario, host_name: data.host_name, host_id: data.host_id, status: data.status, scenes: data.scenes, privacy: data.privacy, host_message: data.host_message, joined_users: data.joined_users, current_summary: "", difficulty: data.difficulty, rule: data.rule, is_paused: false, afk_users: [], is_trial: true, item_visibility: "none", inventories: data.inventories, current_chapter_index: 0, ai_model: data.ai_model };
       await supabase.from('ai_memory').delete().eq('room_id', newRoom.id);
@@ -811,17 +832,10 @@ export default function Home() {
         setShowTicketModal(true); return;
       }
       if (!confirm(`この部屋に入室するには ${costName}チケット を1枚消費します。よろしいですか？`)) return;
-
       const { error: tErr } = await supabase.from('profiles').update({ [requiredTicketKey]: currentTickets - 1 }).eq('id', currentUser.id);
       if (tErr) { alert("チケットの消費処理に失敗しました。"); return; }
-
       setCurrentUser(prev => prev ? { 
-        ...prev,
-        ticketsBronze: room.ai_model === 'lite' ? (prev.ticketsBronze || 0) - 1 : prev.ticketsBronze,
-        ticketsSilver: room.ai_model === 'flash' ? (prev.ticketsSilver || 0) - 1 : prev.ticketsSilver,
-        ticketsGold: room.ai_model === 'pro' ? (prev.ticketsGold || 0) - 1 : prev.ticketsGold,
-        ticketsPlatinum: room.ai_model === 'claude' ? (prev.ticketsPlatinum || 0) - 1 : prev.ticketsPlatinum,
-        ticketsDiamond: room.ai_model === 'opus' ? (prev.ticketsDiamond || 0) - 1 : prev.ticketsDiamond
+        ...prev, ticketsBronze: room.ai_model === 'lite' ? (prev.ticketsBronze || 0) - 1 : prev.ticketsBronze, ticketsSilver: room.ai_model === 'flash' ? (prev.ticketsSilver || 0) - 1 : prev.ticketsSilver, ticketsGold: room.ai_model === 'pro' ? (prev.ticketsGold || 0) - 1 : prev.ticketsGold, ticketsPlatinum: room.ai_model === 'claude' ? (prev.ticketsPlatinum || 0) - 1 : prev.ticketsPlatinum, ticketsDiamond: room.ai_model === 'opus' ? (prev.ticketsDiamond || 0) - 1 : prev.ticketsDiamond
       } : null);
     }
 
@@ -855,8 +869,7 @@ export default function Home() {
     if (currentSc) await supabase.from('scenarios').update({ view_count: (currentSc.viewCount || 0) + 1 }).eq('id', room.scenario_id);
 
     setActiveRoom({ ...room, spectator_ids: newSpectators }); 
-    setJoinedCharacter(null); 
-    await loadChatLogs(room.id);
+    setJoinedCharacter(null); await loadChatLogs(room.id);
     await pushMessage(room.id, { sender: "system", text: `【観戦モード】部屋に入室しました。チャットやダイスは使用できません。`, type: "system", sceneId: room.scenes?.[0]?.id, channel: "system" }, false);
     setCurrentView("game");
   };
@@ -864,16 +877,12 @@ export default function Home() {
   const startGame = async () => {
     if(!activeRoom || !activeRoom.scenario || !joinedCharacter || !myScene || isRequestingRef.current) return;
     isRequestingRef.current = true; setIsLoading(true);
-    
     try {
       let aiChars: Character[] = [];
       const takenIds = Object.values(activeRoom.joined_users || {});
       const emptyChars = activeRoom.scenario.presetCharacters.filter((c: any) => !takenIds.includes(c.id));
-      
       if (['pro', 'claude', 'opus'].includes(activeRoom.ai_model || '')) {
-         if (emptyChars.length > 0 && !activeRoom.is_trial) {
-           alert("【お知らせ】ゴールド以上の部屋では、AIプレイヤーの参加はできません。");
-         }
+         if (emptyChars.length > 0 && !activeRoom.is_trial) alert("【お知らせ】ゴールド以上の部屋では、AIプレイヤーの参加はできません。");
       } else {
          if (emptyChars.length > 0) {
            if (activeRoom.is_trial) aiChars = emptyChars; 
@@ -881,12 +890,9 @@ export default function Home() {
          }
       }
       setAiPlayersList(aiChars);
-
       await supabase.from('rooms').update({ status: 'playing', is_paused: false }).eq('id', activeRoom.id);
-      const updatedRoom: Room = { ...activeRoom, status: 'playing', is_paused: false };
-      setActiveRoom(updatedRoom);
+      setActiveRoom({ ...activeRoom, status: 'playing', is_paused: false });
       await pushMessage(activeRoom.id, { sender: "system", text: `【システム】ゲームを開始しました。AI GMを呼び出しています...`, type: "system", sceneId: myScene.id, channel: "system" });
-      
       const extraUserContext = `【システムコマンド】セッションが開始されました。\n以下の【設定されたプロローグ情報】に従い導入部分の情景描写を行ってください。\n\n【設定されたプロローグ情報】\n${activeRoom.scenario.prologue || "特になし"}\n\nまた、この導入部において、事態の把握や最初の試練として【必ずプレイヤー全員が最低1回はダイス判定を行わなければならない状況】を発生させてください。`;
       await callAIGM(extraUserContext, "story", true);
     } finally { isRequestingRef.current = false; setIsLoading(false); }
@@ -904,13 +910,11 @@ export default function Home() {
   const leaveGame = async () => {
     if (!activeRoom || !currentUser) return;
     if (activeRoom.status === 'finished') { setCurrentView("evaluation"); return; }
-    
     if (!joinedCharacter) { 
       const newSpectators = (activeRoom.spectator_ids || []).filter((id: string) => id !== currentUser.id);
       await supabase.from('rooms').update({ spectator_ids: newSpectators }).eq('id', activeRoom.id);
       setCurrentView("lobby"); setActiveRoom(null); await fetchData(); return; 
     }
-
     const isHost = activeRoom.host_id === currentUser.id;
     const isRecruiting = activeRoom.status === 'recruiting';
     const remainingPlayers = Object.keys(activeRoom.joined_users || {}).filter((id: string) => id !== currentUser.id).length;
@@ -941,11 +945,8 @@ export default function Home() {
   const handleSend = async () => {
     if (!input.trim() || isRequestingRef.current || !activeRoom || !joinedCharacter || !currentUser || !myScene) return;
     isRequestingRef.current = true; setIsLoading(true);
-
     try {
-      const currentInput = input;
-      setInput(""); 
-
+      const currentInput = input; setInput(""); 
       const isFinished = activeRoom.status === 'finished';
       const isRecruiting = activeRoom.status === 'recruiting';
 
@@ -953,7 +954,6 @@ export default function Home() {
         await pushMessage(activeRoom.id, { sender: "player", text: currentInput, type: (isFinished || isRecruiting) ? "ooc" : "ic", sceneId: myScene.id, charName: joinedCharacter.name, channel: chatTab });
         return; 
       }
-
       await pushMessage(activeRoom.id, { sender: "player", text: currentInput, type: chatTab === "story" ? "ic" : "ooc", sceneId: myScene.id, charName: joinedCharacter.name, channel: chatTab });
       
       const teamPrefix = isSplitMode && myScene.id !== 'scene_main' ? `[${myScene.name}チーム - ${joinedCharacter.name}] ` : `${joinedCharacter.name}「`;
@@ -970,7 +970,6 @@ export default function Home() {
   const rollDice = async (targetValue: number, label: string, is1d100: boolean = false) => {
     if(!myScene || !activeRoom || isRequestingRef.current || !joinedCharacter) return;
     isRequestingRef.current = true; setIsLoading(true);
-
     try {
       let res = 0; let isSuccess = false; let msgText = "";
       const rule = activeRoom.rule || "coc_jp";
@@ -980,31 +979,25 @@ export default function Home() {
         const modifier = Math.floor((targetValue - 10) / 2) || 0;
         const total = res + modifier; const dc = 12; 
         isSuccess = total >= dc;
-        if (res === 20) isSuccess = true;
-        if (res === 1) isSuccess = false;
+        if (res === 20) isSuccess = true; if (res === 1) isSuccess = false;
         const modStr = modifier >= 0 ? `+${modifier}` : `${modifier}`;
         msgText = `🎲 ${label}判定 (1d20${modStr}) ➔ 出目: ${res} (計: ${total}) vs DC${dc} 【${isSuccess ? "成功" : "失敗"}】`;
       } else if (rule === "sw25") {
         const d1 = Math.floor(Math.random() * 6) + 1; const d2 = Math.floor(Math.random() * 6) + 1;
-        res = d1 + d2;
-        const bonus = Math.floor(targetValue / 6) || 0; 
+        res = d1 + d2; const bonus = Math.floor(targetValue / 6) || 0; 
         const total = res + bonus; const target = 10;
-        isSuccess = total >= target;
-        const bonusStr = bonus >= 0 ? `+${bonus}` : `${bonus}`;
+        isSuccess = total >= target; const bonusStr = bonus >= 0 ? `+${bonus}` : `${bonus}`;
         msgText = `🎲 ${label}判定 (2d6${bonusStr}) ➔ 出目: ${res}[${d1},${d2}] (計: ${total}) vs 目標${target} 【${isSuccess ? "成功" : "失敗"}】`;
       } else if (rule === "storytelling") {
-        res = Math.floor(Math.random() * 6) + 1;
-        isSuccess = res >= 4;
+        res = Math.floor(Math.random() * 6) + 1; isSuccess = res >= 4;
         msgText = `🎲 ${label}判定 (1d6) ➔ 出目: ${res} 【${isSuccess ? "成功" : "失敗"}】`;
       } else {
         if (is1d100) {
-          res = Math.floor(Math.random() * 100) + 1;
-          isSuccess = res <= targetValue;
+          res = Math.floor(Math.random() * 100) + 1; isSuccess = res <= targetValue;
           msgText = `🎲 ${label} (1d100 ≦ ${targetValue}%) ➔ 出目: ${res} 【${isSuccess ? "成功" : "失敗"}】`;
         } else {
           const d1 = Math.floor(Math.random() * 6) + 1; const d2 = Math.floor(Math.random() * 6) + 1; const d3 = Math.floor(Math.random() * 6) + 1;
-          res = d1 + d2 + d3;
-          isSuccess = res <= targetValue;
+          res = d1 + d2 + d3; isSuccess = res <= targetValue;
           msgText = `🎲 ${label} (3d6 ≦ ${targetValue}) ➔ 出目: ${res} [${d1},${d2},${d3}] 【${isSuccess ? "成功" : "失敗"}】`;
         }
       }
@@ -1018,13 +1011,13 @@ export default function Home() {
           let promptSuffix = "この結果を踏まえてGMとして情景描写を行ってください。";
           if (chatTab === "gm") promptSuffix = "この結果を踏まえて、システム・ルールの裁定やヒントの提示を行ってください。";
           else if (chatTab === "consult") promptSuffix = "この結果を踏まえて、AI相棒としてリアクションを返してください。";
-          
           let diceModel = 'flash-lite';
           if (activeRoom.ai_model === 'claude' || activeRoom.ai_model === 'opus') diceModel = 'flash';
           await callAIGM(`【システム判定結果】${joinedCharacter.name}が${label}ロールを行いました。\n結果: ${msgText}\n${promptSuffix}`, chatTab, false, diceModel);
       }
     } finally { isRequestingRef.current = false; setIsLoading(false); }
   };
+
   const callAIGM = async (extraUserContext?: string, targetTab: ChatTab = "story", isStarting: boolean = false, forcedModel?: string) => {
     if (!activeRoom || !joinedCharacter || !myScene) return;
     if (!isStarting && activeRoom.status !== 'playing') return;
@@ -1051,7 +1044,7 @@ export default function Home() {
           const idsToDelete = logsToCompress.map((m: any) => m.id);
           if (idsToDelete.length > 0) await supabase.from('ai_memory').delete().in('id', idsToDelete);
           currentMemory = recentLogs;
-        } catch(e) { console.error("要約APIでエラー", e); currentMemory = currentMemory.slice(-(contextLimit + 5)); }
+        } catch(e) { currentMemory = currentMemory.slice(-(contextLimit + 5)); }
       }
 
       let activeNpcListText = "";
@@ -1473,6 +1466,7 @@ export default function Home() {
           setScenarioSearchQuery={setScenarioSearchQuery}
           setCurrentView={setCurrentView}
           executeCreateTester={executeCreateTester}
+          openUserActionModal={(user: any) => setAdminActionUser(user)}
         />
       )}
 
@@ -1600,6 +1594,7 @@ export default function Home() {
           openRoomConfigModal={handleOpenRoomConfig}
           aiPlayersList={aiPlayersList}
           saveToArchive={saveToArchive}
+          kickUser={kickUser}
         />
       )}
       
@@ -1823,6 +1818,37 @@ export default function Home() {
                   </div>
                </div>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* 管理画面のユーザーアクションモーダル */}
+      {adminActionUser && (
+        <div className="fixed inset-0 bg-black/80 z-[70] flex items-center justify-center p-4">
+          <div className="bg-slate-800 border border-blue-500/50 rounded-xl p-6 w-full max-w-lg shadow-2xl space-y-4">
+            <h3 className="text-lg font-bold text-white mb-2">🎁 ユーザー管理アクション</h3>
+            <p className="text-xs text-slate-400 border-b border-slate-700 pb-2 mb-4">対象: {adminActionUser.handleName} ({adminActionUser.email})</p>
+            <div>
+              <h4 className="font-bold text-sm text-emerald-400 mb-2">🎟️ チケットの個別付与</h4>
+              <div className="flex gap-2">
+                <select value={adminTicketType} onChange={e => setAdminTicketType(e.target.value)} className="bg-slate-900 border border-slate-700 rounded p-2 text-xs flex-1">
+                  <option value="bronze">ブロンズ (Flash Lite)</option>
+                  <option value="silver">シルバー (Flash)</option>
+                  <option value="gold">ゴールド (Pro)</option>
+                  <option value="platinum">プラチナ (Sonnet)</option>
+                  <option value="diamond">ダイヤモンド (Opus)</option>
+                  <option value="item">アイテム生成枠</option>
+                </select>
+                <input type="number" value={adminTicketAmount} onChange={e => setAdminTicketAmount(Number(e.target.value))} placeholder="枚数" className="w-16 bg-slate-900 border border-slate-700 rounded p-2 text-xs text-center" />
+                <button onClick={grantTickets} className="bg-emerald-600 hover:bg-emerald-500 px-4 rounded text-xs font-bold shadow">付与</button>
+              </div>
+            </div>
+            <div className="pt-2">
+              <h4 className="font-bold text-sm text-blue-400 mb-2">✉️ システムメール（個別通知）送信</h4>
+              <textarea value={adminMailBody} onChange={e => setAdminMailBody(e.target.value)} placeholder="メッセージ内容..." className="w-full h-24 bg-slate-900 border border-slate-700 rounded p-2 text-xs" />
+              <button onClick={sendMail} disabled={!adminMailBody.trim()} className="w-full bg-blue-600 hover:bg-blue-500 disabled:bg-slate-600 py-2 rounded text-xs font-bold mt-2 shadow">メールを送信する</button>
+            </div>
+            <button onClick={() => setAdminActionUser(null)} className="w-full bg-slate-700 hover:bg-slate-600 py-3 rounded text-sm font-bold mt-4">閉じる</button>
           </div>
         </div>
       )}
