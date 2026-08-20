@@ -121,7 +121,6 @@ export default function Home() {
   const defaultScene: Scene = { id: "scene_main", name: "メインルーム", memberIds: [] };
   const myScene = activeRoom?.scenes?.find((s: any) => joinedCharacter && s.memberIds.includes(joinedCharacter.id)) || activeRoom?.scenes?.[0] || defaultScene;
   const isSplitMode = activeRoom ? (activeRoom.scenes?.length > 1) : false;
-
   const isScenarioEnded = messages.some((m: any) => m.text.includes('[SCENARIO_END]')) || activeRoom?.status === 'finished';
 
   const handleOpenRoomConfig = (scenario: Scenario) => {
@@ -178,7 +177,8 @@ export default function Home() {
     const { error } = await supabase.from('profiles').update({
       handle_name: updates.handleName,
       bio: updates.bio,
-      avatar_url: updates.avatarUrl
+      avatar_url: updates.avatarUrl,
+      discord_id: updates.discordId
     }).eq('id', currentUser.id);
     
     if (error) {
@@ -861,7 +861,6 @@ export default function Home() {
   const executeJoinRoom = async (room: Room, charId: string) => {
     if (!currentUser || !room || !charId) return;
 
-    // ★ ゲスト入室時もチケットを消費するロジックの追加
     const isAuthor = room.scenario?.authorId === currentUser.id;
     if (isTicketSystemEnabled && !isAuthor && !room.is_trial) {
       let requiredTicketKey = '';
@@ -894,7 +893,6 @@ export default function Home() {
         ticketsDiamond: room.ai_model === 'opus' ? (prev.ticketsDiamond || 0) - 1 : prev.ticketsDiamond
       } : null);
     }
-    // ---------------------------------------------
 
     const { data: latestRoom } = await supabase.from('rooms').select('joined_users, inventories').eq('id', room.id).single();
     const currentUsers = latestRoom?.joined_users || {};
@@ -1514,6 +1512,11 @@ export default function Home() {
       const currentChapter = chapters[currentChapIndex] || chapters[chapters.length - 1];
       const isLastChapter = currentChapIndex >= chapters.length - 1;
 
+      const totalChapters = chapters.length;
+      let targetTurns = 25;
+      if (totalChapters === 1) targetTurns = 40;
+      else if (totalChapters === 2) targetTurns = 30;
+
       const chapterProgress = chapters.map((c: any, idx: number) => {
         if (idx < currentChapIndex) return `[クリア済] 第${idx + 1}章: ${c.title}`;
         if (idx === currentChapIndex) return `[★現在進行中] 第${idx + 1}章: ${c.title}`;
@@ -1569,7 +1572,9 @@ export default function Home() {
         isSplitMode,
         afkInstruction,
         targetTab,
-        activeNpcListText
+        activeNpcListText,
+        targetTurns,
+        totalChapters
       });
 
       let finalModel = forcedModel || activeRoom.ai_model || 'lite';
@@ -1650,25 +1655,24 @@ export default function Home() {
       const msgSender = targetTab === "consult" ? "ai_player" : "gm";
       await pushMessage(activeRoom.id, { sender: msgSender, text: cleanAiText, type: targetTab === "gm" ? "ooc" : "ic", sceneId: myScene?.id, charName: targetTab === "consult" ? "AI相棒" : "AI GM", channel: targetTab });
 
-      if (isChapterCleared && !isLastChapter) {
+      if (isChapterCleared) {
          if (activeRoom.is_trial) {
-           // ★ お試しプレイの場合は第1章クリア時点で強制終了
            const endText = '【お試しプレイはここまでです！続きはチケットを消費して本編の部屋を作成してお楽しみください】\n\n[SCENARIO_END]';
            await supabase.from('ai_memory').insert({ room_id: activeRoom.id, role: 'assistant', content: endText });
            await pushMessage(activeRoom.id, { sender: "system", text: endText, type: "system", sceneId: myScene?.id, channel: "system" }, false);
            await supabase.from('rooms').update({ status: 'finished' }).eq('id', activeRoom.id);
            setActiveRoom(prev => prev ? { ...prev, status: 'finished' } : null);
-         } else {
+         } else if (!isLastChapter) {
            const nextIndex = currentChapIndex + 1;
            await supabase.from('rooms').update({ current_chapter_index: nextIndex }).eq('id', activeRoom.id);
            setActiveRoom(prev => prev ? { ...prev, current_chapter_index: nextIndex } : null);
            await pushMessage(activeRoom.id, { sender: "system", text: `【システム】チャプター「${currentChapter.title}」をクリアしました！\n物語は次章「${chapters[nextIndex].title}」へ進行します...`, type: "system", sceneId: myScene?.id, channel: "system" }, false);
            await supabase.from('ai_memory').insert({ room_id: activeRoom.id, role: 'user', content: `【システム情報：第${nextIndex+1}章（${chapters[nextIndex].title}）に突入しました。これまでの状況を踏まえ、次の展開を描写してください】\n\n【絶対条件：章開始の超絶リッチ描写】\nここは新しい章の開始シーンです。参加人数に関係なく、あなたの持てる最大の語彙力と文字数（最低1000文字〜最大3000文字）を使い切り、場面転換に伴う新たな情景描写や空気感の変化を圧倒的かつガッツリと描写してください。絶対に端折らないこと。` });
+         } else {
+           await supabase.from('rooms').update({ status: 'finished' }).eq('id', activeRoom.id);
+           setActiveRoom(prev => prev ? { ...prev, status: 'finished' } : null);
+           await pushMessage(activeRoom.id, { sender: "system", text: `【システム】全シナリオをクリアしました！お疲れ様でした。\nこれより「感想戦モード」になります。`, type: "system", sceneId: myScene?.id, channel: "system" }, false);
          }
-      } else if (isChapterCleared && isLastChapter) {
-         await supabase.from('rooms').update({ status: 'finished' }).eq('id', activeRoom.id);
-         setActiveRoom(prev => prev ? { ...prev, status: 'finished' } : null);
-         await pushMessage(activeRoom.id, { sender: "system", text: `【システム】全シナリオをクリアしました！お疲れ様でした。\nこれより「感想戦モード」になります。`, type: "system", sceneId: myScene?.id, channel: "system" }, false);
       }
 
     } catch (err: any) { 
@@ -1718,15 +1722,14 @@ export default function Home() {
           currentUser={currentUser} 
           targetUserId={targetUserId} 
           setCurrentView={setCurrentView} 
-          executeExport={executeExport} 
-          isExporting={isExporting} 
           allScenarios={scenarios} 
           updateProfile={updateProfile}
           blockUser={blockUser}
           unblockUser={unblockUser}
+          addFriend={addFriend}
           activeRooms={rooms}
-          executeSpectateWithAd={(room: any) => setAdModal({ isOpen: true, step: 1, scenario: null, room: room, type: 'spectate' })}
           openRoomConfigModal={handleOpenRoomConfig}
+          openUserProfile={openUserProfile}
         />
       )}
 
