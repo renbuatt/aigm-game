@@ -28,12 +28,18 @@ export const generateAIResponse = async (
   // ▼ 1. Google (Gemini) APIルート（強制固定）
   // ----------------------------------------------------
   if (model === 'flash' || model === 'flash-lite' || model === 'lite' || model === 'pro') {
-    // 古い環境変数を無視して、最新モデルをハードコーディング
-    let targetModel = 'gemini-3.5-flash-lite'; 
-    if (model === 'pro') targetModel = 'gemini-2.5-pro';
-    else if (model === 'flash') targetModel = 'gemini-3.6-flash';
     
-    // ★ ここが v1beta になっているのが最新版の証拠です
+    let targetModel = 'gemini-3.5-flash-lite'; 
+
+    // Google APIの最新の指定に合わせてハードコーディング
+    if (model === 'pro') {
+      targetModel = 'gemini-3.1-pro-preview'; // ★ ゴールド（2.5が廃止されたため3.1-previewに変更）
+    } else if (model === 'flash') {
+      targetModel = 'gemini-3.6-flash'; // シルバー
+    } else if (model === 'flash-lite' || model === 'lite') {
+      targetModel = 'gemini-3.5-flash-lite'; // ブロンズ ＆ 裏側のシステム処理
+    }
+    
     const url = `https://generativelanguage.googleapis.com/v1beta/models/${targetModel}:generateContent?key=${GEMINI_API_KEY}`;
     
     console.log(`[AI GM 実行ログ] 内部要求: ${model} -> 実際の送信先モデル: ${targetModel}`);
