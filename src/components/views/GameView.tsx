@@ -1,6 +1,5 @@
 import React, { useState, useEffect, useRef } from "react";
 import { ViewState, UserProfile, Room, Character, Scene, Message, ChatTab, Scenario } from "../../types";
-import { supabase } from "../../lib/supabase"; 
 
 const DEFAULT_AVATAR = "https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&w=150&q=80";
 
@@ -33,7 +32,7 @@ type Props = {
   executeMergeAll: () => Promise<void>;
   generateSceneImage: (imageType: 'free' | 'premium') => Promise<void>;
   proposedTeams: {id: string, action: string, members: string[], leader: string}[];
-  setProposedTeams: React.Dispatch<React.SetStateAction<{id: string, action: string, members: string[], leader: string}[]>>;
+  setProposedTeams: React.Dispatch<React.SetStateAction<any>>;
   isGeneratingSplit: boolean;
   generateSplitProposal: () => Promise<void>;
   finishSplitting: () => Promise<void>;
@@ -42,7 +41,7 @@ type Props = {
   toggleAFK: (userId: string, forceRemove?: boolean) => Promise<void>;
   triggerAutoAction: () => Promise<void>;
   updateInventory: (newItems: string) => Promise<void>;
-  openRoomConfigModal?: (scenario: Scenario) => void; 
+  openRoomConfigModal?: (scenario: Scenario) => void;
   aiPlayersList: Character[];
   saveToArchive: () => Promise<void>;
 };
@@ -53,33 +52,23 @@ export default function GameView({
   setCurrentView, endGame, input, setInput, handleSend, handleTabClick, unreadIndicators,
   consultWithAI, setConsultWithAI, isChatDisabled, mergeTeam, executeMergeAll, generateSceneImage,
   proposedTeams, setProposedTeams, isGeneratingSplit, generateSplitProposal, finishSplitting, cancelSplitting,
-  togglePauseRoom, toggleAFK, triggerAutoAction, updateInventory, openRoomConfigModal, aiPlayersList, saveToArchive
+  togglePauseRoom, toggleAFK, triggerAutoAction, updateInventory, aiPlayersList
 }: Props) {
   const isRecruiting = activeRoom.status === 'recruiting';
   const isHost = currentUser?.id === activeRoom.host_id || currentUser?.handleName === activeRoom.host_name;
   const imageCount = messages.filter(m => m.type === 'image').length;
   
+  const [showImagePromptModal, setShowImagePromptModal] = useState(false);
+  const [imagePromptText, setImagePromptText] = useState("");
   const [isGeneratingImg, setIsGeneratingImg] = useState(false);
   const [showSummaryModal, setShowSummaryModal] = useState(false);
-  const [playerNames, setPlayerNames] = useState<Record<string, string>>({});
+  const [showInventoryModal, setShowInventoryModal] = useState(false);
+  const [tempInventory, setTempInventory] = useState("");
   
   const chatContainerRef = useRef<HTMLDivElement>(null);
-  const spectatorCount = activeRoom.spectator_ids ? activeRoom.spectator_ids.length : 0;
 
-  useEffect(() => {
-    const fetchNames = async () => {
-      if (!activeRoom?.joined_users) return;
-      const uids = Object.keys(activeRoom.joined_users);
-      if (uids.length === 0) return;
-      const { data } = await supabase.from('profiles').select('id, handle_name').in('id', uids);
-      if (data) {
-        const map: Record<string, string> = {};
-        data.forEach((p: any) => { map[p.id] = p.handle_name; });
-        setPlayerNames(map);
-      }
-    };
-    fetchNames();
-  }, [activeRoom?.joined_users]);
+  // ★ 観戦人数のカウント
+  const spectatorCount = activeRoom.spectator_ids ? activeRoom.spectator_ids.length : 0;
 
   useEffect(() => {
     if (chatContainerRef.current) {
@@ -91,35 +80,29 @@ export default function GameView({
     if (!isHost || activeRoom.status !== 'playing' || activeRoom.is_paused || isScenarioEnded) return;
     const lastMsg = messages[messages.length - 1];
     if (lastMsg && (lastMsg.sender === 'gm' || lastMsg.sender === 'system')) {
-      const timer = setTimeout(() => { triggerAutoAction(); }, 5 * 60 * 1000);
+      const timer = setTimeout(() => {
+        triggerAutoAction();
+      }, 5 * 60 * 1000);
       return () => clearTimeout(timer);
     }
-  }, [messages, activeRoom.status, activeRoom.is_paused, isHost, isScenarioEnded, triggerAutoAction]);
+  }, [messages, activeRoom.status, activeRoom.is_paused, isHost, isScenarioEnded]);
 
   const handleGenerateImage = async (type: 'free' | 'premium') => {
     if (imageCount >= 3 || isGeneratingImg) return;
     setIsGeneratingImg(true);
-    await generateSceneImage(type); 
+    await generateSceneImage(type);
     setIsGeneratingImg(false);
   };
 
-  const chargeImageCredits = async () => {
-    if (!currentUser) return;
-    if ((currentUser.ticketsItem || 0) < 1) {
-      alert("アイテムチケットが足りません！\nロビーの「チケット購入ストア」から入手してください。");
-      return;
-    }
-    if (!confirm("アイテムチケットを1枚消費して、高品質画像生成を3回分チャージしますか？")) return;
-    
-    const updates: any = { 
-      image_gen_credits: (currentUser.imageGenCredits || 0) + 3,
-      tickets_item: (currentUser.ticketsItem || 0) - 1
-    };
+  const openInventoryEditor = () => {
+    if(!joinedCharacter) return;
+    setTempInventory(activeRoom.inventories?.[joinedCharacter.id] || joinedCharacter.items || "特になし");
+    setShowInventoryModal(true);
+  };
 
-    const { error } = await supabase.from('profiles').update(updates).eq('id', currentUser.id);
-    if (error) { alert("チケットの消費に失敗しました。"); return; }
-    
-    alert("3回分の高品質画像生成権をチャージしました！画面を更新すると反映されます。");
+  const saveInventory = async () => {
+    await updateInventory(tempInventory);
+    setShowInventoryModal(false);
   };
 
   const rule = activeRoom.rule || "coc_jp";
@@ -129,12 +112,6 @@ export default function GameView({
   return (
     <div className="flex-1 flex flex-col max-w-5xl mx-auto w-full p-4 min-h-0 relative">
       
-      {(activeRoom.is_trial || !joinedCharacter) && (
-        <div className="w-full bg-slate-800 border border-slate-700 rounded-lg p-2 mb-3 flex items-center justify-center text-xs text-slate-500 font-bold shadow-sm cursor-pointer hover:bg-slate-700 transition-colors">
-          <span>【スポンサー広告】ここにバナー広告が表示されます</span>
-        </div>
-      )}
-
       {showSummaryModal && (
         <div className="absolute inset-0 bg-black/80 z-50 flex items-center justify-center p-4">
           <div className="bg-slate-800 border border-slate-700 rounded-xl p-6 w-full max-w-2xl shadow-2xl space-y-4 max-h-[85vh] flex flex-col">
@@ -147,6 +124,25 @@ export default function GameView({
         </div>
       )}
 
+      {showInventoryModal && joinedCharacter && (
+        <div className="absolute inset-0 bg-black/80 z-50 flex items-center justify-center p-4">
+          <div className="bg-slate-800 border border-emerald-700/50 rounded-xl p-6 w-full max-w-lg shadow-2xl space-y-4 flex flex-col">
+            <h3 className="text-xl font-bold text-emerald-400 border-b border-slate-700 pb-3">🎒 所持品の整理</h3>
+            <p className="text-xs text-slate-300">取得したアイテムや消費したアイテムを自由に編集してください。（※AIに認識されます）</p>
+            <textarea 
+              value={tempInventory} 
+              onChange={(e) => setTempInventory(e.target.value)} 
+              className="w-full h-32 bg-slate-900 border border-slate-600 rounded p-3 text-sm text-white focus:border-emerald-500 outline-none"
+            />
+            <div className="flex gap-3 pt-2">
+              <button onClick={() => setShowInventoryModal(false)} className="flex-1 bg-slate-700 hover:bg-slate-600 py-3 rounded text-sm font-bold text-white">キャンセル</button>
+              <button onClick={saveInventory} className="flex-1 bg-emerald-600 hover:bg-emerald-500 py-3 rounded text-sm font-bold text-white shadow-lg">保存する</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* チーム編成モーダル */}
       {activeRoom.status === 'splitting' && isHost && (
         <div className="absolute inset-0 bg-black/80 z-50 flex items-center justify-center p-4">
           <div className="bg-slate-800 border border-blue-500/50 rounded-xl p-6 w-full max-w-2xl shadow-2xl space-y-4 max-h-[85vh] flex flex-col">
@@ -184,7 +180,7 @@ export default function GameView({
                                 <input type="checkbox" checked={isChecked} onChange={(e) => {
                                   const nt = [...proposedTeams];
                                   if (e.target.checked) nt[tIdx].members.push(charId);
-                                  else nt[tIdx].members = nt[tIdx].members.filter((id: string) => id !== charId);
+                                  else nt[tIdx].members = nt[tIdx].members.filter(id => id !== charId);
                                   if (nt[tIdx].members.length > 0 && !nt[tIdx].members.includes(nt[tIdx].leader)) nt[tIdx].leader = nt[tIdx].members[0];
                                   setProposedTeams(nt);
                                 }} className="hidden" />
@@ -194,21 +190,9 @@ export default function GameView({
                          })}
                       </div>
                     </div>
-                    {team.members.length > 0 && !team.members.includes(joinedCharacter?.id || "") && (
-                       <div className="bg-amber-900/20 border border-amber-900/50 p-2 rounded">
-                         <label className="text-[10px] text-amber-400 block mb-1">リーダー (システム代表者を選択)</label>
-                         <div className="flex gap-4">
-                           {team.members.map(mId => {
-                             const c = activeRoom.scenario?.presetCharacters.find((pc: Character) => pc.id === mId);
-                             return <label key={mId} className="flex items-center gap-1 text-xs text-amber-100 cursor-pointer"><input type="radio" checked={team.leader === mId} onChange={() => { const nt=[...proposedTeams]; nt[tIdx].leader=mId; setProposedTeams(nt); }} className="accent-amber-500" /> {c?.name}</label>
-                           })}
-                         </div>
-                       </div>
-                    )}
                   </div>
                 </div>
               ))}
-              
               {!isGeneratingSplit && (
                 <button onClick={() => setProposedTeams([...proposedTeams, { id: `team_${Date.now()}`, action: "", members: [], leader: "" }])} className="w-full bg-slate-800 border-2 border-dashed border-slate-600 text-slate-400 hover:text-white hover:border-slate-500 py-3 rounded-lg text-sm font-bold transition-colors">
                   ＋ 手動でチームを追加する
@@ -217,76 +201,52 @@ export default function GameView({
             </div>
             <div className="flex gap-3 pt-4 border-t border-slate-700">
               <button onClick={cancelSplitting} className="flex-1 bg-slate-700 hover:bg-slate-600 py-3 rounded text-sm font-bold text-white">キャンセル</button>
-              <button onClick={finishSplitting} disabled={isGeneratingSplit} className="flex-1 bg-emerald-600 hover:bg-emerald-500 disabled:bg-slate-600 py-3 rounded text-sm font-bold text-white shadow-lg shadow-emerald-900/50">編成を確定して再開する</button>
+              <button onClick={finishSplitting} disabled={isGeneratingSplit} className="flex-1 bg-emerald-600 hover:bg-emerald-500 disabled:bg-slate-600 py-3 rounded text-sm font-bold text-white shadow-lg shadow-emerald-900/50">編成を確定して再開</button>
             </div>
           </div>
         </div>
       )}
 
-      {activeRoom.status === 'splitting' && !isHost && (
-        <div className="absolute inset-0 bg-black/80 z-40 flex items-center justify-center p-4">
-          <div className="bg-slate-800 border border-slate-700 rounded-xl p-6 w-full max-w-md shadow-2xl text-center">
-            <h3 className="text-lg font-bold text-blue-400 mb-2 animate-pulse">ホストがチーム分けを行っています...</h3>
-            <p className="text-xs text-slate-400">AIが最適なチーム構成を考案し、ホストが確認中です。</p>
-          </div>
-        </div>
-      )}
-
-      <header className="bg-slate-800 border border-slate-700 rounded-xl p-3 mb-3 shadow-md flex flex-col gap-2">
+      {/* ヘッダー */}
+      <header className="bg-slate-800 border border-slate-700 rounded-xl p-3 mb-3 shadow-md flex flex-col gap-2 relative">
         <div className="flex justify-between items-start">
           <div className="flex items-center gap-2">
-            <button onClick={leaveGame} className="text-xs bg-slate-700 hover:bg-slate-600 text-white px-3 py-1.5 rounded font-bold shadow">🚪 離脱 / 終了</button>
-            
-            {spectatorCount > 0 && (
-              <span className="text-xs bg-slate-900 border border-slate-700 text-slate-300 px-2 py-1.5 rounded font-bold shadow flex items-center gap-1">
-                👁️ {spectatorCount}人が閲覧中
-              </span>
-            )}
+            <button onClick={leaveGame} className="text-xs bg-slate-700 hover:bg-slate-600 text-white px-3 py-1.5 rounded font-bold shadow">🚪 離脱</button>
             
             {isHost && activeRoom.status === 'playing' && !isScenarioEnded && (
               <button onClick={togglePauseRoom} className={`text-xs px-3 py-1.5 rounded font-bold shadow transition-colors ${activeRoom.is_paused ? 'bg-amber-600 hover:bg-amber-500 text-white' : 'bg-slate-700 hover:bg-slate-600 text-slate-300'}`}>
                 {activeRoom.is_paused ? "▶️ セッション再開" : "⏸️ 中断(セーブ)"}
               </button>
             )}
-            <button onClick={() => setShowSummaryModal(true)} className="text-xs bg-slate-700 hover:bg-slate-600 text-slate-300 px-3 py-1.5 rounded font-bold shadow">📖 あらすじ</button>
-            
-            <button onClick={() => setReportTarget({
-              type: 'room',
-              id: activeRoom.id,
-              name: 'この部屋の進行・チャット全般',
-              roomId: activeRoom.id,
-              scenarioId: activeRoom.scenario_id,
-              scenarioName: activeRoom.scenario?.title,
-              availableUsers: Object.keys(activeRoom.joined_users || {}).filter(uid => uid !== currentUser.id).map(uid => ({ id: uid, name: playerNames[uid] || 'プレイヤー' }))
-            })} className="text-xs bg-red-900/30 hover:bg-red-800/80 text-red-400 border border-red-700/50 px-3 py-1.5 rounded font-bold shadow transition-colors">
-              🚩 通報
+            <button onClick={() => setShowSummaryModal(true)} className="text-xs bg-slate-700 hover:bg-slate-600 text-slate-300 px-3 py-1.5 rounded font-bold shadow flex items-center gap-1">
+              📖 あらすじ
             </button>
+            
+            {/* ★ 観戦者の人数表示を復活 */}
+            <span className="text-xs text-slate-400 ml-2 flex items-center gap-1">
+              👁️ 観戦者: {spectatorCount}人
+            </span>
           </div>
           
           <div className="flex flex-col items-end">
             <span className="text-[10px] text-blue-400 font-bold border border-blue-500/50 bg-blue-900/30 px-2 py-0.5 rounded flex items-center gap-1 mb-1">
-              {activeRoom.is_trial && <span className="text-[10px] bg-pink-600 text-white px-1.5 py-0.5 rounded animate-pulse">🌟お試し</span>}
               <span>ROOM: {activeRoom.scenario?.title} (約{activeRoom.scenario?.playTime || 60}分)</span>
-              
-              <span className={`px-1.5 py-0.5 rounded text-white ${activeRoom.difficulty === 'beginner' ? 'bg-pink-500' : activeRoom.difficulty === 'easy' ? 'bg-green-600' : activeRoom.difficulty === 'normal' ? 'bg-blue-600' : activeRoom.difficulty === 'hard' ? 'bg-orange-600' : activeRoom.difficulty === 'pro' ? 'bg-red-600' : 'bg-purple-600'}`}>
-                {activeRoom.difficulty === 'beginner' ? '⬜ 初心者' : activeRoom.difficulty === 'easy' ? '🟩 簡単' : activeRoom.difficulty === 'normal' ? '🟦 普通' : activeRoom.difficulty === 'hard' ? '🟧 難しい' : activeRoom.difficulty === 'pro' ? '🟥 プロ' : '🟪 鬼'}
-              </span>
-              <span className="px-1.5 py-0.5 rounded text-white bg-slate-700 border border-slate-500">
-                {rule === 'dnd' ? '🟥 D&D' : rule === 'coc_en' ? '🟦 CoC海外版' : rule === 'sw25' ? '🟨 SW2.5' : rule === 'storytelling' ? '🟪 ストテリ' : '🟩 CoC日本卓'}
+              <span className="px-1 py-0.5 rounded text-white bg-slate-700 border border-slate-500">
+                {rule === 'dnd' ? '🟥 D&D' : rule === 'coc_en' ? '🟦 CoC海外' : rule === 'sw25' ? '🟨 SW2.5' : rule === 'storytelling' ? '🟪 ストテリ' : '🟩 CoC日本'}
               </span>
             </span>
             
             <div className="flex items-center gap-2 mt-1">
               <div className="flex gap-1">
-                {Object.entries(activeRoom.joined_users || {}).map(([uid, cid]) => {
-                  const c = activeRoom.scenario?.presetCharacters.find((pc: any) => pc.id === cid);
+                {Object.entries(activeRoom.joined_users).map(([uid, cid]) => {
+                  const c = activeRoom.scenario?.presetCharacters.find(pc => pc.id === cid);
                   const isUserAfk = activeRoom.afk_users?.includes(uid);
                   if (!c) return null;
                   return (
                     <div key={uid} className={`relative flex items-center justify-center w-6 h-6 rounded-full border ${isUserAfk ? 'border-red-500 opacity-50' : 'border-slate-500'}`} title={c.name}>
                       <img src={c.imageUrl || DEFAULT_AVATAR} className="w-full h-full rounded-full object-cover" />
                       {isUserAfk && <span className="absolute -top-2 -right-2 text-[8px] bg-red-600 px-1 rounded font-bold">AFK</span>}
-                      {isHost && isUserAfk && uid !== currentUser?.id && (
+                      {isHost && isUserAfk && uid !== currentUser.id && (
                         <button onClick={() => toggleAFK(uid, true)} className="absolute -bottom-2 -right-1 text-[8px] bg-slate-800 text-white px-1 border border-slate-500 rounded z-10 hover:bg-slate-600">解除</button>
                       )}
                     </div>
@@ -294,9 +254,9 @@ export default function GameView({
                 })}
               </div>
               
-              {!isScenarioEnded && joinedCharacter && currentUser && (
+              {!isScenarioEnded && joinedCharacter && (
                 <button onClick={() => toggleAFK(currentUser.id)} className={`text-[10px] px-2 py-1 rounded font-bold border transition-colors ml-2 ${isAfk ? 'bg-red-900/80 border-red-500 text-red-200 shadow-[0_0_8px_rgba(239,68,68,0.5)]' : 'bg-slate-800 border-slate-600 text-slate-400 hover:bg-slate-700'}`}>
-                  {isAfk ? "☕ 離席中(解除)" : "☕ 離席(AFK)"}
+                  {isAfk ? "☕ 離席中(解除)" : "☕ 離席"}
                 </button>
               )}
             </div>
@@ -309,56 +269,17 @@ export default function GameView({
               {joinedCharacter ? joinedCharacter.name : "👁️ 観戦者"}
               {isSplitMode && myScene.id !== 'scene_main' && <span className="text-[10px] bg-indigo-600 px-2 py-0.5 rounded-full">{myScene.name} 班</span>}
             </span>
-            
-            <div className="flex flex-wrap items-center gap-1.5 border-l border-slate-600 pl-3">
-              {Object.entries(activeRoom.joined_users || {}).map(([uid, cid]) => {
-                const char = activeRoom.scenario?.presetCharacters.find((pc: Character) => pc.id === cid);
-                if (!char) return null;
-                const pName = playerNames[uid] || (uid === activeRoom.host_id ? activeRoom.host_name : (uid === currentUser?.id ? currentUser?.handleName : "PL"));
-                return (
-                  <span key={uid} className="text-[10px] bg-slate-800 border border-slate-600 px-1.5 py-0.5 rounded text-slate-300 shadow-sm">
-                    {pName} / {char.name}
-                  </span>
-                );
-              })}
-              {aiPlayersList.map(char => (
-                <span key={char.id} className="text-[10px] bg-indigo-900/30 border border-indigo-700/50 px-1.5 py-0.5 rounded text-indigo-300 shadow-sm">
-                  AI相棒 / {char.name}
-                </span>
-              ))}
-            </div>
           </div>
-
+          
           <div className="flex flex-wrap items-center gap-1 justify-end">
             {joinedCharacter && visibility !== 'none' && (
-               <div className="relative group flex items-center mr-2">
-                 <button className="bg-amber-800/80 hover:bg-amber-700 text-amber-100 border border-amber-500/50 text-[10px] px-2 py-1.5 rounded font-bold shadow-lg flex items-center">
-                   {visibility === 'all' ? '🎒 全員の所持品' : '👜 あなたの所持品'}
-                 </button>
-                 <div className="absolute top-full right-0 mt-1 w-64 bg-slate-800 border border-slate-600 rounded p-3 hidden group-hover:block z-50 shadow-2xl">
-                    <label className="text-xs text-amber-400 mb-2 block font-bold border-b border-slate-700 pb-1">
-                      {visibility === 'all' ? 'パーティーの所持アイテム' : 'あなたの所持アイテム'}
-                    </label>
-                    <div className="max-h-48 overflow-y-auto custom-scrollbar space-y-2">
-                      {visibility === 'all' ? (
-                        activeRoom.scenario?.presetCharacters.filter((c: any) => Object.values(activeRoom.joined_users || {}).includes(c.id) || aiPlayersList.find(a=>a.id===c.id)).map(c => (
-                          <div key={c.id} className="text-xs">
-                            <span className="text-blue-300 font-bold">{c.name}</span>
-                            <p className="text-slate-300 ml-1 leading-tight">{activeRoom.inventories?.[c.id] || c.items || "特になし"}</p>
-                          </div>
-                        ))
-                      ) : (
-                        <div className="text-xs">
-                          <span className="text-blue-300 font-bold">{joinedCharacter.name}</span>
-                          <p className="text-slate-300 ml-1 leading-tight">{activeRoom.inventories?.[joinedCharacter.id] || joinedCharacter.items || "特になし"}</p>
-                        </div>
-                      )}
-                    </div>
-                    <p className="text-[9px] text-slate-500 mt-2 pt-1 border-t border-slate-700">※アイテムの増減はAI GMが自動で判断・管理します。</p>
-                 </div>
-               </div>
+              <div className="relative group flex items-center mr-2">
+                <button onClick={openInventoryEditor} className="bg-amber-800/80 hover:bg-amber-700 text-amber-100 border border-amber-500/30 text-[10px] px-3 py-1.5 rounded font-bold shadow-lg flex items-center gap-1 transition-colors">
+                  🎒 所持品
+                </button>
+              </div>
             )}
-
+            
             {joinedCharacter && (
               <div className="flex gap-1 items-center">
                 <div className="bg-red-900/80 text-red-200 border border-red-500/50 text-[10px] px-2 py-1.5 rounded font-bold shadow-lg flex items-center mr-1">
@@ -366,77 +287,63 @@ export default function GameView({
                 </div>
                 {rule === 'dnd' && (
                   <>
-                    <button onClick={() => rollDice(joinedCharacter.str || 10, "STR")} className="bg-red-700 hover:bg-red-600 text-white text-[10px] px-2 py-1.5 rounded font-bold shadow-lg">🎲 STR(1d20)</button>
-                    <button onClick={() => rollDice(joinedCharacter.dex || 10, "DEX")} className="bg-green-700 hover:bg-green-600 text-white text-[10px] px-2 py-1.5 rounded font-bold shadow-lg">🎲 DEX(1d20)</button>
-                    <button onClick={() => rollDice(joinedCharacter.int || 10, "INT")} className="bg-purple-700 hover:bg-purple-600 text-white text-[10px] px-2 py-1.5 rounded font-bold shadow-lg">🎲 INT(1d20)</button>
-                    <button onClick={() => rollDice(joinedCharacter.con || 10, "CON")} className="bg-amber-700 hover:bg-amber-600 text-white text-[10px] px-2 py-1.5 rounded font-bold shadow-lg">🎲 CON(1d20)</button>
+                    <button onClick={() => rollDice(joinedCharacter.str, "STR")} className="bg-red-700 hover:bg-red-600 text-white text-[10px] px-2 py-1.5 rounded font-bold shadow-lg">🎲 STR</button>
+                    <button onClick={() => rollDice(joinedCharacter.dex, "DEX")} className="bg-green-700 hover:bg-green-600 text-white text-[10px] px-2 py-1.5 rounded font-bold shadow-lg">🎲 DEX</button>
+                    <button onClick={() => rollDice(joinedCharacter.int, "INT")} className="bg-purple-700 hover:bg-purple-600 text-white text-[10px] px-2 py-1.5 rounded font-bold shadow-lg">🎲 INT</button>
+                    <button onClick={() => rollDice(joinedCharacter.con, "CON")} className="bg-amber-700 hover:bg-amber-600 text-white text-[10px] px-2 py-1.5 rounded font-bold shadow-lg">🎲 CON</button>
                   </>
                 )}
                 {(rule === 'coc_en' || rule === 'coc_jp') && (
                   <>
-                    <button onClick={() => rollDice(joinedCharacter.san || 50, "SAN", true)} className="bg-cyan-700 hover:bg-cyan-600 text-white text-[10px] px-2 py-1.5 rounded font-bold shadow-lg">🎲 SAN({joinedCharacter.san || 50}%)</button>
-                    <button onClick={() => rollDice(joinedCharacter.str || 50, "STR", false)} className="bg-red-700 hover:bg-red-600 text-white text-[10px] px-2 py-1.5 rounded font-bold shadow-lg">🎲 STR({joinedCharacter.str})</button>
-                    <button onClick={() => rollDice(joinedCharacter.dex || 50, "DEX", false)} className="bg-green-700 hover:bg-green-600 text-white text-[10px] px-2 py-1.5 rounded font-bold shadow-lg">🎲 DEX({joinedCharacter.dex})</button>
-                    <button onClick={() => rollDice(joinedCharacter.int || 50, "INT", false)} className="bg-purple-700 hover:bg-purple-600 text-white text-[10px] px-2 py-1.5 rounded font-bold shadow-lg">🎲 INT({joinedCharacter.int})</button>
-                    <button onClick={() => rollDice(joinedCharacter.con || 50, "CON", false)} className="bg-amber-700 hover:bg-amber-600 text-white text-[10px] px-2 py-1.5 rounded font-bold shadow-lg">🎲 CON({joinedCharacter.con})</button>
+                    <button onClick={() => rollDice(joinedCharacter.san, "SAN", true)} className="bg-cyan-700 hover:bg-cyan-600 text-white text-[10px] px-2 py-1.5 rounded font-bold shadow-lg">🎲 SAN({joinedCharacter.san})</button>
+                    <button onClick={() => rollDice(joinedCharacter.str, "STR", false)} className="bg-red-700 hover:bg-red-600 text-white text-[10px] px-2 py-1.5 rounded font-bold shadow-lg">🎲 STR({joinedCharacter.str})</button>
+                    <button onClick={() => rollDice(joinedCharacter.dex, "DEX", false)} className="bg-green-700 hover:bg-green-600 text-white text-[10px] px-2 py-1.5 rounded font-bold shadow-lg">🎲 DEX({joinedCharacter.dex})</button>
+                    <button onClick={() => rollDice(joinedCharacter.int, "INT", false)} className="bg-purple-700 hover:bg-purple-600 text-white text-[10px] px-2 py-1.5 rounded font-bold shadow-lg">🎲 INT({joinedCharacter.int})</button>
+                    <button onClick={() => rollDice(joinedCharacter.con, "CON", false)} className="bg-amber-700 hover:bg-amber-600 text-white text-[10px] px-2 py-1.5 rounded font-bold shadow-lg">🎲 CON({joinedCharacter.con})</button>
                   </>
                 )}
                 {rule === 'sw25' && (
                   <>
-                    <button onClick={() => rollDice(joinedCharacter.str || 10, "STR")} className="bg-red-700 hover:bg-red-600 text-white text-[10px] px-2 py-1.5 rounded font-bold shadow-lg">🎲 STR(2d6)</button>
-                    <button onClick={() => rollDice(joinedCharacter.dex || 10, "DEX")} className="bg-green-700 hover:bg-green-600 text-white text-[10px] px-2 py-1.5 rounded font-bold shadow-lg">🎲 DEX(2d6)</button>
-                    <button onClick={() => rollDice(joinedCharacter.int || 10, "INT")} className="bg-purple-700 hover:bg-purple-600 text-white text-[10px] px-2 py-1.5 rounded font-bold shadow-lg">🎲 INT(2d6)</button>
-                    <button onClick={() => rollDice(joinedCharacter.con || 10, "CON")} className="bg-amber-700 hover:bg-amber-600 text-white text-[10px] px-2 py-1.5 rounded font-bold shadow-lg">🎲 CON(2d6)</button>
+                    <button onClick={() => rollDice(joinedCharacter.str, "STR")} className="bg-red-700 hover:bg-red-600 text-white text-[10px] px-2 py-1.5 rounded font-bold shadow-lg">🎲 STR</button>
+                    <button onClick={() => rollDice(joinedCharacter.dex, "DEX")} className="bg-green-700 hover:bg-green-600 text-white text-[10px] px-2 py-1.5 rounded font-bold shadow-lg">🎲 DEX</button>
+                    <button onClick={() => rollDice(joinedCharacter.int, "INT")} className="bg-purple-700 hover:bg-purple-600 text-white text-[10px] px-2 py-1.5 rounded font-bold shadow-lg">🎲 INT</button>
+                    <button onClick={() => rollDice(joinedCharacter.con, "CON")} className="bg-amber-700 hover:bg-amber-600 text-white text-[10px] px-2 py-1.5 rounded font-bold shadow-lg">🎲 CON</button>
                   </>
                 )}
                 {rule === 'storytelling' && (
-                  <button onClick={() => rollDice(0, "行動")} className="bg-fuchsia-700 hover:bg-fuchsia-600 text-white text-[10px] px-4 py-1.5 rounded font-bold shadow-lg">🎲 行動・葛藤判定 (1d6)</button>
+                  <button onClick={() => rollDice(0, "行動")} className="bg-fuchsia-700 hover:bg-fuchsia-600 text-white text-[10px] px-4 py-1.5 rounded font-bold shadow-lg">🎲 葛藤判定</button>
                 )}
               </div>
             )}
+            
             {isHost && isRecruiting && joinedCharacter && (
               <button onClick={startGame} className="bg-emerald-600 hover:bg-emerald-500 text-white text-[10px] font-bold px-4 py-2 rounded animate-pulse ml-2 shadow-lg shadow-emerald-900/50">▶ ゲーム開始</button>
             )}
-            {!isHost && activeRoom.is_trial && isRecruiting && joinedCharacter && (
-              <button onClick={startGame} className="bg-pink-600 hover:bg-pink-500 text-white text-[10px] font-bold px-4 py-2 rounded animate-pulse ml-2 shadow-lg shadow-pink-900/50">▶ お試し開始</button>
-            )}
-
+            
             {isHost && activeRoom.status === "playing" && !isScenarioEnded && !activeRoom.is_trial && (
-               <div className="flex gap-2 ml-2">
-                 {imageCount < 3 && (
-                   <>
-                     <button onClick={() => handleGenerateImage("free")} disabled={isGeneratingImg} className="bg-purple-700 hover:bg-purple-600 disabled:bg-slate-600 text-white text-[10px] font-bold px-3 py-1.5 rounded shadow-lg transition">
-                       {isGeneratingImg ? "⏳ 生成中..." : "🖼️ 無料で情景生成"}
-                     </button>
-                     
-                     {(currentUser?.imageGenCredits || 0) > 0 ? (
-                       <button onClick={() => handleGenerateImage("premium")} disabled={isGeneratingImg} className="relative bg-orange-600 hover:bg-orange-500 disabled:bg-slate-600 text-white text-[10px] font-bold px-3 py-1.5 rounded shadow-lg transition">
-                         ✨ 高品質な情景生成
-                         <span className="absolute -top-2 -right-2 bg-red-600 text-white text-[9px] px-1.5 py-0.5 rounded-full border border-slate-800 shadow-sm">
-                           残 {currentUser?.imageGenCredits || 0}
-                         </span>
-                       </button>
-                     ) : (
-                       <button onClick={chargeImageCredits} disabled={isGeneratingImg} className="relative bg-slate-600 hover:bg-slate-500 text-slate-300 text-[10px] font-bold px-3 py-1.5 rounded shadow-lg transition">
-                         🔋 チケットで回数チャージ
-                         <span className="absolute -top-2 -right-2 bg-slate-800 text-slate-400 text-[9px] px-1.5 py-0.5 rounded-full border border-slate-600 shadow-sm">
-                           残 0
-                         </span>
-                       </button>
-                     )}
-                   </>
-                 )}
-                 {isSplitMode ? (
-                   <button onClick={executeMergeAll} className="bg-indigo-700 hover:bg-indigo-600 text-white text-[10px] font-bold px-3 py-1.5 rounded shadow-lg">🚪 全員合流</button>
-                 ) : (
-                   <button onClick={startSplitting} className="bg-blue-700 hover:bg-blue-600 text-white text-[10px] font-bold px-3 py-1.5 rounded shadow-lg">👥 チーム分け</button>
-                 )}
-               </div>
+              <div className="flex gap-2 ml-2">
+                {imageCount < 3 && (
+                  <>
+                    <button onClick={() => handleGenerateImage("free")} disabled={isGeneratingImg} className="bg-purple-700 hover:bg-purple-600 disabled:bg-slate-600 text-white text-[10px] font-bold px-3 py-1.5 rounded shadow-lg transition">
+                      {isGeneratingImg ? "⏳ 生成中..." : "🖼️ 情景生成(無料)"}
+                    </button>
+                    <button onClick={() => handleGenerateImage("premium")} disabled={isGeneratingImg} className="bg-amber-600 hover:bg-amber-500 disabled:bg-slate-600 text-white text-[10px] font-bold px-3 py-1.5 rounded shadow-lg transition">
+                      ✨ 高品質生成
+                    </button>
+                  </>
+                )}
+                {isSplitMode ? (
+                  <button onClick={executeMergeAll} className="bg-indigo-700 hover:bg-indigo-600 text-white text-[10px] font-bold px-3 py-1.5 rounded shadow-lg">🚪 全員合流</button>
+                ) : (
+                  <button onClick={startSplitting} className="bg-blue-700 hover:bg-blue-600 text-white text-[10px] font-bold px-3 py-1.5 rounded shadow-lg">👥 チーム分け</button>
+                )}
+              </div>
             )}
           </div>
         </div>
       </header>
 
+      {/* チャット表示エリア */}
       <div ref={chatContainerRef} className="flex-1 overflow-y-scroll space-y-3 p-4 bg-slate-800/80 rounded-xl border border-slate-700 mb-3 min-h-0 custom-scrollbar">
         {activeRoom.is_paused && (
           <div className="sticky top-0 z-10 bg-amber-900/90 text-amber-200 text-xs font-bold text-center py-1 rounded shadow mb-3 border border-amber-500">
@@ -445,8 +352,7 @@ export default function GameView({
         )}
         
         {messages.filter((msg: Message) => {
-          if (msg.type === "image" || msg.imageUrl) return chatTab === "story"; 
-          if (msg.type === "system") return true;
+          if (msg.type === "system" || msg.type === "image") return true;
           if (!isSplitMode) return msg.channel === chatTab;
           return (!msg.sceneId || msg.sceneId === 'scene_main' || msg.sceneId === myScene.id) && msg.channel === chatTab;
         }).map((msg: Message, index: number) => {
@@ -488,7 +394,7 @@ export default function GameView({
                     {msg.type && ` [${msg.type.toUpperCase()}]`}
                   </span>
                 )}
-                {displayText && <p className={`text-sm whitespace-pre-wrap leading-relaxed ${isSystem ? 'text-xs text-slate-300' : ''}`}>{displayText}</p>}
+                {displayText && <p className={`text-sm whitespace-pre-wrap leading-relaxed ${isSystem && 'text-xs text-slate-300'}`}>{displayText}</p>}
                 {msg.type === 'image' && msg.imageUrl && (
                   <div className="mt-2 border border-slate-600 rounded-lg overflow-hidden bg-black/50">
                     <img src={msg.imageUrl} alt="生成された情景" className="w-full h-auto max-h-64 object-contain" />
@@ -521,22 +427,13 @@ export default function GameView({
 
         {isScenarioEnded && (
           activeRoom.status === 'finished' ? (
-            <div className="bg-amber-900/50 border border-amber-500 rounded p-4 mb-2 flex flex-col gap-3">
-              <div className="flex justify-between items-center">
-                <span className="text-amber-400 text-sm font-bold">🎉 感想戦モード（AIは停止しています）</span>
-                <div className="flex gap-2">
-                  {activeRoom.is_trial && activeRoom.scenario && (activeRoom.scenario.isPlayableByOthers || activeRoom.scenario.authorId === currentUser?.id) && openRoomConfigModal && (
-                    <button onClick={() => openRoomConfigModal(activeRoom.scenario!)} className="bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold px-4 py-2 rounded shadow transition">
-                      ✨ このまま本編の部屋を作る
-                    </button>
-                  )}
-                  <button onClick={() => setCurrentView("evaluation")} className="bg-amber-600 hover:bg-amber-500 text-white text-xs font-bold px-4 py-2 rounded shadow">
-                    評価して退出する
-                  </button>
-                </div>
-              </div>
+            <div className="bg-amber-900/50 border border-amber-500 rounded p-2 flex justify-between items-center mb-2">
+              <span className="text-amber-400 text-sm font-bold">🎉 感想戦モード（AIは停止しています）</span>
+              <button onClick={() => setCurrentView("evaluation")} className="bg-amber-600 hover:bg-amber-500 text-white text-xs font-bold px-4 py-2 rounded shadow">
+                評価して退出する
+              </button>
             </div>
-          ) : (isHost || activeRoom.is_trial) ? (
+          ) : isHost ? (
             <button onClick={endGame} className="w-full bg-amber-600 hover:bg-amber-500 text-white font-bold py-2 rounded-xl shadow-lg animate-pulse text-sm mb-2">
               🎉 セッション完了！感想戦モードへ移行する
             </button>
@@ -545,12 +442,6 @@ export default function GameView({
               🎉 エンディング到達！ホストの完了操作をお待ちください...
             </div>
           )
-        )}
-
-        {isSplitMode && myScene.isMerged && activeRoom.status === 'playing' && (
-          <div className="bg-indigo-900/50 border border-indigo-500 rounded p-2 text-center text-indigo-300 text-sm font-bold mb-2">
-            ⏳ {myScene.name}チームの行動を終了し、他チームの合流を待っています... (相談チャットのみ使用可能)
-          </div>
         )}
 
         {joinedCharacter ? (
@@ -568,7 +459,7 @@ export default function GameView({
             <>
               <div className="flex gap-2 border-b border-slate-700 pb-2 items-center overflow-x-auto whitespace-nowrap">
                 <button onClick={() => handleTabClick("story")} className={`relative text-xs font-bold px-4 py-2 rounded-t-lg transition ${chatTab === "story" ? "bg-emerald-600/20 text-emerald-400 border-b-2 border-emerald-500" : "text-slate-400 hover:text-white"}`}>
-                  📖 {isSplitMode && myScene.id !== 'scene_main' ? 'チーム行動宣言 (GMへ)' : '行動宣言 (GMへ)'}
+                  📖 {isSplitMode && myScene.id !== 'scene_main' ? 'チーム行動宣言' : '行動宣言 (GMへ)'}
                   {unreadIndicators.story && <span className="absolute top-1 right-1 w-2 h-2 bg-red-500 rounded-full animate-pulse"></span>}
                 </button>
                 <button onClick={() => handleTabClick("consult")} className={`relative text-xs font-bold px-4 py-2 rounded-t-lg transition ${chatTab === "consult" ? "bg-indigo-600/20 text-indigo-400 border-b-2 border-indigo-500" : "text-slate-400 hover:text-white"}`}>
@@ -591,7 +482,7 @@ export default function GameView({
               <div className="flex gap-2 pt-1">
                 {isSplitMode && myScene.id !== 'scene_main' && !myScene.isMerged && (currentUser?.id === myScene.leaderId || activeRoom.host_id === currentUser?.id) && (
                   <button onClick={mergeTeam} className="bg-indigo-600 hover:bg-indigo-500 text-white px-3 rounded-lg text-xs font-bold shadow-lg flex-shrink-0">
-                    🚪 このチームだけ合流する
+                    🚪 チーム合流
                   </button>
                 )}
                 

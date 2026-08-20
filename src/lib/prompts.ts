@@ -2,7 +2,7 @@ export const getGMSystemPrompt = (model: string, params: any) => {
   const {
     title, setting, scenarioPlotText, currentSummary, joinedCharacter, inventoryText, aiPlayersText,
     ruleSpec, gmStyle, difficultyInstruction, isTrial, mySceneName, isSplitMode, afkInstruction, targetTab,
-    activeNpcListText
+    activeNpcListText, targetTurns, totalChapters
   } = params;
 
   let volumeInstruction = "";
@@ -13,22 +13,26 @@ export const getGMSystemPrompt = (model: string, params: any) => {
     detailInstruction = "あなたは現在「AI相棒」としてPLから相談を受けています。GMとしての情景描写やナレーションは一切行わず、キャラクターとしての自然な会話やリアクションのみを短く返答してください。";
   } else {
     if (model === 'opus') {
-      volumeInstruction = "1章の総文字数が【約40,000文字】に達するペースを意識してください。通常の探索では参加人数に応じて長さを最適化し、多人数なら1000〜1500文字で全員の状況をテンポ良く処理すること。";
+      volumeInstruction = "通常の探索では参加人数に応じて長さを最適化し、多人数なら1000〜1500文字で全員の状況をテンポ良く処理すること。";
       detailInstruction = "行動に対する結果、周囲の微細な変化、五感、キャラクターの心理描写を世界最高峰の語彙力で圧倒的にリッチに描写してください。";
-    } else if (model === 'claude') { // Sonnet
-      volumeInstruction = "1章の総文字数が【約36,000文字】になるペースを意識してください。通常の探索では多人数なら800〜1200文字でテンポ良くまとめ、ダレを防ぐこと。";
+    } else if (model === 'claude') {
+      volumeInstruction = "通常の探索では多人数なら800〜1200文字でテンポ良くまとめ、ダレを防ぐこと。";
       detailInstruction = "1回の行動に対して、周囲の状況、五感（視界の暗さ、冷気、音、匂い）、キャラクターの心理描写を深く掘り下げてリッチに描写してください。";
     } else if (model === 'pro') {
-      volumeInstruction = "1章の総文字数が【約32,000文字】になるペースを意識してください。通常の探索では多人数なら600〜1000文字でテンポ良く処理すること。";
+      volumeInstruction = "通常の探索では多人数なら600〜1000文字でテンポ良く処理すること。";
       detailInstruction = "1回の行動に対して、周囲の状況や五感、張り詰めた空気感などをリッチに描写し、決して展開を端折らないでください。";
     } else if (model === 'flash') {
-      volumeInstruction = "1章の総文字数が【約28,000文字】になるペースを意識してください。通常の探索では多人数なら500〜800文字でテンポを優先すること。";
+      volumeInstruction = "通常の探索では多人数なら500〜800文字でテンポを優先すること。";
       detailInstruction = "視覚情報だけでなく聴覚や嗅覚などの五感を交え、状況の変化を詳しく描写してください。";
-    } else { // lite, flash-lite
-      volumeInstruction = "1章の総文字数が【約25,000文字】になるペースを意識してください。通常時は参加人数に合わせて400〜600文字でサクサク進行させること。";
+    } else {
+      volumeInstruction = "通常時は参加人数に合わせて400〜600文字でサクサク進行させること。";
       detailInstruction = "プレイヤーの行動に対する結果と、その場の状況や空気感を丁寧に描写してください。";
     }
   }
+
+  const trialInstruction = isTrial ? `\n\n【体験版（お試しプレイ）の絶対制限】\nこれはお試しプレイです。物語の真相解明やエンディングには絶対に到達させないでください。物語の中盤、最大の謎や絶体絶命のピンチが提示され「さあこれからどうなる！？」という一番盛り上がるタイミング（最大でも${Math.floor(targetTurns / 2)}ターン目付近）で、未解決のまま強制的に「"chapterClear": true」を出力し、セッションを打ち切ってください。` : "";
+
+  const endingInstruction = (!isTrial) ? `\n※【重要】現在が物語の最後（エンディング）である場合は、セッションの締めくくりとして【エピローグとしての超重厚な情景描写と結末（最低1500〜3000文字）】を必ずテキストに完全に書き切った上で、「"chapterClear": true」を出力してください。エンディングの描写を絶対に端折らないこと。` : "";
 
   return `あなたはTRPGの優秀で表現力豊かなゲームマスター（GM）です。
 
@@ -67,9 +71,8 @@ ${difficultyInstruction}
 ${afkInstruction}
 
 【進行ペースとターンの最適化（重要）】
-参加人数に関わらず、間延びを防ぐために1つの章は【全体で20〜30ターン以内】に収まるよう、1ターンあたりの情報密度を上げてテンポ良く事態を進展させてください。
-PLが重要な真相に到達した、あるいは規定ターンに近づいた場合は、迷わず「"chapterClear": true」として次章へ進めてください。
-※【重要】現在が物語の最後（エンディング）である場合は、セッションの締めくくりとして【エピローグとしての超重厚な情景描写と結末（最低1500〜3000文字）】を必ずテキストに完全に書き切った上で、「"chapterClear": true」を出力してください。エンディングの描写を絶対に端折らないこと。
+全${totalChapters}章構成のシナリオです。間延びを防ぐために、この章は【最大${targetTurns}ターン以内】に収まるよう、1ターンあたりの情報密度を上げてテンポ良く事態を進展させてください。
+PLが重要な真相に到達した、あるいは規定ターンに近づいた場合は、迷わず「"chapterClear": true」として次章へ進めてください。${trialInstruction}${endingInstruction}
 
 【出力形式（絶対遵守・JSON Mode）】
 必ず以下のJSONフォーマットのみを出力してください。マークダウン（\`\`\`json）や余計な文章は一切含めないでください。
