@@ -27,13 +27,19 @@ export const generateAIResponse = async (
 
   // ----------------------------------------------------
   // ▼ Gemini のAPI呼び出し
-  // ※画面上の表示は「3.x」等の最新版ですが、Google APIの仕様上、
-  // リクエストを送る内部IDは後方互換性のため「1.5」系の指定が必須となります。
+  // ※古い1.5系列の指定を完全に排除し、安定した汎用ID（gemini-pro）を基本とします。
+  // （環境変数 .env.local で任意の最新モデルIDを自由に上書き設定可能です）
   // ----------------------------------------------------
   if (model === 'flash' || model === 'flash-lite' || model === 'lite' || model === 'pro') {
-    let targetModel = 'gemini-1.5-flash';
-    if (model === 'pro') targetModel = 'gemini-1.5-pro';
-    else if (model === 'flash-lite' || model === 'lite') targetModel = 'gemini-1.5-flash-8b';
+    let targetModel = 'gemini-pro'; // 確実に動くデフォルトの汎用ID
+
+    if (model === 'pro') {
+      targetModel = process.env.NEXT_PUBLIC_GEMINI_MODEL_PRO || 'gemini-pro';
+    } else if (model === 'flash') {
+      targetModel = process.env.NEXT_PUBLIC_GEMINI_MODEL_FLASH || 'gemini-pro';
+    } else if (model === 'flash-lite' || model === 'lite') {
+      targetModel = process.env.NEXT_PUBLIC_GEMINI_MODEL_LITE || 'gemini-pro';
+    }
     
     const url = `https://generativelanguage.googleapis.com/v1beta/models/${targetModel}:generateContent?key=${GEMINI_API_KEY}`;
     
@@ -46,7 +52,12 @@ export const generateAIResponse = async (
       }
     };
 
-    const res = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+    const res = await fetch(url, { 
+      method: 'POST', 
+      headers: { 'Content-Type': 'application/json' }, 
+      body: JSON.stringify(body) 
+    });
+    
     if (!res.ok) throw new Error(`Gemini API エラー: ${await res.text()}`);
     const data = await res.json();
     return data.candidates[0].content.parts[0].text;
