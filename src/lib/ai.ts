@@ -1,7 +1,7 @@
 export const generateAIResponse = async (
   systemPrompt: string, 
   history: any[], 
-  model: string = 'lite', // デフォルトをブロンズ(lite)に設定
+  model: string = 'lite', 
   maxTokens: number = 3000, 
   temperature: number = 0.7
 ) => {
@@ -25,81 +25,103 @@ export const generateAIResponse = async (
   }
 
   // ----------------------------------------------------
-  // ▼ 1. Google (Gemini) APIルート（最新モデルへ強制固定）
+  // ▼ 1. Google (Gemini) APIルート
   // ----------------------------------------------------
   if (model === 'flash' || model === 'flash-lite' || model === 'lite' || model === 'pro') {
     let targetModel = 'gemini-3.5-flash-lite'; 
 
-    // Vercelの古い環境変数が悪さをしないよう、ここで強制的に上書きします
     if (model === 'pro') {
-      targetModel = 'gemini-2.5-pro'; // ゴールド
+      targetModel = 'gemini-2.5-pro';
     } else if (model === 'flash') {
-      targetModel = 'gemini-3.6-flash'; // シルバー
+      targetModel = 'gemini-3.6-flash';
     } else if (model === 'flash-lite' || model === 'lite') {
-      targetModel = 'gemini-3.5-flash-lite'; // ブロンズ ＆ 裏側のシステム処理
+      targetModel = 'gemini-3.5-flash-lite';
     }
     
     // v1betaエンドポイントを使用
     const url = `https://generativelanguage.googleapis.com/v1beta/models/${targetModel}:generateContent?key=${GEMINI_API_KEY}`;
     
+    // ★ 詳細なエラー調査用ログ
+    console.log(`[AI GM 実行ログ] 内部要求: ${model} -> 実際の送信先モデル: ${targetModel}`);
+
     const body = {
       system_instruction: { parts: [{ text: systemPrompt }] },
       contents: normalizedHistory,
       generationConfig: { temperature, maxOutputTokens: maxTokens }
     };
 
-    const res = await fetch(url, { 
-      method: 'POST', 
-      headers: { 'Content-Type': 'application/json' }, 
-      body: JSON.stringify(body) 
-    });
-    
-    if (!res.ok) throw new Error(`Google API エラー: ${await res.text()}`);
-    const data = await res.json();
-    return data.candidates[0].content.parts[0].text;
+    try {
+      const res = await fetch(url, { 
+        method: 'POST', 
+        headers: { 'Content-Type': 'application/json' }, 
+        body: JSON.stringify(body) 
+      });
+      
+      if (!res.ok) {
+        const errorText = await res.text();
+        console.error(`[AI GM 通信エラー] ターゲット: ${targetModel} | HTTPステータス: ${res.status} | エラー内容: ${errorText}`);
+        throw new Error(`送信先(${targetModel}) エラー詳細: ${errorText}`);
+      }
+      
+      const data = await res.json();
+      return data.candidates[0].content.parts[0].text;
+
+    } catch (err: any) {
+      // Fetch自体の失敗やパースエラーなどをキャッチ
+      console.error(`[AI GM 致命的エラー] ${err.message}`);
+      throw err;
+    }
   }
   
   // ----------------------------------------------------
-  // ▼ 2. Anthropic (Claude) APIルート（プラチナ・ダイヤ用）
+  // ▼ 2. Anthropic (Claude) APIルート
   // ----------------------------------------------------
   if (model === 'claude' || model === 'opus') {
     if (!CLAUDE_API_KEY) throw new Error("Claude API エラー: APIキーが設定されていません。");
 
-    // プラチナ -> Claude Sonnet 5, ダイヤ -> Claude Opus 5
     const targetModel = model === 'opus' ? 'claude-5-opus' : 'claude-5-sonnet';
     const claudeHistory = normalizedHistory.map(h => ({ role: h.role === 'model' ? 'assistant' : 'user', content: h.parts[0].text }));
 
-    const res = await fetch('https://api.anthropic.com/v1/messages', {
-      method: 'POST',
-      headers: {
-        'x-api-key': CLAUDE_API_KEY,
-        'anthropic-version': '2023-06-01',
-        'anthropic-dangerous-direct-browser-access': 'true', 
-        'Content-Type': 'application/json'
-      },
-      body: JSON.stringify({
-        model: targetModel, max_tokens: maxTokens, system: systemPrompt, messages: claudeHistory, temperature: temperature
-      })
-    });
+    console.log(`[AI GM 実行ログ] 内部要求: ${model} -> 実際の送信先モデル: ${targetModel}`);
 
-    if (!res.ok) throw new Error(`Claude API エラー: ${await res.text()}`);
-    const data = await res.json();
-    return data.content[0].text;
+    try {
+      const res = await fetch('https://api.anthropic.com/v1/messages', {
+        method: 'POST',
+        headers: {
+          'x-api-key': CLAUDE_API_KEY,
+          'anthropic-version': '2023-06-01',
+          'anthropic-dangerous-direct-browser-access': 'true', 
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          model: targetModel, max_tokens: maxTokens, system: systemPrompt, messages: claudeHistory, temperature: temperature
+        })
+      });
+
+      if (!res.ok) {
+        const errorText = await res.text();
+        console.error(`[AI GM 通信エラー] ターゲット: ${targetModel} | HTTPステータス: ${res.status} | エラー内容: ${errorText}`);
+        throw new Error(`送信先(${targetModel}) エラー詳細: ${errorText}`);
+      }
+      const data = await res.json();
+      return data.content[0].text;
+      
+    } catch (err: any) {
+      console.error(`[AI GM 致命的エラー] ${err.message}`);
+      throw err;
+    }
   }
 
   return "エラー：不明なモデルが選択されました。";
 };
 
 // ----------------------------------------------------
-// 単発のAI処理用関数（裏側の処理は確実に lite を使うように固定）
+// 単発処理
 // ----------------------------------------------------
 export const generateAITextWithPrompt = async (prompt: string, model: string = 'lite', maxTokens: number = 1000, temperature: number = 0.7) => {
   return generateAIResponse("あなたは優秀なアシスタントです。指示に従って出力してください。", [{ role: "user", parts: [{ text: prompt }] }], model, maxTokens, temperature);
 };
 
-// ----------------------------------------------------
-// 無料の画像生成API（フォールバック用）
-// ----------------------------------------------------
 export const generateFreeImage = async (prompt: string): Promise<string> => {
   const seed = Math.floor(Math.random() * 100000);
   const url = `https://image.pollinations.ai/prompt/${encodeURIComponent(prompt)}?nologo=true&seed=${seed}&safe=true`;
@@ -114,9 +136,6 @@ export const generateFreeImage = async (prompt: string): Promise<string> => {
   });
 };
 
-// ----------------------------------------------------
-// ▼ 5. 情景画像の生成 👉 Nano Banana Pro (Gemini 3 Pro Image)
-// ----------------------------------------------------
 export const generatePremiumImage = async (prompt: string): Promise<string> => {
   const NANOBANANA_API_KEY = process.env.NEXT_PUBLIC_NANOBANANA_API_KEY;
   const url = "https://api.nanobanana.com/v1/images/generate"; 
