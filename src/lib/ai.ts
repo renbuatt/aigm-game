@@ -6,7 +6,6 @@ export const generateAIResponse = async (
   temperature: number = 0.7
 ) => {
   
-  // ▼ それぞれの包括APIキー
   const GEMINI_API_KEY = process.env.NEXT_PUBLIC_GEMINI_API_KEY;
   const CLAUDE_API_KEY = process.env.NEXT_PUBLIC_CLAUDE_API_KEY;
 
@@ -29,15 +28,15 @@ export const generateAIResponse = async (
   // 1. Google (Gemini) 包括APIルート
   // ----------------------------------------------------
   if (model === 'flash' || model === 'flash-lite' || model === 'lite' || model === 'pro') {
-    // 確実に存在する安定版モデルIDをデフォルトに設定
-    let targetModel = 'gemini-flash'; 
+    // 確実に存在する最新の安定モデルをデフォルトに設定
+    let targetModel = 'gemini-2.5-flash'; 
 
     if (model === 'pro') {
-      targetModel = process.env.NEXT_PUBLIC_GEMINI_MODEL_PRO || 'gemini-pro';
+      targetModel = process.env.NEXT_PUBLIC_GEMINI_MODEL_PRO || 'gemini-2.5-pro';
     } else if (model === 'flash') {
-      targetModel = process.env.NEXT_PUBLIC_GEMINI_MODEL_FLASH || 'gemini-flash';
+      targetModel = process.env.NEXT_PUBLIC_GEMINI_MODEL_FLASH || 'gemini-2.5-flash';
     } else if (model === 'flash-lite' || model === 'lite') {
-      targetModel = process.env.NEXT_PUBLIC_GEMINI_MODEL_LITE || 'gemini-flash';
+      targetModel = process.env.NEXT_PUBLIC_GEMINI_MODEL_LITE || 'gemini-2.0-flash-lite-preview-02-05';
     }
     
     const url = `https://generativelanguage.googleapis.com/v1beta/models/${targetModel}:generateContent?key=${GEMINI_API_KEY}`;
@@ -122,8 +121,8 @@ export const generatePremiumImage = async (prompt: string): Promise<string> => {
   const GEMINI_API_KEY = process.env.NEXT_PUBLIC_GEMINI_API_KEY;
   if (!GEMINI_API_KEY) throw new Error("Google APIキーが設定されていません。");
 
-  // Google公式の Imagen 3 エンドポイントを使用
-  const url = `https://generativelanguage.googleapis.com/v1beta/models/imagen-3.0-generate-001:predict?key=${GEMINI_API_KEY}`;
+  // 画像にある実際の最新モデルID「imagen-3.0-generate-002」を使用
+  const url = `https://generativelanguage.googleapis.com/v1beta/models/imagen-3.0-generate-002:predict?key=${GEMINI_API_KEY}`;
   
   try {
     const res = await fetch(url, {
