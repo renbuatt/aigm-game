@@ -29,7 +29,6 @@ export default function Home() {
   const [currentView, setCurrentView] = useState<ViewState>("login");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
-  const [isLoginMode, setIsLoginMode] = useState(true);
   const [authLoading, setAuthLoading] = useState(false);
 
   const [currentUser, setCurrentUser] = useState<UserProfile | null>(null);
@@ -67,7 +66,7 @@ export default function Home() {
   const [myNotifications, setMyNotifications] = useState<Notification[]>([]);
   const [showMailbox, setShowMailbox] = useState(false);
 
-  // ★ 管理画面用：個別ユーザーアクション
+  // 管理画面用アクション
   const [adminActionUser, setAdminActionUser] = useState<UserProfile | null>(null);
   const [adminTicketType, setAdminTicketType] = useState("silver");
   const [adminTicketAmount, setAdminTicketAmount] = useState(1);
@@ -93,7 +92,6 @@ export default function Home() {
 
   const [roomConfigModal, setRoomConfigModal] = useState<any>(null);
   const [novelSettingsModal, setNovelSettingsModal] = useState<any>(null);
-  
   const [secretRoomIdSearch, setSecretRoomIdSearch] = useState("");
   const [searchedSecretRoom, setSearchedSecretRoom] = useState<Room | null>(null);
 
@@ -128,7 +126,6 @@ export default function Home() {
   const defaultScene: Scene = { id: "scene_main", name: "メインルーム", memberIds: [] };
   const myScene = activeRoom?.scenes?.find((s: any) => joinedCharacter && s.memberIds.includes(joinedCharacter.id)) || activeRoom?.scenes?.[0] || defaultScene;
   const isSplitMode = activeRoom ? (activeRoom.scenes?.length > 1) : false;
-
   const isScenarioEnded = messages.some((m: any) => m.text.includes('[SCENARIO_END]')) || activeRoom?.status === 'finished';
 
   const handleOpenRoomConfig = (scenario: Scenario) => {
@@ -136,25 +133,15 @@ export default function Home() {
     setCurrentView("lobby");
   };
 
-  const openUserProfile = (userId: string) => {
-    setTargetUserId(userId);
-    setCurrentView("userProfile");
-  };
+  const openUserProfile = (userId: string) => { setTargetUserId(userId); setCurrentView("userProfile"); };
 
   const addFriend = async (targetId: string) => {
     if (!currentUser) return;
-    if (currentUser.friendIds?.includes(targetId)) {
-      alert("既に友達に登録されています。");
-      return;
-    }
+    if (currentUser.friendIds?.includes(targetId)) { alert("既に友達に登録されています。"); return; }
     const newFriends = [...(currentUser.friendIds || []), targetId];
     const { error } = await supabase.from('profiles').update({ friend_ids: newFriends }).eq('id', currentUser.id);
-    if (!error) {
-      setCurrentUser({ ...currentUser, friendIds: newFriends });
-      alert("友達に追加しました！");
-    } else {
-      alert("エラーが発生しました: " + error.message);
-    }
+    if (!error) { setCurrentUser({ ...currentUser, friendIds: newFriends }); alert("友達に追加しました！"); } 
+    else { alert("エラーが発生しました: " + error.message); }
   };
 
   const blockUser = async (targetId: string) => {
@@ -163,10 +150,7 @@ export default function Home() {
       const newBlocked = [...(currentUser.blockedUserIds || []), targetId];
       const newFriends = (currentUser.friendIds || []).filter((id: string) => id !== targetId);
       const { error } = await supabase.from('profiles').update({ blocked_user_ids: newBlocked, friend_ids: newFriends }).eq('id', currentUser.id);
-      if (!error) {
-        setCurrentUser({ ...currentUser, blockedUserIds: newBlocked, friendIds: newFriends });
-        alert("ブロックしました。");
-      }
+      if (!error) { setCurrentUser({ ...currentUser, blockedUserIds: newBlocked, friendIds: newFriends }); alert("ブロックしました。"); }
     }
   };
 
@@ -174,24 +158,14 @@ export default function Home() {
     if (!currentUser) return;
     const newBlocked = (currentUser.blockedUserIds || []).filter((id: string) => id !== targetId);
     const { error } = await supabase.from('profiles').update({ blocked_user_ids: newBlocked }).eq('id', currentUser.id);
-    if (!error) {
-      setCurrentUser({ ...currentUser, blockedUserIds: newBlocked });
-      alert("ブロックを解除しました。");
-    }
+    if (!error) { setCurrentUser({ ...currentUser, blockedUserIds: newBlocked }); alert("ブロックを解除しました。"); }
   };
 
   const updateProfile = async (updates: Partial<UserProfile>) => {
     if (!currentUser) return;
-    const { error } = await supabase.from('profiles').update({
-      handle_name: updates.handleName,
-      bio: updates.bio,
-      avatar_url: updates.avatarUrl
-    }).eq('id', currentUser.id);
-    if (error) {
-      alert("プロフィールの更新に失敗しました: " + error.message);
-    } else {
-      setCurrentUser({ ...currentUser, ...updates });
-    }
+    const { error } = await supabase.from('profiles').update({ handle_name: updates.handleName, bio: updates.bio, avatar_url: updates.avatarUrl }).eq('id', currentUser.id);
+    if (error) alert("プロフィールの更新に失敗しました: " + error.message);
+    else setCurrentUser({ ...currentUser, ...updates });
   };
 
   const loadChatLogs = async (roomId: string) => {
@@ -206,9 +180,7 @@ export default function Home() {
       if (isDuplicate) return prev;
       return [...prev, msg];
     });
-    if (save && roomId) {
-      await supabase.from('chat_logs').insert({ room_id: roomId, message: msg });
-    }
+    if (save && roomId) { await supabase.from('chat_logs').insert({ room_id: roomId, message: msg }); }
   };
 
   useEffect(() => {
@@ -242,8 +214,7 @@ export default function Home() {
         newMsgs.forEach((m: any) => {
           const isMySceneMsg = !m.sceneId || m.sceneId === 'scene_main' || m.sceneId === myScene?.id;
           if (isMySceneMsg && m.channel && m.channel !== "system" && m.channel !== chatTabRef.current) {
-            next[m.channel as keyof typeof next] = true;
-            changed = true;
+            next[m.channel as keyof typeof next] = true; changed = true;
           }
         });
         return changed ? next : prev;
@@ -255,9 +226,7 @@ export default function Home() {
   useEffect(() => {
     if (activeRoom && isSplitMode && currentUser?.id === activeRoom.host_id && activeRoom.status === 'playing') {
       const nonMainScenes = activeRoom.scenes.filter((s: any) => s.id !== 'scene_main');
-      if (nonMainScenes.length > 0 && nonMainScenes.every((s: any) => s.isMerged)) {
-        executeMergeAll();
-      }
+      if (nonMainScenes.length > 0 && nonMainScenes.every((s: any) => s.isMerged)) executeMergeAll();
     }
   }, [activeRoom?.scenes, activeRoom?.status, activeRoom?.host_id, currentUser?.id, isSplitMode]);
 
@@ -268,8 +237,7 @@ export default function Home() {
       loadedScenarios = scData.map((d: any) => ({
         id: d.id, title: d.title, system: d.system || "", tags: d.tags || "", setting: d.setting || "",
         npcList: d.npc_list || "", plot: d.plot || "", prologue: d.prologue || "", epilogue: d.epilogue || "",
-        imageUrl: d.image_url || "", presetCharacters: d.preset_characters || [],
-        ratingSum: d.rating_sum || 0, ratingCount: d.rating_count || 0,
+        imageUrl: d.image_url || "", presetCharacters: d.preset_characters || [], ratingSum: d.rating_sum || 0, ratingCount: d.rating_count || 0,
         authorId: d.author_id, price: d.price || 500, playLimit: d.play_limit || 1, giftLimit: d.gift_limit || 1,
         purchasedTickets: d.purchased_tickets || {}, isBanned: d.is_banned || false, playTime: d.play_time || 60,
         isPlayableByOthers: d.is_playable_by_others || false, isTrialOk: d.is_trial_ok || false, itemVisibility: d.item_visibility || "none",
@@ -329,8 +297,7 @@ export default function Home() {
           setActiveRoom(activeMyRoom); setJoinedCharacter(char);
           const takenIds = Object.values(activeMyRoom.joined_users || {});
           setAiPlayersList(activeMyRoom.scenario.presetCharacters.filter((c: any) => !takenIds.includes(c.id)));
-          await loadChatLogs(activeMyRoom.id);
-          setCurrentView("game"); return;
+          await loadChatLogs(activeMyRoom.id); setCurrentView("game"); return;
         }
       }
       setCurrentView("lobby");
@@ -596,8 +563,7 @@ export default function Home() {
     const { error } = await supabase.from('profiles').update({ [key]: currentVal + Number(adminTicketAmount) }).eq('id', adminActionUser.id);
     if (error) { alert("付与失敗: " + error.message); return; }
     await supabase.from('notifications').insert({ user_id: adminActionUser.id, title: '🎁 チケット付与のお知らせ', message: `運営よりチケットが配布されました。\n・${adminTicketType}チケット × ${adminTicketAmount}枚` });
-    alert("チケットを付与しました！");
-    setAdminActionUser(null);
+    alert("チケットを付与しました！"); setAdminActionUser(null);
   };
 
   const sendMail = async () => {
@@ -624,8 +590,7 @@ export default function Home() {
     if (error) { alert("交換に失敗しました: " + error.message); return; }
 
     setCurrentUser({
-      ...currentUser,
-      points: updates.points,
+      ...currentUser, points: updates.points,
       ticketsBronze: type === 'bronze' ? (currentUser.ticketsBronze || 0) + 1 : currentUser.ticketsBronze,
       ticketsItem: type === 'item' ? (currentUser.ticketsItem || 0) + 1 : currentUser.ticketsItem,
       ticketsSilver: type === 'silver' ? (currentUser.ticketsSilver || 0) + 1 : currentUser.ticketsSilver,
@@ -642,10 +607,7 @@ export default function Home() {
     try {
       if (imageType === 'premium') {
         if (isTicketSystemEnabled) {
-          if ((currentUser.imageGenCredits || 0) < 1) {
-            alert("画像生成の回数がありません。「チャージ」ボタンから補充してください。");
-            isRequestingRef.current = false; setIsLoading(false); return;
-          }
+          if ((currentUser.imageGenCredits || 0) < 1) { alert("画像生成の回数がありません。「チャージ」ボタンから補充してください。"); isRequestingRef.current = false; setIsLoading(false); return; }
           const { error } = await supabase.from('profiles').update({ image_gen_credits: (currentUser.imageGenCredits || 0) - 1 }).eq('id', currentUser.id);
           if (!error) setCurrentUser(prev => prev ? { ...prev, imageGenCredits: (prev.imageGenCredits || 0) - 1 } : null);
         }
@@ -653,10 +615,10 @@ export default function Home() {
       const { data: memoryData } = await supabase.from('ai_memory').select('*').eq('room_id', activeRoom.id).order('created_at', { ascending: false }).limit(10);
       const recentLogs = memoryData?.reverse().map((m: any) => `${m.role === 'user' ? 'PL' : 'GM'}: ${m.content}`).join('\n') || "";
       const autoPromptReq = ["あなたはTRPGの情景描写AIです。以下の直近のログから、現在の「場所、雰囲気、見えているもの」を1〜2文の簡潔な日本語で描写してください。キャラクターのセリフや行動ではなく、空間のビジュアルに焦点を当ててください。","【直近のログ】",recentLogs].join('\n');
-      const targetPrompt = await generateAITextWithPrompt(autoPromptReq, 'flash-lite', 400, 0.7);
+      const targetPrompt = await generateAITextWithPrompt(autoPromptReq, 'lite', 400, 0.7);
       const translationPrompt = ["以下の日本語の情景描写を、画像生成AI用のカンマ区切りの英語プロンプトに変換してください。","【絶対条件】","・文章ではなく、英単語のカンマ区切りで出力してください。","・不適切な画像が生成されるのを防ぐため、必ず最後に「SFW, fully clothed, masterpiece, high quality」を含めてください。","","情景描写：",targetPrompt].join('\n');
       let englishPrompt = "";
-      try { englishPrompt = await generateAITextWithPrompt(translationPrompt, 'flash-lite', 200, 0.3); } catch (err) { englishPrompt = `${targetPrompt}, SFW, fully clothed, masterpiece, high quality`; }
+      try { englishPrompt = await generateAITextWithPrompt(translationPrompt, 'lite', 200, 0.3); } catch (err) { englishPrompt = `${targetPrompt}, SFW, fully clothed, masterpiece, high quality`; }
       let base64data = "";
       if (imageType === 'free') base64data = await generateFreeImage(englishPrompt);
       else base64data = await generatePremiumImage(englishPrompt);
@@ -682,14 +644,12 @@ export default function Home() {
       const recentLogs = memoryData?.reverse().map((m: any) => `${m.role === 'user' ? 'PL' : 'GM'}: ${m.content}`).join('\n') || "";
       const chars = activeRoom.scenario?.presetCharacters.filter((c: any) => Object.values(activeRoom.joined_users || {}).includes(c.id)).map((c: any) => `{"id": "${c.id}", "name": "${c.name}"}`).join(", ") || "";
       const prompt = ["あなたはTRPGのシステムAIです。以下の「現在参加しているキャラクター」と「直近のチャットログ」を分析し、物語の展開上、最も自然な【チーム分け（2つ以上のグループへの分割）の構成案】を作成してください。","【参加キャラクター】",chars,"","【直近のログ】",recentLogs,"","【出力形式（絶対遵守）】","必ず以下のJSONフォーマットのみを出力してください。余計な文章やマークダウン記号は一切含めないでください。",'{"teams": [{"action": "目的A", "members": ["キャラID1"]}, {"action": "目的B", "members": ["キャラID3"]}]}'].join('\n');
-      const aiResponse = await generateAITextWithPrompt(prompt, 'flash-lite', 800, 0.3);
+      const aiResponse = await generateAITextWithPrompt(prompt, 'lite', 800, 0.3);
       const jsonStr = aiResponse.replace(/```json/g, "").replace(/```/g, "").trim();
       const parsed = JSON.parse(jsonStr);
       if (parsed && parsed.teams) setProposedTeams(parsed.teams.map((t: any) => ({ id: `team_${Date.now()}_${Math.random()}`, action: t.action, members: t.members, leader: t.members[0] || "" })));
       else setProposedTeams([{ id: `team_${Date.now()}`, action: "", members: [], leader: "" }]);
-    } catch (e) {
-      setProposedTeams([{ id: `team_${Date.now()}`, action: "", members: [], leader: "" }]);
-    } finally { setIsGeneratingSplit(false); }
+    } catch (e) { setProposedTeams([{ id: `team_${Date.now()}`, action: "", members: [], leader: "" }]); } finally { setIsGeneratingSplit(false); }
   };
 
   const finishSplitting = async () => {
@@ -827,10 +787,7 @@ export default function Home() {
       if (room.ai_model === 'claude') { requiredTicketKey = 'tickets_platinum'; currentTickets = currentUser.ticketsPlatinum || 0; costName = 'プラチナ'; }
       if (room.ai_model === 'opus') { requiredTicketKey = 'tickets_diamond'; currentTickets = currentUser.ticketsDiamond || 0; costName = 'ダイヤモンド'; }
 
-      if (currentTickets < 1) {
-        alert(`入室するためのチケットが足りません！\n（${costName}チケットが1枚必要です）\nロビーの「チケット購入ストア」から入手してください。`);
-        setShowTicketModal(true); return;
-      }
+      if (currentTickets < 1) { alert(`入室するためのチケットが足りません！\n（${costName}チケットが1枚必要です）\nロビーの「チケット購入ストア」から入手してください。`); setShowTicketModal(true); return; }
       if (!confirm(`この部屋に入室するには ${costName}チケット を1枚消費します。よろしいですか？`)) return;
       const { error: tErr } = await supabase.from('profiles').update({ [requiredTicketKey]: currentTickets - 1 }).eq('id', currentUser.id);
       if (tErr) { alert("チケットの消費処理に失敗しました。"); return; }
@@ -864,12 +821,10 @@ export default function Home() {
     if (!currentUser) return;
     const newSpectators = [...(room.spectator_ids || []), currentUser.id];
     await supabase.from('rooms').update({ spectator_ids: newSpectators }).eq('id', room.id);
-    
     const currentSc = scenarios.find((s: any) => s.id === room.scenario_id);
     if (currentSc) await supabase.from('scenarios').update({ view_count: (currentSc.viewCount || 0) + 1 }).eq('id', room.scenario_id);
 
-    setActiveRoom({ ...room, spectator_ids: newSpectators }); 
-    setJoinedCharacter(null); await loadChatLogs(room.id);
+    setActiveRoom({ ...room, spectator_ids: newSpectators }); setJoinedCharacter(null); await loadChatLogs(room.id);
     await pushMessage(room.id, { sender: "system", text: `【観戦モード】部屋に入室しました。チャットやダイスは使用できません。`, type: "system", sceneId: room.scenes?.[0]?.id, channel: "system" }, false);
     setCurrentView("game");
   };
@@ -915,6 +870,7 @@ export default function Home() {
       await supabase.from('rooms').update({ spectator_ids: newSpectators }).eq('id', activeRoom.id);
       setCurrentView("lobby"); setActiveRoom(null); await fetchData(); return; 
     }
+
     const isHost = activeRoom.host_id === currentUser.id;
     const isRecruiting = activeRoom.status === 'recruiting';
     const remainingPlayers = Object.keys(activeRoom.joined_users || {}).filter((id: string) => id !== currentUser.id).length;
@@ -1011,8 +967,11 @@ export default function Home() {
           let promptSuffix = "この結果を踏まえてGMとして情景描写を行ってください。";
           if (chatTab === "gm") promptSuffix = "この結果を踏まえて、システム・ルールの裁定やヒントの提示を行ってください。";
           else if (chatTab === "consult") promptSuffix = "この結果を踏まえて、AI相棒としてリアクションを返してください。";
-          let diceModel = 'flash-lite';
-          if (activeRoom.ai_model === 'claude' || activeRoom.ai_model === 'opus') diceModel = 'flash';
+          
+          let diceModel = 'flash'; // ダイス判定用デフォルト
+          if (['claude', 'opus', 'pro', 'flash'].includes(activeRoom.ai_model || '')) diceModel = 'flash';
+          else diceModel = 'lite';
+          
           await callAIGM(`【システム判定結果】${joinedCharacter.name}が${label}ロールを行いました。\n結果: ${msgText}\n${promptSuffix}`, chatTab, false, diceModel);
       }
     } finally { isRequestingRef.current = false; setIsLoading(false); }
@@ -1021,6 +980,7 @@ export default function Home() {
   const callAIGM = async (extraUserContext?: string, targetTab: ChatTab = "story", isStarting: boolean = false, forcedModel?: string) => {
     if (!activeRoom || !joinedCharacter || !myScene) return;
     if (!isStarting && activeRoom.status !== 'playing') return;
+    setIsLoading(true);
     
     try {
       if (extraUserContext) await supabase.from('ai_memory').insert({ room_id: activeRoom.id, role: 'user', content: extraUserContext });
@@ -1028,8 +988,10 @@ export default function Home() {
       let currentMemory = memoryDataRaw || [];
       let currentSummary = activeRoom.current_summary || "";
 
-      const aiModelType = forcedModel || activeRoom.ai_model || 'lite';
-      const contextLimit = (['pro', 'opus', 'claude'].includes(aiModelType)) ? 20 : 10;
+      // ----------------------------------------------------
+      // ★ 3. 裏側のシステム処理（あらすじ圧縮）👉 完全固定: Gemini Flash Lite ('lite')
+      // ----------------------------------------------------
+      const contextLimit = 15;
       const compressionThreshold = contextLimit + 5; 
 
       if (currentMemory.length > compressionThreshold) {
@@ -1038,7 +1000,7 @@ export default function Home() {
         const logText = logsToCompress.map((m: any) => `${m.role === 'user' ? 'PL' : 'GM'}: ${m.content}`).join('\n');
         const compressionPrompt = ["あなたはTRPGの優秀な記録係です。以下の「現在のあらすじ」と「追加のチャットログ」を統合し、AI GMが今後の展開を処理するための【詳細な最新のあらすじ】を作成してください。","【絶対条件】","・重要な出来事、NPCとの会話結果、得たアイテムやヒント、PLの目的は絶対に漏らさないこと。","・システムやダイスの結果等のメタな情報は省略し、物語の進行を中心にまとめること。","","【現在のあらすじ】",currentSummary || "なし（最初の要約です）","","【追加のチャットログ】",logText].join('\n');
         try {
-          currentSummary = await generateAITextWithPrompt(compressionPrompt, 'flash-lite', 1000, 0.3);
+          currentSummary = await generateAITextWithPrompt(compressionPrompt, 'lite', 1000, 0.3);
           await supabase.from('rooms').update({ current_summary: currentSummary }).eq('id', activeRoom.id);
           setActiveRoom(prev => prev ? { ...prev, current_summary: currentSummary } : null);
           const idsToDelete = logsToCompress.map((m: any) => m.id);
@@ -1047,12 +1009,13 @@ export default function Home() {
         } catch(e) { currentMemory = currentMemory.slice(-(contextLimit + 5)); }
       }
 
+      // ★ NPC抽出処理も 'lite' 固定
       let activeNpcListText = "";
       if (activeRoom.scenario?.npcList) {
          try {
             const recentLogsContext = currentMemory.slice(-5).map((m: any) => m.content).join('\n');
             const npcFilterPrompt = `以下の【全NPCリスト】から、直近のログと現在のあらすじに登場している、または今後すぐに関わりそうなNPCの情報だけを抜粋してそのまま出力してください。不要なNPCは省いてください。\n\n【全NPCリスト】\n${activeRoom.scenario.npcList}\n\n【あらすじとログ】\n${currentSummary}\n${recentLogsContext}`;
-            activeNpcListText = await generateAITextWithPrompt(npcFilterPrompt, 'flash-lite', 500, 0.2);
+            activeNpcListText = await generateAITextWithPrompt(npcFilterPrompt, 'lite', 500, 0.2);
          } catch(e) { activeNpcListText = activeRoom.scenario?.npcList; }
       }
 
@@ -1127,16 +1090,28 @@ export default function Home() {
         title: activeRoom.scenario?.title, setting: activeRoom.scenario?.setting, scenarioPlotText, currentSummary, joinedCharacter, inventoryText, aiPlayersText, ruleSpec, gmStyle, difficultyInstruction, isTrial: activeRoom.is_trial, mySceneName: myScene.name, isSplitMode, afkInstruction, targetTab, activeNpcListText
       });
 
+      // ----------------------------------------------------
+      // ★ 1, 2, 4 のルーティング制御
+      // ----------------------------------------------------
       let finalModel = forcedModel || activeRoom.ai_model || 'lite';
-      if (!forcedModel && targetTab === "consult") finalModel = 'lite';
-      if (!forcedModel && targetTab === "gm") finalModel = (['lite', 'flash', 'pro'].includes(activeRoom.ai_model || '')) ? 'lite' : 'flash';
-
-      let apiModelString = finalModel;
-      if (finalModel === 'lite') apiModelString = 'flash-lite';
-      else if (finalModel === 'flash') apiModelString = geminiFlashModel === '3.5-lite' ? 'flash-lite' : 'flash';
+      
+      if (!forcedModel) {
+        if (targetTab === "consult") {
+          // 2. 相棒AI（相談タブ）👉 完全固定: 'lite'
+          finalModel = 'lite';
+        } else if (targetTab === "gm") {
+          // 4. GMメタ質問 👉 部屋ランクに応じて 'flash' または 'lite'
+          if (['claude', 'opus', 'pro', 'flash'].includes(activeRoom.ai_model || '')) {
+            finalModel = 'flash';
+          } else {
+            finalModel = 'lite';
+          }
+        }
+        // 1. 本編GM（storyタブ）👉 部屋の設定(finalModel)をそのまま使用
+      }
 
       const outputTokens = 3000;
-      const aiTextRaw = await generateAIResponse(sysPrompt, history, apiModelString, outputTokens, 0.7);
+      const aiTextRaw = await generateAIResponse(sysPrompt, history, finalModel, outputTokens, 0.7);
       
       let parsedAI = { text: "", statusUpdates: [], inventoryUpdates: [], chapterClear: false };
       try {
@@ -1217,6 +1192,8 @@ export default function Home() {
          const recentLogs = messages.slice(-5).map((m: any) => `${m.charName || m.sender}: ${m.text}`).join('\n');
          await supabase.from('reports').insert({ reporter_id: currentUser.id, target_type: 'room', target_id: activeRoom.id, room_id: activeRoom.id, reason: `【自動記録：AIシステムエラー】\nエラー内容: ${err.message}\nタブ: ${targetTab}\n直前の入力: ${extraUserContext || "なし"}\n\n【直近のチャットログ】\n${recentLogs}`, status: 'pending' });
       }
+    } finally {
+      setIsLoading(false);
     }
   };
 
@@ -1475,146 +1452,41 @@ export default function Home() {
       
       {currentView === "login" && (
         <LoginView
-          email={email}
-          setEmail={setEmail}
-          password={password}
-          setPassword={setPassword}
-          authLoading={authLoading}
-          handleEmailAuth={handleEmailAuth}
-          handleGoogleAuth={handleGoogleAuth}
-          setCurrentView={setCurrentView}
-          isMaintenance={isMaintenance}
+          email={email} setEmail={setEmail} password={password} setPassword={setPassword} authLoading={authLoading}
+          handleEmailAuth={handleEmailAuth} handleGoogleAuth={handleGoogleAuth} setCurrentView={setCurrentView} isMaintenance={isMaintenance}
         />
       )}
       
       {currentView === "signup" && (
         <SignupView
-          email={email}
-          setEmail={setEmail}
-          password={password}
-          setPassword={setPassword}
-          authLoading={authLoading}
-          handleEmailSignUp={handleEmailSignUp}
-          handleGoogleAuth={handleGoogleAuth}
-          setCurrentView={setCurrentView}
-          isMaintenance={isMaintenance}
+          email={email} setEmail={setEmail} password={password} setPassword={setPassword} authLoading={authLoading}
+          handleEmailSignUp={handleEmailSignUp} handleGoogleAuth={handleGoogleAuth} setCurrentView={setCurrentView} isMaintenance={isMaintenance}
         />
       )}
       
       {currentView === "onboarding" && (
-        <OnboardingView
-          authLoading={authLoading}
-          handleProfileSetup={handleProfileSetup}
-          handleLogout={handleLogout}
-          email={email}
-        />
+        <OnboardingView authLoading={authLoading} handleProfileSetup={handleProfileSetup} handleLogout={handleLogout} email={email} />
       )}
 
       {currentView === "lobby" && currentUser && (
         <LobbyView 
-          currentUser={currentUser}
-          handleLogout={handleLogout}
-          setShowMailbox={setShowMailbox}
-          unreadCount={unreadCount}
-          secretRoomIdSearch={secretRoomIdSearch}
-          setSecretRoomIdSearch={setSecretRoomIdSearch}
-          rooms={rooms}
-          searchedSecretRoom={searchedSecretRoom}
-          setSearchedSecretRoom={setSearchedSecretRoom}
-          executeJoinRoom={executeJoinRoom}
-          availableRooms={availableRooms}
-          spectateRoom={spectateRoom}
-          setEditingScenario={setEditingScenario}
-          setCurrentView={setCurrentView}
-          createdScenarios={createdScenarios}
-          deleteScenario={deleteScenario}
-          setRoomConfigModal={setRoomConfigModal}
-          fetchAdminData={fetchAdminData}
-          startTrialPlay={(scenario: any) => setAdModal({ isOpen: true, step: 1, scenario, room: null, type: 'trial' })}
-          availableScenarios={availableScenarios}
-          openUserProfile={openUserProfile}
-          setScenarioAppealTarget={setScenarioAppealTarget}
-          playArchives={playArchives}
-          setShowTicketModal={setShowTicketModal}
-          exchangeTicketWithPoints={exchangeTicketWithPoints}
+          currentUser={currentUser} handleLogout={handleLogout} setShowMailbox={setShowMailbox} unreadCount={unreadCount} secretRoomIdSearch={secretRoomIdSearch} setSecretRoomIdSearch={setSecretRoomIdSearch}
+          rooms={rooms} searchedSecretRoom={searchedSecretRoom} setSearchedSecretRoom={setSearchedSecretRoom} executeJoinRoom={executeJoinRoom} availableRooms={availableRooms} spectateRoom={spectateRoom} setEditingScenario={setEditingScenario} setCurrentView={setCurrentView} createdScenarios={createdScenarios} deleteScenario={deleteScenario} setRoomConfigModal={setRoomConfigModal} fetchAdminData={fetchAdminData} startTrialPlay={(scenario: any) => setAdModal({ isOpen: true, step: 1, scenario, room: null, type: 'trial' })} availableScenarios={availableScenarios} openUserProfile={openUserProfile} setScenarioAppealTarget={setScenarioAppealTarget} playArchives={playArchives} setShowTicketModal={setShowTicketModal} exchangeTicketWithPoints={exchangeTicketWithPoints}
         />
       )}
       
       {currentView === "scenarioEdit" && editingScenario && (
-        <ScenarioEditView
-          editingScenario={editingScenario}
-          setEditingScenario={setEditingScenario}
-          editingCharIndex={editingCharIndex}
-          setEditingCharIndex={setEditingCharIndex}
-          saveScenario={saveScenario}
-          setCurrentView={setCurrentView}
-          allScenarios={scenarios}
-        />
+        <ScenarioEditView editingScenario={editingScenario} setEditingScenario={setEditingScenario} editingCharIndex={editingCharIndex} setEditingCharIndex={setEditingCharIndex} saveScenario={saveScenario} setCurrentView={setCurrentView} allScenarios={scenarios} />
       )}
       
       {currentView === "game" && activeRoom && myScene && currentUser && (
         <GameView 
-          activeRoom={activeRoom}
-          myScene={myScene}
-          currentUser={currentUser}
-          joinedCharacter={joinedCharacter}
-          leaveGame={leaveGame}
-          setReportTarget={(target: any) => setReportTarget(target)}
-          rollDice={rollDice}
-          startGame={startGame}
-          startSplitting={startSplitting}
-          isSplitMode={isSplitMode}
-          chatTab={chatTab}
-          messages={messages}
-          isLoading={isLoading}
-          isScenarioEnded={isScenarioEnded}
-          setCurrentView={setCurrentView}
-          endGame={endGame}
-          input={input}
-          setInput={setInput}
-          handleSend={handleSend}
-          handleTabClick={handleTabClick}
-          unreadIndicators={unreadIndicators}
-          consultWithAI={consultWithAI}
-          setConsultWithAI={setConsultWithAI}
-          isChatDisabled={isChatDisabled}
-          mergeTeam={mergeTeam}
-          executeMergeAll={executeMergeAll}
-          generateSceneImage={generateSceneImage}
-          proposedTeams={proposedTeams}
-          setProposedTeams={setProposedTeams}
-          isGeneratingSplit={isGeneratingSplit}
-          generateSplitProposal={generateSplitProposal}
-          finishSplitting={finishSplitting}
-          cancelSplitting={cancelSplitting}
-          togglePauseRoom={togglePauseRoom}
-          toggleAFK={toggleAFK}
-          triggerAutoAction={triggerAutoAction}
-          updateInventory={updateInventory}
-          openRoomConfigModal={handleOpenRoomConfig}
-          aiPlayersList={aiPlayersList}
-          saveToArchive={saveToArchive}
-          kickUser={kickUser}
+          activeRoom={activeRoom} myScene={myScene} currentUser={currentUser} joinedCharacter={joinedCharacter} leaveGame={leaveGame} setReportTarget={(target: any) => setReportTarget(target)} rollDice={rollDice} startGame={startGame} startSplitting={startSplitting} isSplitMode={isSplitMode} chatTab={chatTab} messages={messages} isLoading={isLoading} isScenarioEnded={isScenarioEnded} setCurrentView={setCurrentView} endGame={endGame} input={input} setInput={setInput} handleSend={handleSend} handleTabClick={handleTabClick} unreadIndicators={unreadIndicators} consultWithAI={consultWithAI} setConsultWithAI={setConsultWithAI} isChatDisabled={isChatDisabled} mergeTeam={mergeTeam} executeMergeAll={executeMergeAll} generateSceneImage={generateSceneImage} proposedTeams={proposedTeams} setProposedTeams={setProposedTeams} isGeneratingSplit={isGeneratingSplit} generateSplitProposal={generateSplitProposal} finishSplitting={finishSplitting} cancelSplitting={cancelSplitting} togglePauseRoom={togglePauseRoom} toggleAFK={toggleAFK} triggerAutoAction={triggerAutoAction} updateInventory={updateInventory} openRoomConfigModal={handleOpenRoomConfig} aiPlayersList={aiPlayersList} saveToArchive={saveToArchive} kickUser={kickUser}
         />
       )}
       
       {currentView === "evaluation" && activeRoom && currentUser && (
-        <EvaluationView 
-          activeRoom={activeRoom}
-          messages={messages}
-          ratingScenario={ratingScenario}
-          setRatingScenario={setRatingScenario}
-          ratingGM={ratingGM}
-          setRatingGM={setRatingGM}
-          submitEvaluation={submitEvaluation}
-          exportToPDF={exportToPDF}
-          isExporting={isExporting}
-          saveToArchive={saveToArchive}
-          currentUser={currentUser}
-          addFriend={addFriend}
-          openUserProfile={openUserProfile}
-          openRoomConfigModal={handleOpenRoomConfig}
-        />
+        <EvaluationView activeRoom={activeRoom} messages={messages} ratingScenario={ratingScenario} setRatingScenario={setRatingScenario} ratingGM={ratingGM} setRatingGM={setRatingGM} submitEvaluation={submitEvaluation} exportToPDF={exportToPDF} isExporting={isExporting} saveToArchive={saveToArchive} currentUser={currentUser} addFriend={addFriend} openUserProfile={openUserProfile} openRoomConfigModal={handleOpenRoomConfig} />
       )}
 
       {adModal.isOpen && (
@@ -1625,20 +1497,7 @@ export default function Home() {
               <span className="text-slate-500 font-bold animate-pulse">動画広告が再生されています...<br/>({adModal.step}/3)</span>
             </div>
             {adModal.step <= 3 ? (
-              <button 
-                onClick={() => { 
-                  if(adModal.step === 3) {
-                    if (adModal.type === 'trial') executeTrialPlay();
-                    else if (adModal.type === 'spectate' && adModal.room) {
-                      spectateRoom(adModal.room);
-                      setAdModal({ isOpen: false, step: 0, scenario: null, room: null, type: 'trial' });
-                    }
-                  } else {
-                    setAdModal({...adModal, step: adModal.step + 1}); 
-                  }
-                }} 
-                className="w-full bg-pink-600 hover:bg-pink-500 py-3 rounded text-sm font-bold text-white shadow-lg"
-              >
+              <button onClick={() => { if(adModal.step === 3) { if (adModal.type === 'trial') executeTrialPlay(); else if (adModal.type === 'spectate' && adModal.room) { spectateRoom(adModal.room); setAdModal({ isOpen: false, step: 0, scenario: null, room: null, type: 'trial' }); } } else { setAdModal({...adModal, step: adModal.step + 1}); } }} className="w-full bg-pink-600 hover:bg-pink-500 py-3 rounded text-sm font-bold text-white shadow-lg">
                 {adModal.step === 3 ? (adModal.type === 'trial' ? "お試しプレイを開始する！" : "観戦を開始する！") : "次の広告へ進む"}
               </button>
             ) : null}
@@ -1654,11 +1513,7 @@ export default function Home() {
             <div className="space-y-4 mb-6">
               <div>
                 <label className="text-xs text-slate-400 block mb-1">文体（トーン）</label>
-                <select 
-                  value={novelSettingsModal.options?.tone || 'light'} 
-                  onChange={(e) => setNovelSettingsModal({...novelSettingsModal, options: {...novelSettingsModal.options, tone: e.target.value}})} 
-                  className="w-full bg-slate-900 border border-slate-700 rounded p-2 text-sm text-white"
-                >
+                <select value={novelSettingsModal.options?.tone || 'light'} onChange={(e) => setNovelSettingsModal({...novelSettingsModal, options: {...novelSettingsModal.options, tone: e.target.value}})} className="w-full bg-slate-900 border border-slate-700 rounded p-2 text-sm text-white">
                   <option value="light">ライトノベル風（会話多め・テンポ重視）</option>
                   <option value="literature">純文学風（情景・心理描写を重厚に）</option>
                   <option value="hardboiled">ハードボイルド風（渋く簡潔な表現）</option>
@@ -1666,11 +1521,7 @@ export default function Home() {
               </div>
               <div>
                 <label className="text-xs text-slate-400 block mb-1">使用するAIモデル</label>
-                <select 
-                  value={novelSettingsModal.aiModel} 
-                  onChange={(e) => setNovelSettingsModal({...novelSettingsModal, aiModel: e.target.value})} 
-                  className="w-full bg-slate-900 border border-slate-700 rounded p-2 text-sm text-white"
-                >
+                <select value={novelSettingsModal.aiModel} onChange={(e) => setNovelSettingsModal({...novelSettingsModal, aiModel: e.target.value})} className="w-full bg-slate-900 border border-slate-700 rounded p-2 text-sm text-white">
                   <option value="lite">🟤 Gemini Flash Lite {isTicketSystemEnabled ? "(消費: ブロンズチケット 1枚)" : "(無料)"}</option>
                   <option value="flash">⚪ Gemini Flash {isTicketSystemEnabled ? "(消費: シルバーチケット 1枚)" : "(無料)"}</option>
                   <option value="pro">🟡 Gemini Pro {isTicketSystemEnabled ? "(消費: ゴールドチケット 1枚)" : "(無料)"}</option>
@@ -1709,12 +1560,8 @@ export default function Home() {
                   </div>
                   <div className="mt-4 pt-3 border-t border-stone-600">
                     <div className="flex gap-2 mb-2">
-                      <button onClick={() => alert("※決済システム準備中")} className="flex-1 bg-stone-600 hover:bg-stone-500 text-white text-xs py-2 rounded font-bold shadow">
-                         ¥240 で購入
-                      </button>
-                      <button onClick={() => exchangeTicketWithPoints('bronze', 60)} className="flex-[1.5] bg-yellow-600 hover:bg-yellow-500 text-white text-xs py-2 rounded font-bold shadow flex items-center justify-center gap-1">
-                         🪙 60 ptで交換
-                      </button>
+                      <button onClick={() => alert("※決済システム準備中")} className="flex-1 bg-stone-600 hover:bg-stone-500 text-white text-xs py-2 rounded font-bold shadow">¥240 で購入</button>
+                      <button onClick={() => exchangeTicketWithPoints('bronze', 60)} className="flex-[1.5] bg-yellow-600 hover:bg-yellow-500 text-white text-xs py-2 rounded font-bold shadow flex items-center justify-center gap-1">🪙 60 ptで交換</button>
                     </div>
                   </div>
                </div>
@@ -1728,12 +1575,8 @@ export default function Home() {
                   </div>
                   <div className="mt-4 pt-3 border-t border-slate-600">
                     <div className="flex gap-2 mb-2">
-                      <button onClick={() => alert("※決済システム準備中")} className="flex-1 bg-blue-600 hover:bg-blue-500 text-white text-xs py-2 rounded font-bold shadow">
-                         ¥360 で購入
-                      </button>
-                      <button onClick={() => exchangeTicketWithPoints('silver', 100)} className="flex-[1.5] bg-yellow-600 hover:bg-yellow-500 text-white text-xs py-2 rounded font-bold shadow flex items-center justify-center gap-1">
-                         🪙 100 ptで交換
-                      </button>
+                      <button onClick={() => alert("※決済システム準備中")} className="flex-1 bg-blue-600 hover:bg-blue-500 text-white text-xs py-2 rounded font-bold shadow">¥360 で購入</button>
+                      <button onClick={() => exchangeTicketWithPoints('silver', 100)} className="flex-[1.5] bg-yellow-600 hover:bg-yellow-500 text-white text-xs py-2 rounded font-bold shadow flex items-center justify-center gap-1">🪙 100 ptで交換</button>
                     </div>
                   </div>
                </div>
@@ -1747,12 +1590,8 @@ export default function Home() {
                   </div>
                   <div className="mt-4 pt-3 border-t border-amber-900/50">
                     <div className="flex gap-2 mb-2">
-                      <button onClick={() => alert("※決済システム準備中")} className="flex-1 bg-amber-600 hover:bg-amber-500 text-white text-xs py-2 rounded font-bold shadow">
-                         ¥600 で購入
-                      </button>
-                      <button onClick={() => exchangeTicketWithPoints('gold', 300)} className="flex-[1.5] bg-yellow-600 hover:bg-yellow-500 text-white text-xs py-2 rounded font-bold shadow flex items-center justify-center gap-1">
-                         🪙 300 ptで交換
-                      </button>
+                      <button onClick={() => alert("※決済システム準備中")} className="flex-1 bg-amber-600 hover:bg-amber-500 text-white text-xs py-2 rounded font-bold shadow">¥600 で購入</button>
+                      <button onClick={() => exchangeTicketWithPoints('gold', 300)} className="flex-[1.5] bg-yellow-600 hover:bg-yellow-500 text-white text-xs py-2 rounded font-bold shadow flex items-center justify-center gap-1">🪙 300 ptで交換</button>
                     </div>
                   </div>
                </div>
@@ -1766,12 +1605,8 @@ export default function Home() {
                   </div>
                   <div className="mt-4 pt-3 border-t border-indigo-900/50">
                     <div className="flex gap-2 mb-2">
-                      <button onClick={() => alert("※決済システム準備中")} className="flex-1 bg-indigo-600 hover:bg-indigo-500 text-white text-xs py-2 rounded font-bold shadow">
-                         ¥1,200 で購入
-                      </button>
-                      <button onClick={() => exchangeTicketWithPoints('platinum', 900)} className="flex-[1.5] bg-yellow-600 hover:bg-yellow-500 text-white text-xs py-2 rounded font-bold shadow flex items-center justify-center gap-1">
-                         🪙 900 ptで交換
-                      </button>
+                      <button onClick={() => alert("※決済システム準備中")} className="flex-1 bg-indigo-600 hover:bg-indigo-500 text-white text-xs py-2 rounded font-bold shadow">¥1,200 で購入</button>
+                      <button onClick={() => exchangeTicketWithPoints('platinum', 900)} className="flex-[1.5] bg-yellow-600 hover:bg-yellow-500 text-white text-xs py-2 rounded font-bold shadow flex items-center justify-center gap-1">🪙 900 ptで交換</button>
                     </div>
                   </div>
                </div>
@@ -1786,12 +1621,8 @@ export default function Home() {
                   </div>
                   <div className="mt-4 pt-3 border-t border-fuchsia-900/50">
                     <div className="flex gap-2 mb-2">
-                      <button onClick={() => alert("※決済システム準備中")} className="flex-1 bg-fuchsia-600 hover:bg-fuchsia-500 text-white text-xs py-2 rounded font-bold shadow">
-                         ¥1,800 で購入
-                      </button>
-                      <button onClick={() => exchangeTicketWithPoints('diamond', 1200)} className="flex-[1.5] bg-yellow-600 hover:bg-yellow-500 text-white text-xs py-2 rounded font-bold shadow flex items-center justify-center gap-1">
-                         🪙 1200 ptで交換
-                      </button>
+                      <button onClick={() => alert("※決済システム準備中")} className="flex-1 bg-fuchsia-600 hover:bg-fuchsia-500 text-white text-xs py-2 rounded font-bold shadow">¥1,800 で購入</button>
+                      <button onClick={() => exchangeTicketWithPoints('diamond', 1200)} className="flex-[1.5] bg-yellow-600 hover:bg-yellow-500 text-white text-xs py-2 rounded font-bold shadow flex items-center justify-center gap-1">🪙 1200 ptで交換</button>
                     </div>
                   </div>
                </div>
@@ -1805,16 +1636,10 @@ export default function Home() {
                   </div>
                   <div className="mt-4 pt-3 border-t border-slate-600">
                     <div className="flex gap-2 mb-2">
-                      <button onClick={() => alert("※決済システム準備中")} className="flex-1 bg-slate-600 hover:bg-slate-500 text-white text-xs py-2 rounded font-bold shadow">
-                         ¥200 で購入
-                      </button>
-                      <button onClick={() => exchangeTicketWithPoints('item', 500)} className="flex-[1.5] bg-yellow-600 hover:bg-yellow-500 text-white text-xs py-2 rounded font-bold shadow flex items-center justify-center gap-1">
-                         🪙 500 ptで交換
-                      </button>
+                      <button onClick={() => alert("※決済システム準備中")} className="flex-1 bg-slate-600 hover:bg-slate-500 text-white text-xs py-2 rounded font-bold shadow">¥200 で購入</button>
+                      <button onClick={() => exchangeTicketWithPoints('item', 500)} className="flex-[1.5] bg-yellow-600 hover:bg-yellow-500 text-white text-xs py-2 rounded font-bold shadow flex items-center justify-center gap-1">🪙 500 ptで交換</button>
                     </div>
-                    <button onClick={() => alert("※決済システム準備中")} className="w-full bg-slate-800 border border-slate-500 hover:bg-slate-700 text-slate-300 text-[10px] py-1.5 rounded font-bold">
-                       3枚セット - ¥540 (10%OFF)
-                    </button>
+                    <button onClick={() => alert("※決済システム準備中")} className="w-full bg-slate-800 border border-slate-500 hover:bg-slate-700 text-slate-300 text-[10px] py-1.5 rounded font-bold">3枚セット - ¥540 (10%OFF)</button>
                   </div>
                </div>
             </div>

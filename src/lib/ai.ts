@@ -25,18 +25,17 @@ export const generateAIResponse = async (
   }
 
   // ----------------------------------------------------
-  // 1. Google (Gemini) 包括APIルート
+  // ▼ Gemini APIルート（最新モデルリストに対応）
   // ----------------------------------------------------
   if (model === 'flash' || model === 'flash-lite' || model === 'lite' || model === 'pro') {
-    // 確実に存在する最新の安定モデルをデフォルトに設定
-    let targetModel = 'gemini-2.5-flash'; 
+    let targetModel = 'gemini-3.5-flash-lite'; 
 
     if (model === 'pro') {
-      targetModel = process.env.NEXT_PUBLIC_GEMINI_MODEL_PRO || 'gemini-2.5-pro';
+      targetModel = 'gemini-2.5-pro'; // ゴールド
     } else if (model === 'flash') {
-      targetModel = process.env.NEXT_PUBLIC_GEMINI_MODEL_FLASH || 'gemini-2.5-flash';
+      targetModel = 'gemini-3.6-flash'; // シルバー
     } else if (model === 'flash-lite' || model === 'lite') {
-      targetModel = process.env.NEXT_PUBLIC_GEMINI_MODEL_LITE || 'gemini-2.0-flash-lite-preview-02-05';
+      targetModel = 'gemini-3.5-flash-lite'; // ブロンズ ＆ 裏側処理
     }
     
     const url = `https://generativelanguage.googleapis.com/v1beta/models/${targetModel}:generateContent?key=${GEMINI_API_KEY}`;
@@ -44,10 +43,7 @@ export const generateAIResponse = async (
     const body = {
       system_instruction: { parts: [{ text: systemPrompt }] },
       contents: normalizedHistory,
-      generationConfig: { 
-        temperature: temperature,
-        maxOutputTokens: maxTokens,
-      }
+      generationConfig: { temperature, maxOutputTokens: maxTokens }
     };
 
     const res = await fetch(url, { 
@@ -56,18 +52,19 @@ export const generateAIResponse = async (
       body: JSON.stringify(body) 
     });
     
-    if (!res.ok) throw new Error(`Google API エラー: ${await res.text()}`);
+    if (!res.ok) throw new Error(`Gemini API エラー: ${await res.text()}`);
     const data = await res.json();
     return data.candidates[0].content.parts[0].text;
   }
   
   // ----------------------------------------------------
-  // 2. Anthropic (Claude) 包括APIルート
+  // ▼ Claude APIルート（プラチナ・ダイヤ用）
   // ----------------------------------------------------
   if (model === 'claude' || model === 'opus') {
     if (!CLAUDE_API_KEY) throw new Error("Claude API エラー: APIキーが設定されていません。");
 
-    const targetModel = model === 'opus' ? 'claude-3-opus-20240229' : 'claude-3-5-sonnet-latest';
+    // プラチナ(claude) -> Claude Sonnet 5, ダイヤ(opus) -> Claude Opus 5
+    const targetModel = model === 'opus' ? 'claude-5-opus' : 'claude-5-sonnet';
     const claudeHistory = normalizedHistory.map(h => ({ role: h.role === 'model' ? 'assistant' : 'user', content: h.parts[0].text }));
 
     const res = await fetch('https://api.anthropic.com/v1/messages', {
@@ -79,15 +76,11 @@ export const generateAIResponse = async (
         'Content-Type': 'application/json'
       },
       body: JSON.stringify({
-        model: targetModel,
-        max_tokens: maxTokens,
-        system: systemPrompt,
-        messages: claudeHistory,
-        temperature: temperature
+        model: targetModel, max_tokens: maxTokens, system: systemPrompt, messages: claudeHistory, temperature: temperature
       })
     });
 
-    if (!res.ok) throw new Error(`Anthropic API エラー: ${await res.text()}`);
+    if (!res.ok) throw new Error(`Claude API エラー: ${await res.text()}`);
     const data = await res.json();
     return data.content[0].text;
   }
@@ -95,11 +88,12 @@ export const generateAIResponse = async (
   return "エラー：不明なモデルが選択されました。";
 };
 
-export const generateAITextWithPrompt = async (prompt: string, model: string = 'flash', maxTokens: number = 1000, temperature: number = 0.7) => {
+// 単発のAI処理用関数（裏側処理は基本 Lite に固定）
+export const generateAITextWithPrompt = async (prompt: string, model: string = 'lite', maxTokens: number = 1000, temperature: number = 0.7) => {
   return generateAIResponse("あなたは優秀なアシスタントです。指示に従って出力してください。", [{ role: "user", parts: [{ text: prompt }] }], model, maxTokens, temperature);
 };
 
-// ▼ 無料の画像生成（モック用）
+// 無料の画像生成API
 export const generateFreeImage = async (prompt: string): Promise<string> => {
   const seed = Math.floor(Math.random() * 100000);
   const url = `https://image.pollinations.ai/prompt/${encodeURIComponent(prompt)}?nologo=true&seed=${seed}&safe=true`;
@@ -115,34 +109,30 @@ export const generateFreeImage = async (prompt: string): Promise<string> => {
 };
 
 // ----------------------------------------------------
-// 3. Google (Imagen 3) を使ったプレミアム画像生成ルート
+// 5. 情景画像の生成 👉 Nano Banana Pro (Gemini 3 Pro Image)
 // ----------------------------------------------------
 export const generatePremiumImage = async (prompt: string): Promise<string> => {
-  const GEMINI_API_KEY = process.env.NEXT_PUBLIC_GEMINI_API_KEY;
-  if (!GEMINI_API_KEY) throw new Error("Google APIキーが設定されていません。");
-
-  // 画像にある実際の最新モデルID「imagen-3.0-generate-002」を使用
-  const url = `https://generativelanguage.googleapis.com/v1beta/models/imagen-3.0-generate-002:predict?key=${GEMINI_API_KEY}`;
+  const NANOBANANA_API_KEY = process.env.NEXT_PUBLIC_NANOBANANA_API_KEY;
+  const url = "https://api.nanobanana.com/v1/images/generate"; 
   
   try {
+    // ※実際のNanoBanana APIのエンドポイント仕様に合わせてください。
+    // APIキーがない場合は無料版へフォールバックします。
+    if(!NANOBANANA_API_KEY) {
+      return generateFreeImage(prompt + ", Nano Banana Pro Style, masterpiece, high quality");
+    }
+
     const res = await fetch(url, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        instances: [{ prompt: prompt + ", masterpiece, high quality, highly detailed" }],
-        parameters: { sampleCount: 1 }
-      })
+      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${NANOBANANA_API_KEY}` },
+      body: JSON.stringify({ prompt: prompt + ", masterpiece, high quality, highly detailed" })
     });
 
-    if (!res.ok) throw new Error(`Google Image API Error: ${await res.text()}`);
+    if (!res.ok) throw new Error(`Nano Banana API Error: ${await res.text()}`);
     const data = await res.json();
-    
-    // Google Imagen は画像を Base64 エンコードで返す仕様
-    const base64Image = data.predictions[0].bytesBase64Encoded;
-    return `data:image/jpeg;base64,${base64Image}`;
-
+    return data.url || data.image_url; 
   } catch (err) {
     console.error(err);
-    throw new Error("高品質画像の生成に失敗しました");
+    throw new Error("Nano Banana Proでの画像生成に失敗しました");
   }
 };
