@@ -30,15 +30,15 @@ export const generateAIResponse = async (
   // ----------------------------------------------------
   if (model === 'flash' || model === 'flash-lite' || model === 'lite' || model === 'pro') {
     // 確実に存在するモデルIDをデフォルトに設定
-    let targetModel = 'gemini-1.5-flash-latest'; 
+    let targetModel = 'gemini-3.5-flash-lite'; 
 
     if (model === 'pro') {
-      targetModel = process.env.NEXT_PUBLIC_GEMINI_MODEL_PRO || 'gemini-1.5-pro-latest';
+      targetModel = process.env.NEXT_PUBLIC_GEMINI_MODEL_PRO || 'gemini-3.5-pro';
     } else if (model === 'flash') {
-      targetModel = process.env.NEXT_PUBLIC_GEMINI_MODEL_FLASH || 'gemini-1.5-flash-latest';
+      targetModel = process.env.NEXT_PUBLIC_GEMINI_MODEL_FLASH || 'gemini-3.5-flash-lite';
     } else if (model === 'flash-lite' || model === 'lite') {
       // 8bがエラーになる環境があるため、安全なflashをフォールバックに設定
-      targetModel = process.env.NEXT_PUBLIC_GEMINI_MODEL_LITE || 'gemini-1.5-flash-8b-latest';
+      targetModel = process.env.NEXT_PUBLIC_GEMINI_MODEL_LITE || 'gemini-3.5-flash-lite';
     }
     
     const url = `https://generativelanguage.googleapis.com/v1beta/models/${targetModel}:generateContent?key=${GEMINI_API_KEY}`;
