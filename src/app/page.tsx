@@ -528,6 +528,7 @@ export default function Home() {
   const toggleMaintenance = async () => { const newStatus = !isMaintenance; await supabase.from('app_settings').update({ is_maintenance: newStatus }).eq('id', 1); setIsMaintenance(newStatus); alert(`メンテナンスモードを ${newStatus ? "ON" : "OFF"} にしました。`); };
   const toggleTicketSystem = async () => { const newStatus = !isTicketSystemEnabled; await supabase.from('app_settings').update({ is_ticket_system_enabled: newStatus }).eq('id', 1); setIsTicketSystemEnabled(newStatus); alert(`チケットシステムを ${newStatus ? "ON" : "OFF"} にしました。`); };
   const toggleAdminStatus = async (userId: string, currentStatus: boolean) => { const newStatus = !currentStatus; await supabase.from('profiles').update({ is_admin: newStatus }).eq('id', userId); setAllUsers(allUsers.map((u: any) => u.id === userId ? { ...u, isAdmin: newStatus } : u)); alert(newStatus ? "管理者権限を付与しました。" : "管理者権限を剥奪しました。"); };
+  const toggleTesterStatus = async (userId: string, currentStatus: boolean) => { const newStatus = !currentStatus; await supabase.from('profiles').update({ is_tester: newStatus }).eq('id', userId); setAllUsers(allUsers.map((u: any) => u.id === userId ? { ...u, isTester: newStatus } : u)); alert(newStatus ? "テスター権限を付与しました。" : "テスター権限を剥奪しました。"); };
   
   const toggleGeminiFlashModel = async (newModel: '3.5-lite' | '3.6') => { 
     const { error } = await supabase.from('app_settings').update({ gemini_flash_model: newModel }).eq('id', 1); 
@@ -1753,6 +1754,7 @@ export default function Home() {
           userSearchQuery={userSearchQuery}
           setUserSearchQuery={setUserSearchQuery}
           toggleAdminStatus={toggleAdminStatus}
+          toggleTesterStatus={toggleTesterStatus}
           scenarioSearchQuery={scenarioSearchQuery}
           setScenarioSearchQuery={setScenarioSearchQuery}
           setCurrentView={setCurrentView}
