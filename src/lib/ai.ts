@@ -1,7 +1,7 @@
 export const generateAIResponse = async (
   systemPrompt: string, 
   history: any[], 
-  model: string = 'lite', 
+  model: string = 'lite', // デフォルトをブロンズ(lite)に設定
   maxTokens: number = 3000, 
   temperature: number = 0.7
 ) => {
@@ -25,21 +25,21 @@ export const generateAIResponse = async (
   }
 
   // ----------------------------------------------------
-  // ▼ Gemini APIルート（完全に最新モデルへ固定）
+  // ▼ 1. Google (Gemini) APIルート（最新モデルへ強制固定）
   // ----------------------------------------------------
   if (model === 'flash' || model === 'flash-lite' || model === 'lite' || model === 'pro') {
     let targetModel = 'gemini-3.5-flash-lite'; 
 
-    // 環境変数がなくても勝手にProにならないよう、直接リストのモデルを指定
+    // Vercelの古い環境変数が悪さをしないよう、ここで強制的に上書きします
     if (model === 'pro') {
-      targetModel = process.env.NEXT_PUBLIC_GEMINI_MODEL_PRO || 'gemini-2.5-pro';
+      targetModel = 'gemini-2.5-pro'; // ゴールド
     } else if (model === 'flash') {
-      targetModel = process.env.NEXT_PUBLIC_GEMINI_MODEL_FLASH || 'gemini-3.6-flash';
+      targetModel = 'gemini-3.6-flash'; // シルバー
     } else if (model === 'flash-lite' || model === 'lite') {
-      targetModel = process.env.NEXT_PUBLIC_GEMINI_MODEL_LITE || 'gemini-3.5-flash-lite';
+      targetModel = 'gemini-3.5-flash-lite'; // ブロンズ ＆ 裏側のシステム処理
     }
     
-    // ※ v1betaを使用（最新モデルはv1では弾かれるため）
+    // v1betaエンドポイントを使用
     const url = `https://generativelanguage.googleapis.com/v1beta/models/${targetModel}:generateContent?key=${GEMINI_API_KEY}`;
     
     const body = {
@@ -60,12 +60,12 @@ export const generateAIResponse = async (
   }
   
   // ----------------------------------------------------
-  // ▼ Claude APIルート（プラチナ・ダイヤ用）
+  // ▼ 2. Anthropic (Claude) APIルート（プラチナ・ダイヤ用）
   // ----------------------------------------------------
   if (model === 'claude' || model === 'opus') {
     if (!CLAUDE_API_KEY) throw new Error("Claude API エラー: APIキーが設定されていません。");
 
-    // プラチナ(claude) -> Claude Sonnet 5, ダイヤ(opus) -> Claude Opus 5
+    // プラチナ -> Claude Sonnet 5, ダイヤ -> Claude Opus 5
     const targetModel = model === 'opus' ? 'claude-5-opus' : 'claude-5-sonnet';
     const claudeHistory = normalizedHistory.map(h => ({ role: h.role === 'model' ? 'assistant' : 'user', content: h.parts[0].text }));
 
@@ -90,12 +90,16 @@ export const generateAIResponse = async (
   return "エラー：不明なモデルが選択されました。";
 };
 
+// ----------------------------------------------------
 // 単発のAI処理用関数（裏側の処理は確実に lite を使うように固定）
+// ----------------------------------------------------
 export const generateAITextWithPrompt = async (prompt: string, model: string = 'lite', maxTokens: number = 1000, temperature: number = 0.7) => {
   return generateAIResponse("あなたは優秀なアシスタントです。指示に従って出力してください。", [{ role: "user", parts: [{ text: prompt }] }], model, maxTokens, temperature);
 };
 
-// 無料の画像生成API
+// ----------------------------------------------------
+// 無料の画像生成API（フォールバック用）
+// ----------------------------------------------------
 export const generateFreeImage = async (prompt: string): Promise<string> => {
   const seed = Math.floor(Math.random() * 100000);
   const url = `https://image.pollinations.ai/prompt/${encodeURIComponent(prompt)}?nologo=true&seed=${seed}&safe=true`;
@@ -111,7 +115,7 @@ export const generateFreeImage = async (prompt: string): Promise<string> => {
 };
 
 // ----------------------------------------------------
-// 5. 情景画像の生成 👉 Nano Banana Pro (Gemini 3 Pro Image)
+// ▼ 5. 情景画像の生成 👉 Nano Banana Pro (Gemini 3 Pro Image)
 // ----------------------------------------------------
 export const generatePremiumImage = async (prompt: string): Promise<string> => {
   const NANOBANANA_API_KEY = process.env.NEXT_PUBLIC_NANOBANANA_API_KEY;
