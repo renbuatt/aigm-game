@@ -2014,17 +2014,38 @@ export default function Home() {
       }
 
       if (parsedAI.statusUpdates && Array.isArray(parsedAI.statusUpdates)) {
-        let hpSanUpdated = false;
         parsedAI.statusUpdates.forEach((upd: any) => {
-           if (upd.name && joinedCharacter && joinedCharacter.name.replace(/\s+/g, '').includes(upd.name.replace(/\s+/g, ''))) {
-             setJoinedCharacter(prev => prev ? { ...prev, hp: upd.hp, san: upd.san } : null);
+           if (upd.name && joinedCharacter) {
+             const myNameStr = joinedCharacter.name.replace(/\s+/g, '');
+             const updNameStr = upd.name.replace(/\s+/g, '');
+             if (myNameStr.includes(updNameStr) || updNameStr.includes(myNameStr) || updNameStr === 'キャラ名') {
+               setJoinedCharacter(prev => {
+                 if (!prev) return null;
+                 const parsedHp = parseInt(String(upd.hp), 10);
+                 const parsedSan = parseInt(String(upd.san), 10);
+                 return { 
+                   ...prev, 
+                   hp: !isNaN(parsedHp) ? parsedHp : prev.hp, 
+                   san: !isNaN(parsedSan) ? parsedSan : prev.san 
+                 };
+               });
+             }
            }
            setAiPlayersList(prev => {
              const newAi = [...prev];
-             const idx = newAi.findIndex(p => p.name.replace(/\s+/g, '').includes(upd.name.replace(/\s+/g, '')));
+             const idx = newAi.findIndex(p => {
+               const pName = p.name.replace(/\s+/g, '');
+               const uName = (upd.name || '').replace(/\s+/g, '');
+               return pName.includes(uName) || uName.includes(pName);
+             });
              if (idx !== -1) { 
-               newAi[idx] = { ...newAi[idx], hp: upd.hp, san: upd.san }; 
-               hpSanUpdated = true; 
+               const parsedHp = parseInt(String(upd.hp), 10);
+               const parsedSan = parseInt(String(upd.san), 10);
+               newAi[idx] = { 
+                 ...newAi[idx], 
+                 hp: !isNaN(parsedHp) ? parsedHp : newAi[idx].hp, 
+                 san: !isNaN(parsedSan) ? parsedSan : newAi[idx].san 
+               }; 
              }
              return newAi;
            });
