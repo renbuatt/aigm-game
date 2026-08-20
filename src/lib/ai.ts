@@ -29,16 +29,15 @@ export const generateAIResponse = async (
   // 1. Google (Gemini) 包括APIルート
   // ----------------------------------------------------
   if (model === 'flash' || model === 'flash-lite' || model === 'lite' || model === 'pro') {
-    // 確実に存在するモデルIDをデフォルトに設定
-    let targetModel = 'gemini-3.5-flash-lite'; 
+    // 確実に存在する安定版モデルIDをデフォルトに設定
+    let targetModel = 'gemini-flash'; 
 
     if (model === 'pro') {
-      targetModel = process.env.NEXT_PUBLIC_GEMINI_MODEL_PRO || 'gemini-3.5-pro';
+      targetModel = process.env.NEXT_PUBLIC_GEMINI_MODEL_PRO || 'gemini-pro';
     } else if (model === 'flash') {
-      targetModel = process.env.NEXT_PUBLIC_GEMINI_MODEL_FLASH || 'gemini-3.5-flash-lite';
+      targetModel = process.env.NEXT_PUBLIC_GEMINI_MODEL_FLASH || 'gemini-flash';
     } else if (model === 'flash-lite' || model === 'lite') {
-      // 8bがエラーになる環境があるため、安全なflashをフォールバックに設定
-      targetModel = process.env.NEXT_PUBLIC_GEMINI_MODEL_LITE || 'gemini-3.5-flash-lite';
+      targetModel = process.env.NEXT_PUBLIC_GEMINI_MODEL_LITE || 'gemini-flash';
     }
     
     const url = `https://generativelanguage.googleapis.com/v1beta/models/${targetModel}:generateContent?key=${GEMINI_API_KEY}`;
@@ -123,7 +122,7 @@ export const generatePremiumImage = async (prompt: string): Promise<string> => {
   const GEMINI_API_KEY = process.env.NEXT_PUBLIC_GEMINI_API_KEY;
   if (!GEMINI_API_KEY) throw new Error("Google APIキーが設定されていません。");
 
-  // 架空の nanobanana ではなく、Google公式の Imagen 3 エンドポイントを使用します
+  // Google公式の Imagen 3 エンドポイントを使用
   const url = `https://generativelanguage.googleapis.com/v1beta/models/imagen-3.0-generate-001:predict?key=${GEMINI_API_KEY}`;
   
   try {
@@ -139,7 +138,7 @@ export const generatePremiumImage = async (prompt: string): Promise<string> => {
     if (!res.ok) throw new Error(`Google Image API Error: ${await res.text()}`);
     const data = await res.json();
     
-    // Google Imagen は画像を Base64 エンコードで返す仕様です
+    // Google Imagen は画像を Base64 エンコードで返す仕様
     const base64Image = data.predictions[0].bytesBase64Encoded;
     return `data:image/jpeg;base64,${base64Image}`;
 

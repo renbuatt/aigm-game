@@ -42,7 +42,7 @@ type Props = {
   openRoomConfigModal: (scenario: any) => void;
   aiPlayersList: Character[];
   saveToArchive: (silent?: boolean) => Promise<void>;
-  kickUser: (uid: string) => Promise<void>; // ★ 追加
+  kickUser: (uid: string) => Promise<void>;
 };
 
 export default function GameView({
@@ -227,9 +227,10 @@ export default function GameView({
                 if (!c) return null;
                 const isAfk = activeRoom.afk_users?.includes(uid);
                 
-                // ★ 5分放置の検知ロジック
+                // ★ 5分放置の検知ロジック (TypeError対策済)
                 const userLastMsg = [...messages].reverse().find(m => m.charName === c.name);
-                const lastActiveTime = userLastMsg ? new Date(userLastMsg.createdAt || now).getTime() : now;
+                const msgTime = userLastMsg ? ((userLastMsg as any).createdAt || (userLastMsg as any).created_at) : null;
+                const lastActiveTime = msgTime ? new Date(msgTime).getTime() : now;
                 const isIdle = (now - lastActiveTime > fiveMinutes);
 
                 return (
