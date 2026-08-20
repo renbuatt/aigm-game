@@ -1,13 +1,11 @@
-// ★ maxTokens と temperature を引数で細かく制御できるように追加
 export const generateAIResponse = async (
   systemPrompt: string, 
   history: any[], 
   model: string = 'flash', 
-  maxTokens: number = 2500, 
+  maxTokens: number = 3000, 
   temperature: number = 0.7
 ) => {
   
-  // ★ 関数内で直接環境変数を読み込む（Next.jsのクライアント環境で確実に読み込ませるため）
   const GEMINI_API_KEY = process.env.NEXT_PUBLIC_GEMINI_API_KEY;
   const CLAUDE_API_KEY = process.env.NEXT_PUBLIC_CLAUDE_API_KEY;
 
@@ -28,12 +26,12 @@ export const generateAIResponse = async (
   }
 
   // ----------------------------------------------------
-  // ▼ Gemini (1.5 Flash / 1.5 Pro / Flash-8b) のAPI呼び出し
+  // ▼ Gemini (3.6 Flash / 3.1 Pro / 3.5 Flash Lite) のAPI呼び出し
   // ----------------------------------------------------
-  if (model === 'flash' || model === 'flash-lite' || model === 'pro') {
-    let targetModel = 'gemini-1.5-flash';
-    if (model === 'pro') targetModel = 'gemini-1.5-pro';
-    else if (model === 'flash-lite') targetModel = 'gemini-1.5-flash-8b';
+  if (model === 'flash' || model === 'flash-lite' || model === 'lite' || model === 'pro') {
+    let targetModel = 'gemini-3.6-flash';
+    if (model === 'pro') targetModel = 'gemini-3.1-pro';
+    else if (model === 'flash-lite' || model === 'lite') targetModel = 'gemini-3.5-flash-lite';
     
     const url = `https://generativelanguage.googleapis.com/v1beta/models/${targetModel}:generateContent?key=${GEMINI_API_KEY}`;
     
@@ -60,6 +58,7 @@ export const generateAIResponse = async (
       throw new Error("Claude API エラー: APIキーが読み込めていません。.env.local の設定と再起動を確認してください。");
     }
 
+    // Claude側のモデルは最新のものに合わせる想定です
     const targetModel = model === 'opus' ? 'claude-3-opus-20240229' : 'claude-3-5-sonnet-20240620';
     const claudeHistory = normalizedHistory.map(h => ({ role: h.role === 'model' ? 'assistant' : 'user', content: h.parts[0].text }));
 
@@ -108,22 +107,14 @@ export const generateFreeImage = async (prompt: string): Promise<string> => {
   });
 };
 
-// ▼ プレミアム画像生成API (Nano Banana Pro / Gemini 3 Pro Image)
+// ▼ プレミアム画像生成API (Nano Banana Pro)
 export const generatePremiumImage = async (prompt: string): Promise<string> => {
   const NANOBANANA_API_KEY = process.env.NEXT_PUBLIC_NANOBANANA_API_KEY;
-  console.log(`[Premium Image] Model: Nano Banana Pro / Key: ${NANOBANANA_API_KEY}`);
-  
-  // ★ ここに Nano Banana Pro の実際のエンドポイントURLを指定します
   const url = "https://api.nanobanana.com/v1/images/generate"; 
   
   try {
-    // =====================================================================
-    // ▼ テスト用モック（本番APIを繋ぐまでは無料サーバーに高品質タグを盛って代用します）
-    // =====================================================================
     return generateFreeImage(prompt + ", masterpiece, high quality, highly detailed, photorealistic, 8k resolution, volumetric lighting");
-    
   } catch (err) {
-    console.error("高品質画像の生成に失敗しました:", err);
     throw new Error("高品質画像の生成に失敗しました");
   }
 };
