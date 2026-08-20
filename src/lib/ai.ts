@@ -1,7 +1,7 @@
 export const generateAIResponse = async (
   systemPrompt: string, 
   history: any[], 
-  model: string = 'flash', 
+  model: string = 'lite', 
   maxTokens: number = 3000, 
   temperature: number = 0.7
 ) => {
@@ -25,19 +25,21 @@ export const generateAIResponse = async (
   }
 
   // ----------------------------------------------------
-  // ▼ Gemini APIルート（最新モデルリストに対応）
+  // ▼ Gemini APIルート（完全に最新モデルへ固定）
   // ----------------------------------------------------
   if (model === 'flash' || model === 'flash-lite' || model === 'lite' || model === 'pro') {
     let targetModel = 'gemini-3.5-flash-lite'; 
 
+    // 環境変数がなくても勝手にProにならないよう、直接リストのモデルを指定
     if (model === 'pro') {
-      targetModel = 'gemini-2.5-pro'; // ゴールド
+      targetModel = process.env.NEXT_PUBLIC_GEMINI_MODEL_PRO || 'gemini-2.5-pro';
     } else if (model === 'flash') {
-      targetModel = 'gemini-3.6-flash'; // シルバー
+      targetModel = process.env.NEXT_PUBLIC_GEMINI_MODEL_FLASH || 'gemini-3.6-flash';
     } else if (model === 'flash-lite' || model === 'lite') {
-      targetModel = 'gemini-3.5-flash-lite'; // ブロンズ ＆ 裏側処理
+      targetModel = process.env.NEXT_PUBLIC_GEMINI_MODEL_LITE || 'gemini-3.5-flash-lite';
     }
     
+    // ※ v1betaを使用（最新モデルはv1では弾かれるため）
     const url = `https://generativelanguage.googleapis.com/v1beta/models/${targetModel}:generateContent?key=${GEMINI_API_KEY}`;
     
     const body = {
@@ -52,7 +54,7 @@ export const generateAIResponse = async (
       body: JSON.stringify(body) 
     });
     
-    if (!res.ok) throw new Error(`Gemini API エラー: ${await res.text()}`);
+    if (!res.ok) throw new Error(`Google API エラー: ${await res.text()}`);
     const data = await res.json();
     return data.candidates[0].content.parts[0].text;
   }
@@ -88,7 +90,7 @@ export const generateAIResponse = async (
   return "エラー：不明なモデルが選択されました。";
 };
 
-// 単発のAI処理用関数（裏側処理は基本 Lite に固定）
+// 単発のAI処理用関数（裏側の処理は確実に lite を使うように固定）
 export const generateAITextWithPrompt = async (prompt: string, model: string = 'lite', maxTokens: number = 1000, temperature: number = 0.7) => {
   return generateAIResponse("あなたは優秀なアシスタントです。指示に従って出力してください。", [{ role: "user", parts: [{ text: prompt }] }], model, maxTokens, temperature);
 };
@@ -116,8 +118,6 @@ export const generatePremiumImage = async (prompt: string): Promise<string> => {
   const url = "https://api.nanobanana.com/v1/images/generate"; 
   
   try {
-    // ※実際のNanoBanana APIのエンドポイント仕様に合わせてください。
-    // APIキーがない場合は無料版へフォールバックします。
     if(!NANOBANANA_API_KEY) {
       return generateFreeImage(prompt + ", Nano Banana Pro Style, masterpiece, high quality");
     }
