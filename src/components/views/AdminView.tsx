@@ -20,6 +20,7 @@ type Props = {
   userSearchQuery: string;
   setUserSearchQuery: React.Dispatch<React.SetStateAction<string>>;
   toggleAdminStatus: (userId: string, currentStatus: boolean) => Promise<void>;
+  toggleTesterStatus: (userId: string, currentStatus: boolean) => Promise<void>; // ★これが欠けていた原因です
   scenarioSearchQuery: string;
   setScenarioSearchQuery: React.Dispatch<React.SetStateAction<string>>;
   setCurrentView: React.Dispatch<React.SetStateAction<ViewState>>;
@@ -34,16 +35,12 @@ export default function AdminView({
   setBanTargetUser, setBanReason,
   setBanTargetScenario, setScenarioBanReason,
   unbanScenarioFromAppeal,
-  userSearchQuery, setUserSearchQuery, toggleAdminStatus,
+  userSearchQuery, setUserSearchQuery, toggleAdminStatus, toggleTesterStatus,
   scenarioSearchQuery, setScenarioSearchQuery,
   setCurrentView, executeCreateTester
 }: Props) {
   
   const [activeTab, setActiveTab] = useState<'dashboard' | 'users' | 'scenarios' | 'reports'>('dashboard');
-  
-  // テストアカウント作成用のステート
-  const [testerEmail, setTesterEmail] = useState("");
-  const [testerPass, setTesterPass] = useState("");
 
   const pendingReports = reports.filter(r => r.status === 'pending');
   const resolvedReports = reports.filter(r => r.status === 'resolved');
@@ -58,16 +55,6 @@ export default function AdminView({
     s.title.toLowerCase().includes(scenarioSearchQuery.toLowerCase()) ||
     s.id.includes(scenarioSearchQuery)
   );
-
-  const handleCreateTester = () => {
-    if (!testerEmail || !testerPass) {
-      alert("メールアドレスとパスワードを入力してください。");
-      return;
-    }
-    executeCreateTester(testerEmail, testerPass);
-    setTesterEmail("");
-    setTesterPass("");
-  };
 
   return (
     <div className="flex flex-col h-full bg-slate-900 text-slate-100 overflow-hidden">
@@ -136,32 +123,6 @@ export default function AdminView({
                     </button>
                   </div>
                 </div>
-
-                {/* ★ テストアカウント作成（復活） */}
-                <div className="bg-slate-800 border border-indigo-700/50 p-6 rounded-xl shadow-lg md:col-span-2">
-                  <h4 className="font-bold text-lg mb-2 text-indigo-400">🧪 テスト用アカウントの発行</h4>
-                  <p className="text-xs text-slate-400 mb-4">メンテナンス中でもログイン可能なテスターアカウントを即座に発行します。（※実行すると管理者セッションが一度切れます）</p>
-                  <div className="flex flex-col sm:flex-row gap-3">
-                    <input 
-                      type="email" 
-                      value={testerEmail} 
-                      onChange={e => setTesterEmail(e.target.value)} 
-                      placeholder="tester@example.com" 
-                      className="flex-1 bg-slate-900 border border-slate-700 rounded p-3 text-sm text-white"
-                    />
-                    <input 
-                      type="text" 
-                      value={testerPass} 
-                      onChange={e => setTesterPass(e.target.value)} 
-                      placeholder="パスワード(6文字以上)" 
-                      className="flex-1 bg-slate-900 border border-slate-700 rounded p-3 text-sm text-white"
-                    />
-                    <button onClick={handleCreateTester} className="bg-indigo-600 hover:bg-indigo-500 text-white font-bold py-3 px-6 rounded shadow-lg transition-colors">
-                      発行する
-                    </button>
-                  </div>
-                </div>
-
               </div>
             </div>
           )}
@@ -202,12 +163,15 @@ export default function AdminView({
                           </div>
                         </td>
                         <td className="p-4 hidden md:table-cell">
-                          <div className="flex flex-col gap-1 items-start">
+                          <div className="flex flex-col gap-2 items-start">
                             <label className="text-[10px] flex items-center gap-1 cursor-pointer">
                               <input type="checkbox" checked={u.isAdmin} onChange={() => toggleAdminStatus(u.id, !!u.isAdmin)} className="accent-emerald-500" />
                               <span className={u.isAdmin ? "text-emerald-400 font-bold" : "text-slate-500"}>管理者権限</span>
                             </label>
-                            {u.isTester && <span className="bg-indigo-900/50 text-indigo-300 px-2 py-0.5 rounded text-[10px]">テスター</span>}
+                            <label className="text-[10px] flex items-center gap-1 cursor-pointer">
+                              <input type="checkbox" checked={u.isTester} onChange={() => toggleTesterStatus(u.id, !!u.isTester)} className="accent-indigo-500" />
+                              <span className={u.isTester ? "text-indigo-400 font-bold" : "text-slate-500"}>テスター権限</span>
+                            </label>
                           </div>
                         </td>
                         <td className="p-4 text-center">
@@ -219,7 +183,7 @@ export default function AdminView({
                         </td>
                         <td className="p-4 text-right">
                           {u.isBanned ? (
-                             <button className="bg-slate-700 hover:bg-slate-600 text-xs px-3 py-1.5 rounded font-bold shadow text-slate-300">
+                             <button onClick={() => unbanUser(u.id)} className="bg-slate-700 hover:bg-slate-600 text-xs px-3 py-1.5 rounded font-bold shadow text-slate-300">
                                解除する...
                              </button>
                           ) : (
