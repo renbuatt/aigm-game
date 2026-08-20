@@ -67,7 +67,6 @@ export default function GameView({
   
   const chatContainerRef = useRef<HTMLDivElement>(null);
 
-  // ★ 観戦人数のカウント
   const spectatorCount = activeRoom.spectator_ids ? activeRoom.spectator_ids.length : 0;
 
   useEffect(() => {
@@ -222,7 +221,6 @@ export default function GameView({
               📖 あらすじ
             </button>
             
-            {/* ★ 観戦者の人数表示を復活 */}
             <span className="text-xs text-slate-400 ml-2 flex items-center gap-1">
               👁️ 観戦者: {spectatorCount}人
             </span>
@@ -360,7 +358,9 @@ export default function GameView({
           const isAIPlayer = msg.sender === "ai_player";
           const isSystem = msg.type === "system" || msg.type === "image";
           
-          const displayText = msg.text.replace(/\[SPLIT_PROPOSAL:.*?\]/, '').replace('[SCENARIO_END]', '').trim();
+          // ★ \n を本物の改行に置換する処理
+          const displayText = msg.text.replace(/\[SPLIT_PROPOSAL:.*?\]/, '').replace('[SCENARIO_END]', '').replace(/\\n/g, '\n').trim();
+          
           if (!displayText && !isSystem && !msg.imageUrl) return null;
           
           let messageAvatar = "";

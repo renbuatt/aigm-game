@@ -29,12 +29,12 @@ export const generateAIResponse = async (
   }
 
   // ----------------------------------------------------
-  // ▼ Gemini (3.5 Flash Lite / 3.6 Flash / 3.1 Pro) のAPI呼び出し
+  // ▼ Gemini (1.5 Flash / 1.5 Pro / Flash-8b) のAPI呼び出し
   // ----------------------------------------------------
   if (model === 'flash' || model === 'flash-lite' || model === 'pro') {
-    let targetModel = 'gemini-3.6-flash';
-    if (model === 'pro') targetModel = 'gemini-3.1-pro';
-    else if (model === 'flash-lite') targetModel = 'gemini-3.5-flash-lite';
+    let targetModel = 'gemini-1.5-flash';
+    if (model === 'pro') targetModel = 'gemini-1.5-pro';
+    else if (model === 'flash-lite') targetModel = 'gemini-1.5-flash-8b';
     
     const url = `https://generativelanguage.googleapis.com/v1beta/models/${targetModel}:generateContent?key=${GEMINI_API_KEY}`;
     
@@ -107,34 +107,12 @@ export const generateFreeImage = async (prompt: string): Promise<string> => {
 
 // ▼ プレミアム画像生成API (Nano Banana Pro / Gemini 3 Pro Image)
 export const generatePremiumImage = async (prompt: string): Promise<string> => {
-  console.log(`[Premium Image] Model: Nano Banana Pro (Gemini 3 Pro Image) / Key: ${NANOBANANA_API_KEY}`);
+  console.log(`[Premium Image] Model: Nano Banana Pro / Key: ${NANOBANANA_API_KEY}`);
   
   // ★ ここに Nano Banana Pro の実際のエンドポイントURLを指定します
   const url = "https://api.nanobanana.com/v1/images/generate"; 
   
   try {
-    /* 
-    // =====================================================================
-    // ▼ 本番用：実際のAPIが用意できたらこちらのコメントアウトを外して使用してください
-    // =====================================================================
-    const res = await fetch(url, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${NANOBANANA_API_KEY}`
-      },
-      body: JSON.stringify({ 
-        prompt: prompt, 
-        model: "gemini-3-pro-image",
-        aspect_ratio: "16:9" // TRPGの情景向け
-      })
-    });
-    
-    if (!res.ok) throw new Error("Nano Banana API エラー");
-    const data = await res.json();
-    return data.imageUrl; // APIの仕様に合わせてBase64やURLを返してください
-    */
-
     // =====================================================================
     // ▼ テスト用モック（本番APIを繋ぐまでは無料サーバーに高品質タグを盛って代用します）
     // =====================================================================
