@@ -25,23 +25,17 @@ export const generateAIResponse = async (
   }
 
   // ----------------------------------------------------
-  // ▼ 1. Google (Gemini) APIルート
+  // ▼ 1. Google (Gemini) APIルート（強制固定）
   // ----------------------------------------------------
   if (model === 'flash' || model === 'flash-lite' || model === 'lite' || model === 'pro') {
+    // 古い環境変数を無視して、最新モデルをハードコーディング
     let targetModel = 'gemini-3.5-flash-lite'; 
-
-    if (model === 'pro') {
-      targetModel = 'gemini-2.5-pro';
-    } else if (model === 'flash') {
-      targetModel = 'gemini-3.6-flash';
-    } else if (model === 'flash-lite' || model === 'lite') {
-      targetModel = 'gemini-3.5-flash-lite';
-    }
+    if (model === 'pro') targetModel = 'gemini-2.5-pro';
+    else if (model === 'flash') targetModel = 'gemini-3.6-flash';
     
-    // v1betaエンドポイントを使用
+    // ★ ここが v1beta になっているのが最新版の証拠です
     const url = `https://generativelanguage.googleapis.com/v1beta/models/${targetModel}:generateContent?key=${GEMINI_API_KEY}`;
     
-    // ★ 詳細なエラー調査用ログ
     console.log(`[AI GM 実行ログ] 内部要求: ${model} -> 実際の送信先モデル: ${targetModel}`);
 
     const body = {
@@ -50,27 +44,15 @@ export const generateAIResponse = async (
       generationConfig: { temperature, maxOutputTokens: maxTokens }
     };
 
-    try {
-      const res = await fetch(url, { 
-        method: 'POST', 
-        headers: { 'Content-Type': 'application/json' }, 
-        body: JSON.stringify(body) 
-      });
-      
-      if (!res.ok) {
-        const errorText = await res.text();
-        console.error(`[AI GM 通信エラー] ターゲット: ${targetModel} | HTTPステータス: ${res.status} | エラー内容: ${errorText}`);
-        throw new Error(`送信先(${targetModel}) エラー詳細: ${errorText}`);
-      }
-      
-      const data = await res.json();
-      return data.candidates[0].content.parts[0].text;
-
-    } catch (err: any) {
-      // Fetch自体の失敗やパースエラーなどをキャッチ
-      console.error(`[AI GM 致命的エラー] ${err.message}`);
-      throw err;
-    }
+    const res = await fetch(url, { 
+      method: 'POST', 
+      headers: { 'Content-Type': 'application/json' }, 
+      body: JSON.stringify(body) 
+    });
+    
+    if (!res.ok) throw new Error(`Google API エラー: ${await res.text()}`);
+    const data = await res.json();
+    return data.candidates[0].content.parts[0].text;
   }
   
   // ----------------------------------------------------
@@ -82,42 +64,28 @@ export const generateAIResponse = async (
     const targetModel = model === 'opus' ? 'claude-5-opus' : 'claude-5-sonnet';
     const claudeHistory = normalizedHistory.map(h => ({ role: h.role === 'model' ? 'assistant' : 'user', content: h.parts[0].text }));
 
-    console.log(`[AI GM 実行ログ] 内部要求: ${model} -> 実際の送信先モデル: ${targetModel}`);
+    const res = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: {
+        'x-api-key': CLAUDE_API_KEY,
+        'anthropic-version': '2023-06-01',
+        'anthropic-dangerous-direct-browser-access': 'true', 
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        model: targetModel, max_tokens: maxTokens, system: systemPrompt, messages: claudeHistory, temperature: temperature
+      })
+    });
 
-    try {
-      const res = await fetch('https://api.anthropic.com/v1/messages', {
-        method: 'POST',
-        headers: {
-          'x-api-key': CLAUDE_API_KEY,
-          'anthropic-version': '2023-06-01',
-          'anthropic-dangerous-direct-browser-access': 'true', 
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({
-          model: targetModel, max_tokens: maxTokens, system: systemPrompt, messages: claudeHistory, temperature: temperature
-        })
-      });
-
-      if (!res.ok) {
-        const errorText = await res.text();
-        console.error(`[AI GM 通信エラー] ターゲット: ${targetModel} | HTTPステータス: ${res.status} | エラー内容: ${errorText}`);
-        throw new Error(`送信先(${targetModel}) エラー詳細: ${errorText}`);
-      }
-      const data = await res.json();
-      return data.content[0].text;
-      
-    } catch (err: any) {
-      console.error(`[AI GM 致命的エラー] ${err.message}`);
-      throw err;
-    }
+    if (!res.ok) throw new Error(`Claude API エラー: ${await res.text()}`);
+    const data = await res.json();
+    return data.content[0].text;
   }
 
   return "エラー：不明なモデルが選択されました。";
 };
 
-// ----------------------------------------------------
-// 単発処理
-// ----------------------------------------------------
+// 単発のAI処理用関数（確実に lite に固定）
 export const generateAITextWithPrompt = async (prompt: string, model: string = 'lite', maxTokens: number = 1000, temperature: number = 0.7) => {
   return generateAIResponse("あなたは優秀なアシスタントです。指示に従って出力してください。", [{ role: "user", parts: [{ text: prompt }] }], model, maxTokens, temperature);
 };
@@ -139,18 +107,13 @@ export const generateFreeImage = async (prompt: string): Promise<string> => {
 export const generatePremiumImage = async (prompt: string): Promise<string> => {
   const NANOBANANA_API_KEY = process.env.NEXT_PUBLIC_NANOBANANA_API_KEY;
   const url = "https://api.nanobanana.com/v1/images/generate"; 
-  
   try {
-    if(!NANOBANANA_API_KEY) {
-      return generateFreeImage(prompt + ", Nano Banana Pro Style, masterpiece, high quality");
-    }
-
+    if(!NANOBANANA_API_KEY) return generateFreeImage(prompt + ", Nano Banana Pro Style, masterpiece, high quality");
     const res = await fetch(url, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${NANOBANANA_API_KEY}` },
       body: JSON.stringify({ prompt: prompt + ", masterpiece, high quality, highly detailed" })
     });
-
     if (!res.ok) throw new Error(`Nano Banana API Error: ${await res.text()}`);
     const data = await res.json();
     return data.url || data.image_url; 
