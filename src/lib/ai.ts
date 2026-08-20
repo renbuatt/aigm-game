@@ -20,19 +20,18 @@ export const generateAIResponse = async (
     }
   }
 
-  // APIエラーを防ぐためのダミー発言
   if (normalizedHistory.length > 0 && normalizedHistory[normalizedHistory.length - 1].role === 'model') {
     normalizedHistory.push({ role: 'user', parts: [{ text: '（待機しています。続けてください）' }] });
   }
 
   // ----------------------------------------------------
-  // ▼ Gemini のAPI呼び出し
-  // ※古い1.5系列の指定を完全に排除し、安定した汎用ID（gemini-pro）を基本とします。
-  // （環境変数 .env.local で任意の最新モデルIDを自由に上書き設定可能です）
+  // ▼ Gemini API呼び出し（本番用 v1 エンドポイント）
   // ----------------------------------------------------
   if (model === 'flash' || model === 'flash-lite' || model === 'lite' || model === 'pro') {
-    let targetModel = 'gemini-pro'; // 確実に動くデフォルトの汎用ID
+    // 確実に動くデフォルトの汎用ID
+    let targetModel = 'gemini-pro'; 
 
+    // 本番環境（Vercel等）の環境変数で設定された値を優先
     if (model === 'pro') {
       targetModel = process.env.NEXT_PUBLIC_GEMINI_MODEL_PRO || 'gemini-pro';
     } else if (model === 'flash') {
@@ -41,7 +40,8 @@ export const generateAIResponse = async (
       targetModel = process.env.NEXT_PUBLIC_GEMINI_MODEL_LITE || 'gemini-pro';
     }
     
-    const url = `https://generativelanguage.googleapis.com/v1beta/models/${targetModel}:generateContent?key=${GEMINI_API_KEY}`;
+    // ※ v1beta ではなく v1 を使用
+    const url = `https://generativelanguage.googleapis.com/v1/models/${targetModel}:generateContent?key=${GEMINI_API_KEY}`;
     
     const body = {
       system_instruction: { parts: [{ text: systemPrompt }] },
@@ -64,12 +64,10 @@ export const generateAIResponse = async (
   }
   
   // ----------------------------------------------------
-  // ▼ Claude (Sonnet / Opus) のAPI呼び出し
+  // ▼ Claude のAPI呼び出し
   // ----------------------------------------------------
   if (model === 'claude' || model === 'opus') {
-    if (!CLAUDE_API_KEY) {
-      throw new Error("Claude API エラー: APIキーが読み込めていません。.env.local の設定と再起動を確認してください。");
-    }
+    if (!CLAUDE_API_KEY) throw new Error("Claude API エラー: APIキーが設定されていません。");
 
     const targetModel = model === 'opus' ? 'claude-3-opus-20240229' : 'claude-3-5-sonnet-20240620';
     const claudeHistory = normalizedHistory.map(h => ({ role: h.role === 'model' ? 'assistant' : 'user', content: h.parts[0].text }));
@@ -99,12 +97,11 @@ export const generateAIResponse = async (
   return "エラー：不明なモデルが選択されました。";
 };
 
-// 要約や翻訳など、単発のAI処理用関数
 export const generateAITextWithPrompt = async (prompt: string, model: string = 'flash', maxTokens: number = 1000, temperature: number = 0.7) => {
   return generateAIResponse("あなたは優秀なアシスタントです。指示に従って出力してください。", [{ role: "user", parts: [{ text: prompt }] }], model, maxTokens, temperature);
 };
 
-// ▼ 無料の画像生成API (Pollinations.ai)
+// ▼ 無料の画像生成API
 export const generateFreeImage = async (prompt: string): Promise<string> => {
   const seed = Math.floor(Math.random() * 100000);
   const url = `https://image.pollinations.ai/prompt/${encodeURIComponent(prompt)}?nologo=true&seed=${seed}&safe=true`;
@@ -119,14 +116,37 @@ export const generateFreeImage = async (prompt: string): Promise<string> => {
   });
 };
 
-// ▼ プレミアム画像生成API (Nano Banana Pro)
+// ▼ 本番用プレミアム画像生成API（モック廃止・正規のリクエスト処理）
 export const generatePremiumImage = async (prompt: string): Promise<string> => {
   const NANOBANANA_API_KEY = process.env.NEXT_PUBLIC_NANOBANANA_API_KEY;
+  if (!NANOBANANA_API_KEY) {
+    throw new Error("プレミアム画像生成のAPIキーが設定されていません。");
+  }
+
   const url = "https://api.nanobanana.com/v1/images/generate"; 
   
   try {
-    return generateFreeImage(prompt + ", masterpiece, high quality, highly detailed, photorealistic, 8k resolution, volumetric lighting");
+    const enhancedPrompt = prompt + ", masterpiece, high quality, highly detailed, photorealistic, 8k resolution, volumetric lighting";
+    
+    const res = await fetch(url, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${NANOBANANA_API_KEY}`
+      },
+      body: JSON.stringify({
+        prompt: enhancedPrompt
+        // ※APIの仕様書に合わせて width, height 等が必要な場合はここに追加してください
+      })
+    });
+
+    if (!res.ok) throw new Error(`Image API Error: ${await res.text()}`);
+    
+    const data = await res.json();
+    // 一般的な画像APIのレスポンス形式に合わせてURLを返却します
+    return data.url || data.image_url || data.image; 
   } catch (err) {
+    console.error(err);
     throw new Error("高品質画像の生成に失敗しました");
   }
 };
