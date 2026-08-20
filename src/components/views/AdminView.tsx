@@ -20,7 +20,8 @@ type Props = {
   userSearchQuery: string;
   setUserSearchQuery: React.Dispatch<React.SetStateAction<string>>;
   toggleAdminStatus: (userId: string, currentStatus: boolean) => Promise<void>;
-  toggleTesterStatus: (userId: string, currentStatus: boolean) => Promise<void>; // ★これが欠けていた原因です
+  toggleTesterStatus: (userId: string, currentStatus: boolean) => Promise<void>;
+  unbanUser: (userId: string) => Promise<void>; // ★ 追加
   scenarioSearchQuery: string;
   setScenarioSearchQuery: React.Dispatch<React.SetStateAction<string>>;
   setCurrentView: React.Dispatch<React.SetStateAction<ViewState>>;
@@ -35,7 +36,7 @@ export default function AdminView({
   setBanTargetUser, setBanReason,
   setBanTargetScenario, setScenarioBanReason,
   unbanScenarioFromAppeal,
-  userSearchQuery, setUserSearchQuery, toggleAdminStatus, toggleTesterStatus,
+  userSearchQuery, setUserSearchQuery, toggleAdminStatus, toggleTesterStatus, unbanUser, // ★ 追加
   scenarioSearchQuery, setScenarioSearchQuery,
   setCurrentView, executeCreateTester
 }: Props) {

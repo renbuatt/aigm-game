@@ -1755,6 +1755,7 @@ export default function Home() {
           setUserSearchQuery={setUserSearchQuery}
           toggleAdminStatus={toggleAdminStatus}
           toggleTesterStatus={toggleTesterStatus}
+          unbanUser={unbanUser}
           scenarioSearchQuery={scenarioSearchQuery}
           setScenarioSearchQuery={setScenarioSearchQuery}
           setCurrentView={setCurrentView}
