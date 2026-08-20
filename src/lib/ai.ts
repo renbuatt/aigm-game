@@ -28,16 +28,20 @@ export const generateAIResponse = async (
   }
 
   // ----------------------------------------------------
-  // ▼ Gemini (1.5 Flash / 1.5 Pro / Flash-8b) のAPI呼び出し
+  // ▼ Gemini (3.5 Flash Lite / 3.6 Flash / 3.1 Pro) のAPI呼び出し
   // ----------------------------------------------------
   if (model === 'flash' || model === 'flash-lite' || model === 'pro') {
     if (!GEMINI_API_KEY) {
-      throw new Error("GeminiのAPIキーが読み込めていません。.env.local の場所を確認し、サーバーを再起動してください。");
+      throw new Error("GeminiのAPIキーが読み込めていません。VercelのEnvironment Variablesに設定されているか確認してください。");
     }
 
-    let targetModel = 'gemini-1.5-flash';
-    if (model === 'pro') targetModel = 'gemini-1.5-pro';
-    else if (model === 'flash-lite') targetModel = 'gemini-1.5-flash-8b';
+    // ★ ご指定のモデル名に完全統一
+    let targetModel = 'gemini-3.6-flash';
+    if (model === 'pro') {
+      targetModel = 'gemini-3.1-pro';
+    } else if (model === 'flash-lite') {
+      targetModel = 'gemini-3.5-flash-lite';
+    }
     
     const url = `https://generativelanguage.googleapis.com/v1beta/models/${targetModel}:generateContent?key=${GEMINI_API_KEY}`;
     
@@ -57,15 +61,15 @@ export const generateAIResponse = async (
   }
   
   // ----------------------------------------------------
-  // ▼ Claude (Sonnet / Opus) のAPI呼び出し
+  // ▼ Claude (Sonnet 5 / Opus 5) のAPI呼び出し
   // ----------------------------------------------------
   if (model === 'claude' || model === 'opus') {
-    // ★キーが空っぽの場合、明確なエラーメッセージを出して止める
     if (!CLAUDE_API_KEY) {
-      throw new Error("ClaudeのAPIキーが読み込めていません。原因: ① .env.local ファイルが『srcフォルダの中』など間違った場所にありませんか？一番外側に置いてください。 ② サーバーを再起動(Ctrl+C → npm run dev)しましたか？");
+      throw new Error("ClaudeのAPIキーが読み込めていません。VercelのEnvironment Variablesに設定されているか確認してください。");
     }
 
-    const targetModel = model === 'opus' ? 'claude-3-opus-20240229' : 'claude-3-5-sonnet-20240620';
+    // ★ ご指定のモデル名に完全統一
+    const targetModel = model === 'opus' ? 'claude-5-opus' : 'claude-5-sonnet';
     const claudeHistory = normalizedHistory.map(h => ({ role: h.role === 'model' ? 'assistant' : 'user', content: h.parts[0].text }));
 
     const res = await fetch('https://api.anthropic.com/v1/messages', {
@@ -113,12 +117,36 @@ export const generateFreeImage = async (prompt: string): Promise<string> => {
   });
 };
 
-// ▼ プレミアム画像生成API
+// ▼ プレミアム画像生成API (Nano Banana Pro / Gemini 3 Pro Image)
 export const generatePremiumImage = async (prompt: string): Promise<string> => {
-  console.log(`[Premium Image] Model: Nano Banana Pro`);
+  console.log(`[Premium Image] Model: Nano Banana Pro (Gemini 3 Pro Image) / Key: ${NANOBANANA_API_KEY}`);
+  
+  const url = "https://api.nanobanana.com/v1/images/generate"; 
   
   try {
+    /* // =====================================================================
+    // ▼ 本番用：実際のAPIが用意できたらこちらのコメントアウトを外して使用してください
+    // =====================================================================
+    const res = await fetch(url, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': \`Bearer \${NANOBANANA_API_KEY}\`
+      },
+      body: JSON.stringify({ 
+        prompt: prompt, 
+        model: "gemini-3-pro-image",
+        aspect_ratio: "16:9"
+      })
+    });
+    
+    if (!res.ok) throw new Error("Nano Banana API エラー");
+    const data = await res.json();
+    return data.imageUrl;
+    */
+
     return generateFreeImage(prompt + ", masterpiece, high quality, highly detailed, photorealistic, 8k resolution, volumetric lighting");
+    
   } catch (err) {
     console.error("高品質画像の生成に失敗しました:", err);
     throw new Error("高品質画像の生成に失敗しました");
