@@ -1,8 +1,4 @@
-// 環境変数からAPIキーを取得（Next.jsの仕様により必ずファイルの先頭で定義）
-const GEMINI_API_KEY = process.env.NEXT_PUBLIC_GEMINI_API_KEY || "";
-const CLAUDE_API_KEY = process.env.NEXT_PUBLIC_CLAUDE_API_KEY || "";
-const NANOBANANA_API_KEY = process.env.NEXT_PUBLIC_NANOBANANA_API_KEY || "";
-
+// ★ maxTokens と temperature を引数で細かく制御できるように追加
 export const generateAIResponse = async (
   systemPrompt: string, 
   history: any[], 
@@ -11,6 +7,10 @@ export const generateAIResponse = async (
   temperature: number = 0.7
 ) => {
   
+  // ★ 関数内で直接環境変数を読み込む（Next.jsのクライアント環境で確実に読み込ませるため）
+  const GEMINI_API_KEY = process.env.NEXT_PUBLIC_GEMINI_API_KEY;
+  const CLAUDE_API_KEY = process.env.NEXT_PUBLIC_CLAUDE_API_KEY;
+
   const normalizedHistory: any[] = [];
   for (const msg of history) {
     const role = (msg.role === 'assistant' || msg.role === 'model') ? 'model' : 'user';
@@ -28,20 +28,12 @@ export const generateAIResponse = async (
   }
 
   // ----------------------------------------------------
-  // ▼ Gemini (3.5 Flash Lite / 3.6 Flash / 3.1 Pro) のAPI呼び出し
+  // ▼ Gemini (1.5 Flash / 1.5 Pro / Flash-8b) のAPI呼び出し
   // ----------------------------------------------------
   if (model === 'flash' || model === 'flash-lite' || model === 'pro') {
-    if (!GEMINI_API_KEY) {
-      throw new Error("GeminiのAPIキーが読み込めていません。VercelのEnvironment Variablesに設定されているか確認してください。");
-    }
-
-    // ★ ご指定のモデル名に完全統一
-    let targetModel = 'gemini-3.6-flash';
-    if (model === 'pro') {
-      targetModel = 'gemini-3.1-pro';
-    } else if (model === 'flash-lite') {
-      targetModel = 'gemini-3.5-flash-lite';
-    }
+    let targetModel = 'gemini-1.5-flash';
+    if (model === 'pro') targetModel = 'gemini-1.5-pro';
+    else if (model === 'flash-lite') targetModel = 'gemini-1.5-flash-8b';
     
     const url = `https://generativelanguage.googleapis.com/v1beta/models/${targetModel}:generateContent?key=${GEMINI_API_KEY}`;
     
@@ -61,15 +53,14 @@ export const generateAIResponse = async (
   }
   
   // ----------------------------------------------------
-  // ▼ Claude (Sonnet 5 / Opus 5) のAPI呼び出し
+  // ▼ Claude (Sonnet / Opus) のAPI呼び出し
   // ----------------------------------------------------
   if (model === 'claude' || model === 'opus') {
     if (!CLAUDE_API_KEY) {
-      throw new Error("ClaudeのAPIキーが読み込めていません。VercelのEnvironment Variablesに設定されているか確認してください。");
+      throw new Error("Claude API エラー: APIキーが読み込めていません。.env.local の設定と再起動を確認してください。");
     }
 
-    // ★ ご指定のモデル名に完全統一
-    const targetModel = model === 'opus' ? 'claude-5-opus' : 'claude-5-sonnet';
+    const targetModel = model === 'opus' ? 'claude-3-opus-20240229' : 'claude-3-5-sonnet-20240620';
     const claudeHistory = normalizedHistory.map(h => ({ role: h.role === 'model' ? 'assistant' : 'user', content: h.parts[0].text }));
 
     const res = await fetch('https://api.anthropic.com/v1/messages', {
@@ -119,32 +110,16 @@ export const generateFreeImage = async (prompt: string): Promise<string> => {
 
 // ▼ プレミアム画像生成API (Nano Banana Pro / Gemini 3 Pro Image)
 export const generatePremiumImage = async (prompt: string): Promise<string> => {
-  console.log(`[Premium Image] Model: Nano Banana Pro (Gemini 3 Pro Image) / Key: ${NANOBANANA_API_KEY}`);
+  const NANOBANANA_API_KEY = process.env.NEXT_PUBLIC_NANOBANANA_API_KEY;
+  console.log(`[Premium Image] Model: Nano Banana Pro / Key: ${NANOBANANA_API_KEY}`);
   
+  // ★ ここに Nano Banana Pro の実際のエンドポイントURLを指定します
   const url = "https://api.nanobanana.com/v1/images/generate"; 
   
   try {
-    /* // =====================================================================
-    // ▼ 本番用：実際のAPIが用意できたらこちらのコメントアウトを外して使用してください
     // =====================================================================
-    const res = await fetch(url, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': \`Bearer \${NANOBANANA_API_KEY}\`
-      },
-      body: JSON.stringify({ 
-        prompt: prompt, 
-        model: "gemini-3-pro-image",
-        aspect_ratio: "16:9"
-      })
-    });
-    
-    if (!res.ok) throw new Error("Nano Banana API エラー");
-    const data = await res.json();
-    return data.imageUrl;
-    */
-
+    // ▼ テスト用モック（本番APIを繋ぐまでは無料サーバーに高品質タグを盛って代用します）
+    // =====================================================================
     return generateFreeImage(prompt + ", masterpiece, high quality, highly detailed, photorealistic, 8k resolution, volumetric lighting");
     
   } catch (err) {
