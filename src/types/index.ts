@@ -17,7 +17,7 @@ export type UserProfile = {
   isAdmin: boolean;
   isTester: boolean;
   isBanned: boolean;
-  isSuspended?: boolean; // ★ 追加：一時BAN（参加制限）フラグ
+  isSuspended?: boolean; // ★追加：一時BANフラグ
   email: string;
   friendIds?: string[];
   blockedUserIds?: string[];
