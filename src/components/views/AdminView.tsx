@@ -29,7 +29,7 @@ type Props = {
   setCurrentView: (view: any) => void;
   executeCreateTester: (email: string, pass: string) => void;
   openUserActionModal: (user: UserProfile) => void;
-  grantPointsToAll: (amount: number) => Promise<void>; // ★ 追加：全員にポイント付与
+  grantPointsToAll: (amount: number) => Promise<void>;
 };
 
 export default function AdminView({
@@ -103,7 +103,6 @@ export default function AdminView({
                 </div>
               </div>
 
-              {/* ★ 追加：全員にポイントを付与するUI */}
               <div className="bg-slate-900 p-4 rounded border border-yellow-700/50">
                 <h3 className="font-bold text-yellow-400 mb-1">💰 全員にポイントを配布（お詫び等）</h3>
                 <p className="text-[10px] text-slate-400 mb-3">※登録されている全ユーザーに対して一律でポイントを加算します。</p>
