@@ -2,6 +2,7 @@ import React, { useState } from "react";
 import { UserProfile, Scenario, Report } from "../../types";
 
 const DEFAULT_AVATAR = "https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&w=150&q=80";
+const NO_IMAGE_SCENARIO = "https://images.unsplash.com/photo-1614729939124-03290b5609ce?auto=format&fit=crop&w=400&q=80"; // ★この1行を追加しました
 
 type Props = {
   isMaintenance: boolean;
