@@ -66,11 +66,6 @@ export default function Home() {
   const [myNotifications, setMyNotifications] = useState<Notification[]>([]);
   const [showMailbox, setShowMailbox] = useState(false);
 
-  const [adminActionUser, setAdminActionUser] = useState<UserProfile | null>(null);
-  const [adminTicketType, setAdminTicketType] = useState("silver");
-  const [adminTicketAmount, setAdminTicketAmount] = useState(1);
-  const [adminMailBody, setAdminMailBody] = useState("");
-
   const [banTargetUser, setBanTargetUser] = useState<UserProfile | null>(null);
   const [banReason, setBanReason] = useState("");
   const [banAppeals, setBanAppeals] = useState<BanAppeal[]>([]);
@@ -130,7 +125,7 @@ export default function Home() {
   const isScenarioEnded = messages.some((m: any) => m.text.includes('[SCENARIO_END]')) || activeRoom?.status === 'finished';
 
   const handleOpenRoomConfig = (scenario: Scenario) => {
-    setRoomConfigModal({ scenario, charId: "", privacy: "open", message: "", difficulty: "normal", rule: "coc_jp", itemVisibility: "all", aiModel: "lite" });
+    setRoomConfigModal({ scenario, charId: "", privacy: "open", message: "", difficulty: "normal", rule: "coc_jp", itemVisibility: "none", aiModel: "lite" });
     setCurrentView("lobby");
   };
 
@@ -298,7 +293,9 @@ export default function Home() {
     setAdViewInfo({ count: vCount, date: vDate });
 
     const profileData: UserProfile = { 
-      id: data.id, handleName: data.handle_name, fullName: data.full_name, address: data.address, phone: data.phone, avatarUrl: data.avatar_url, bio: data.bio, discordId: data.discord_id, ratingSum: data.rating_sum || 0, ratingCount: data.rating_count || 0, isAdmin: data.is_admin || false, isTester: data.is_tester || false, isBanned: data.is_banned || false, email: data.email, friendIds: data.friend_ids || [], blockedUserIds: data.blocked_user_ids || [],
+      id: data.id, handleName: data.handle_name, fullName: data.full_name, address: data.address, phone: data.phone, avatarUrl: data.avatar_url, bio: data.bio, discordId: data.discord_id, ratingSum: data.rating_sum || 0, ratingCount: data.rating_count || 0, isAdmin: data.is_admin || false, isTester: data.is_tester || false, isBanned: data.is_banned || false, 
+      isSuspended: data.is_suspended || false, // ★ 一時BAN情報の読み込み
+      email: data.email, friendIds: data.friend_ids || [], blockedUserIds: data.blocked_user_ids || [],
       points: data.points || 0, ticketsNormal: data.tickets_normal || 0, ticketsBronze: data.tickets_bronze || 0, ticketsSilver: data.tickets_silver || 0, ticketsGold: data.tickets_gold || 0, ticketsPlatinum: data.tickets_platinum || 0, ticketsDiamond: data.tickets_diamond || 0, ticketsItem: data.tickets_item || 0, imageGenCredits: data.image_gen_credits || 0
     };
     if (data.email !== emailStr) await supabase.from('profiles').update({ email: emailStr }).eq('id', userId);
@@ -513,7 +510,13 @@ export default function Home() {
 
   const fetchAdminData = async () => {
     const { data: usersData } = await supabase.from('profiles').select('*').order('created_at', { ascending: false });
-    if (usersData) setAllUsers(usersData.map((d: any) => ({ id: d.id, handleName: d.handle_name, avatarUrl: d.avatar_url, bio: d.bio, discordId: d.discord_id, ratingSum: d.rating_sum || 0, ratingCount: d.rating_count || 0, isAdmin: d.is_admin || false, isTester: d.is_tester || false, isBanned: d.is_banned || false, email: d.email, points: d.points })));
+    // ★ 管理画面用データ取得時に is_suspended を追加
+    if (usersData) setAllUsers(usersData.map((d: any) => ({ 
+      id: d.id, handleName: d.handle_name, avatarUrl: d.avatar_url, bio: d.bio, discordId: d.discord_id, 
+      ratingSum: d.rating_sum || 0, ratingCount: d.rating_count || 0, isAdmin: d.is_admin || false, 
+      isTester: d.is_tester || false, isBanned: d.is_banned || false, isSuspended: d.is_suspended || false, 
+      email: d.email, points: d.points 
+    })));
     const { data: appealsData } = await supabase.from('ban_appeals').select('*').order('created_at', { ascending: false });
     if (appealsData) setBanAppeals(appealsData.map((d: any) => ({ id: d.id, userId: d.user_id, reason: d.reason, appealText: d.appeal_text, status: d.status, createdAt: d.created_at })));
     const { data: reportsData } = await supabase.from('reports').select('*').order('created_at', { ascending: false });
@@ -573,26 +576,8 @@ export default function Home() {
   };
 
   const resolveReport = async (reportId: string) => { await supabase.from('reports').update({ status: 'resolved' }).eq('id', reportId); fetchAdminData(); };
-  const submitAppeal = async () => { if(!currentUser || !appealText) return; await supabase.from('ban_appeals').insert({ user_id: currentUser.id, reason: "不明", appeal_text: appealText, status: 'appealing' }); alert("調査依頼を送信しました。"); setAppealText(""); };
   const markNotificationAsRead = async (notifId: string) => { await supabase.from('notifications').update({ is_read: true }).eq('id', notifId); setMyNotifications(myNotifications.map((n: any) => n.id === notifId ? { ...n, isRead: true } : n)); };
   
-  const grantTickets = async () => {
-    if (!adminActionUser || !adminTicketAmount) return;
-    const { data } = await supabase.from('profiles').select('*').eq('id', adminActionUser.id).single();
-    if (!data) return;
-    let key = 'tickets_silver';
-    if (adminTicketType === 'bronze') key = 'tickets_bronze';
-    if (adminTicketType === 'gold') key = 'tickets_gold';
-    if (adminTicketType === 'platinum') key = 'tickets_platinum';
-    if (adminTicketType === 'diamond') key = 'tickets_diamond';
-    if (adminTicketType === 'item') key = 'tickets_item';
-    const currentVal = data[key] || 0;
-    const { error } = await supabase.from('profiles').update({ [key]: currentVal + Number(adminTicketAmount) }).eq('id', adminActionUser.id);
-    if (error) { alert("付与失敗: " + error.message); return; }
-    await supabase.from('notifications').insert({ user_id: adminActionUser.id, title: '🎁 チケット付与のお知らせ', message: `運営よりチケットが配布されました。\n・${adminTicketType}チケット × ${adminTicketAmount}枚` });
-    alert("チケットを付与しました！"); setAdminActionUser(null);
-  };
-
   const grantPointsToAll = async (amount: number) => {
     if (!confirm(`全ユーザーに一律 ${amount} ptを付与しますか？`)) return;
     setIsLoading(true);
@@ -604,13 +589,6 @@ export default function Home() {
     alert(`${successCount}人のユーザーに ${amount} ptを付与しました！`);
     await fetchAdminData();
     setIsLoading(false);
-  };
-
-  const sendMail = async () => {
-    if (!adminActionUser || !adminMailBody.trim()) return;
-    const { error } = await supabase.from('notifications').insert({ user_id: adminActionUser.id, title: '✉️ 運営からのお知らせ', message: adminMailBody });
-    if (error) alert("送信失敗: " + error.message);
-    else { alert("メールを送信しました！"); setAdminMailBody(""); setAdminActionUser(null); }
   };
 
   const exchangeTicketWithPoints = async (type: 'bronze'|'item'|'silver'|'gold'|'platinum'|'diamond', cost: number) => {
@@ -845,6 +823,12 @@ export default function Home() {
 
   const executeJoinRoom = async (room: Room, charId: string) => {
     if (!currentUser || !room || !charId) return;
+
+    // ★ 追加：一時BANユーザーの入室ブロック
+    if (currentUser.isSuspended) {
+      alert("【一時参加制限】\nあなたのアカウントは現在セッションへの参加が制限されています。\n※ロビーの閲覧やチャットログの確認は可能です。");
+      return;
+    }
 
     const isAuthor = room.scenario?.authorId === currentUser.id;
     if (isTicketSystemEnabled && !isAuthor && !room.is_trial) {
@@ -1561,8 +1545,9 @@ export default function Home() {
         <EvaluationView activeRoom={activeRoom} messages={messages} ratingScenario={ratingScenario} setRatingScenario={setRatingScenario} ratingGM={ratingGM} setRatingGM={setRatingGM} submitEvaluation={submitEvaluation} exportToPDF={exportToPDF} isExporting={isExporting} saveToArchive={saveToArchive} currentUser={currentUser} addFriend={addFriend} openUserProfile={openUserProfile} openRoomConfigModal={handleOpenRoomConfig} />
       )}
 
+      {/* ★ 動画広告モーダルのz-indexを100に変更して最前面へ */}
       {adModal.isOpen && (
-        <div className="fixed inset-0 bg-black/90 z-[80] flex items-center justify-center p-4">
+        <div className="fixed inset-0 bg-black/90 z-[100] flex items-center justify-center p-4">
           <div className="bg-slate-800 border border-pink-500/50 rounded-xl p-8 w-full max-w-sm shadow-2xl text-center space-y-6">
             <h3 className="text-xl font-bold text-pink-400">📺 広告を視聴して{adModal.type === 'trial' ? "プレイ" : adModal.type === 'points' ? "ポイント獲得" : "観戦"}</h3>
             <div className="h-32 bg-slate-900 border border-slate-700 flex items-center justify-center rounded">
@@ -1579,7 +1564,7 @@ export default function Home() {
       )}
 
       {novelSettingsModal && (
-        <div className="fixed inset-0 bg-black/80 z-[80] flex items-center justify-center p-4">
+        <div className="fixed inset-0 bg-black/80 z-[90] flex items-center justify-center p-4">
           <div className="bg-slate-800 border border-emerald-700/50 rounded-xl p-6 w-full max-w-md shadow-2xl">
             <h3 className="text-xl font-bold text-emerald-400 mb-4">📖 小説の執筆設定</h3>
             <div className="space-y-4 mb-6">
@@ -1611,7 +1596,7 @@ export default function Home() {
       )}
 
       {showTicketModal && (
-        <div className="fixed inset-0 bg-black/80 z-[80] flex items-center justify-center p-4">
+        <div className="fixed inset-0 bg-black/80 z-[90] flex items-center justify-center p-4">
           <div className="bg-slate-800 border border-slate-700 rounded-xl p-6 w-full max-w-4xl shadow-2xl">
             <div className="flex justify-between items-center mb-4 border-b border-slate-700 pb-3">
               <h3 className="text-xl font-bold text-emerald-400">🎟️ チケット購入・交換ストア</h3>
@@ -1747,6 +1732,24 @@ export default function Home() {
                </div>
                
             </div>
+          </div>
+        </div>
+      )}
+
+      {roomConfigModal && (
+        <div className="fixed inset-0 bg-black/80 z-[95] flex items-center justify-center p-4">
+          <div className="bg-slate-800 border border-emerald-700/50 rounded-xl p-6 w-full max-w-lg shadow-2xl">
+            <h3 className="text-xl font-bold text-emerald-400 mb-4">🚪 部屋の作成: {roomConfigModal.scenario?.title}</h3>
+            <div className="space-y-4 mb-6">
+              <div><label className="text-xs text-slate-400 block mb-1">使用するキャラクター <span className="text-red-400">*</span></label><select value={roomConfigModal.charId || ""} onChange={(e) => setRoomConfigModal({...roomConfigModal, charId: e.target.value})} className="w-full bg-slate-900 border border-slate-700 rounded p-2 text-sm text-white"><option value="" disabled>選択してください</option>{roomConfigModal.scenario?.presetCharacters?.map((c: any) => <option key={c.id} value={c.id}>{c.name} ({c.job})</option>)}</select></div>
+              <div><label className="text-xs text-slate-400 block mb-1">AIモデル (GM) {isTicketSystemEnabled && <span className="text-amber-400 text-[10px]">※チケット消費</span>}</label><select value={roomConfigModal.aiModel || "lite"} onChange={(e) => setRoomConfigModal({...roomConfigModal, aiModel: e.target.value})} className="w-full bg-slate-900 border border-slate-700 rounded p-2 text-sm text-white"><option value="lite">🟤 ブロンズ (Flash Lite) {isTicketSystemEnabled ? "(1枚消費)" : "(無料)"}</option><option value="flash">⚪ シルバー (Gemini Flash) {isTicketSystemEnabled ? "(1枚消費)" : "(無料)"}</option><option value="pro">🟡 ゴールド (Gemini Pro) {isTicketSystemEnabled ? "(1枚消費)" : "(無料)"}</option><option value="claude">🟣 プラチナ (Claude Sonnet) {isTicketSystemEnabled ? "(1枚消費)" : "(無料)"}</option><option value="opus">💎 ダイヤモンド (Claude Opus) {isTicketSystemEnabled ? "(1枚消費)" : "(無料)"}</option></select></div>
+              <div><label className="text-xs text-slate-400 block mb-1">ゲームルール（システム）</label><select value={roomConfigModal.rule || "coc_jp"} onChange={(e) => setRoomConfigModal({...roomConfigModal, rule: e.target.value})} className="w-full bg-slate-900 border border-slate-700 rounded p-2 text-sm text-white"><option value="coc_jp">🟩 日本クトゥルフ風（ドラマ・探索重視 / 1d100）</option><option value="coc_en">🟦 海外クトゥルフ風（シビア・ホラー / 1d100）</option><option value="dnd">🟥 D&D風（ヒロイック・ファンタジー / 1d20）</option><option value="sw25">🟨 ソードワールド風（明るい冒険 / 2d6）</option><option value="storytelling">🟪 ストーリーテリング（文学的・演出重視 / 1d6）</option></select></div>
+              <div><label className="text-xs text-slate-400 block mb-1">難易度</label><select value={roomConfigModal.difficulty || "normal"} onChange={(e) => setRoomConfigModal({...roomConfigModal, difficulty: e.target.value})} className="w-full bg-slate-900 border border-slate-700 rounded p-2 text-sm text-white"><option value="beginner">⬜ 初心者（接待GM / 手取り足取り30分限定）</option><option value="easy">🟩 簡単（やさしいGM / 判定が通りやすい）</option><option value="normal">🟦 普通（標準GM / 一般的なバランス）</option><option value="hard">🟧 難しい（厳しめGM / ヒント少なめ）</option><option value="pro">🟥 プロ（本格派GM / ロストの危険あり）</option><option value="oni">🟪 鬼（容赦ないGM / 死ぬ覚悟で挑むモード）</option></select></div>
+              <div><label className="text-xs text-slate-400 block mb-1">公開設定</label><div className="flex gap-4"><label className="flex items-center gap-2 text-sm"><input type="radio" checked={roomConfigModal.privacy === 'open'} onChange={() => setRoomConfigModal({...roomConfigModal, privacy: 'open'})} /> 🔓 オープン（誰でも観戦可能）</label><label className="flex items-center gap-2 text-sm"><input type="radio" checked={roomConfigModal.privacy === 'secret'} onChange={() => setRoomConfigModal({...roomConfigModal, privacy: 'secret'})} /> 🔒 シークレット（IDを知る人のみ）</label></div></div>
+              <div><label className="text-xs text-slate-400 block mb-1">アイテム表示機能</label><select value={roomConfigModal.itemVisibility || "none"} onChange={(e) => setRoomConfigModal({...roomConfigModal, itemVisibility: e.target.value})} className="w-full bg-slate-900 border border-slate-700 rounded p-2 text-sm text-white"><option value="none">非表示</option><option value="self">自分の所持品のみ表示</option><option value="all">パーティー全員の所持品を表示</option></select></div>
+              <div><label className="text-xs text-slate-400 block mb-1 mt-2">ひとことメッセージ</label><input type="text" value={roomConfigModal.message || ""} onChange={(e) => setRoomConfigModal({...roomConfigModal, message: e.target.value})} placeholder="例：初心者歓迎！ゆっくり遊びましょう" className="w-full bg-slate-900 border border-slate-700 rounded p-2 text-sm text-white" /></div>
+            </div>
+            <div className="flex gap-4"><button onClick={() => setRoomConfigModal(null)} className="flex-1 bg-slate-700 hover:bg-slate-600 py-3 rounded text-sm font-bold">キャンセル</button><button onClick={executeCreateRoom} disabled={!roomConfigModal.charId} className="flex-1 bg-emerald-600 hover:bg-emerald-500 disabled:bg-slate-600 py-3 rounded text-sm font-bold shadow-lg shadow-emerald-900/50">作成して入室</button></div>
           </div>
         </div>
       )}
