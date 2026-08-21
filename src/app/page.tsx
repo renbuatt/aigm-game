@@ -171,6 +171,25 @@ export default function Home() {
     else setCurrentUser({ ...currentUser, ...updates });
   };
 
+  // ★ 追加：アバター画像のアップロード
+  const uploadAvatar = async (file: File) => {
+    if (!currentUser) return;
+    setIsLoading(true);
+    try {
+      const fileExt = file.name.split('.').pop();
+      const fileName = `${currentUser.id}_${Date.now()}.${fileExt}`;
+      const { error } = await supabase.storage.from('avatars').upload(fileName, file);
+      if (error) throw error;
+      const { data } = supabase.storage.from('avatars').getPublicUrl(fileName);
+      await updateProfile({ avatarUrl: data.publicUrl });
+      alert("アイコン画像を更新しました！");
+    } catch (e: any) {
+      alert("アップロード失敗: " + e.message + "\n※Supabaseに 'avatars' というPublicバケットが作成されているか確認してください。");
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
   const loadChatLogs = async (roomId: string) => {
     const { data } = await supabase.from('chat_logs').select('message').eq('room_id', roomId).order('id', { ascending: true });
     if (data && data.length > 0) setMessages(data.map((d: any) => d.message));
@@ -259,7 +278,7 @@ export default function Home() {
         is_paused: r.is_paused || false, afk_users: r.afk_users || [], is_trial: r.is_trial || false,
         item_visibility: r.item_visibility || "none", inventories: r.inventories || {},
         current_chapter_index: r.current_chapter_index || 0, spectator_ids: r.spectator_ids || [], ai_model: r.ai_model || 'flash',
-        error_refunded: r.error_refunded || false
+        error_refunded: r.error_refunded || false, free_image_count: r.free_image_count || 0, is_lost: r.is_lost || false, lost_turn_count: r.lost_turn_count || 0
       })).filter((r: any) => r.scenario) as Room[];
       setRooms(formattedRooms);
     }
@@ -497,7 +516,7 @@ export default function Home() {
 
   const fetchAdminData = async () => {
     const { data: usersData } = await supabase.from('profiles').select('*').order('created_at', { ascending: false });
-    if (usersData) setAllUsers(usersData.map((d: any) => ({ id: d.id, handleName: d.handle_name, avatarUrl: d.avatar_url, bio: d.bio, discordId: d.discord_id, ratingSum: d.rating_sum || 0, ratingCount: d.rating_count || 0, isAdmin: d.is_admin || false, isTester: d.is_tester || false, isBanned: d.is_banned || false, email: d.email })));
+    if (usersData) setAllUsers(usersData.map((d: any) => ({ id: d.id, handleName: d.handle_name, avatarUrl: d.avatar_url, bio: d.bio, discordId: d.discord_id, ratingSum: d.rating_sum || 0, ratingCount: d.rating_count || 0, isAdmin: d.is_admin || false, isTester: d.is_tester || false, isBanned: d.is_banned || false, email: d.email, points: d.points })));
     const { data: appealsData } = await supabase.from('ban_appeals').select('*').order('created_at', { ascending: false });
     if (appealsData) setBanAppeals(appealsData.map((d: any) => ({ id: d.id, userId: d.user_id, reason: d.reason, appealText: d.appeal_text, status: d.status, createdAt: d.created_at })));
     const { data: reportsData } = await supabase.from('reports').select('*').order('created_at', { ascending: false });
@@ -577,6 +596,20 @@ export default function Home() {
     alert("チケットを付与しました！"); setAdminActionUser(null);
   };
 
+  // ★ 追加：全員にポイントを付与するロジック
+  const grantPointsToAll = async (amount: number) => {
+    if (!confirm(`全ユーザーに一律 ${amount} ptを付与しますか？`)) return;
+    setIsLoading(true);
+    let successCount = 0;
+    for (const user of allUsers) {
+      const { error } = await supabase.from('profiles').update({ points: (user.points || 0) + amount }).eq('id', user.id);
+      if (!error) successCount++;
+    }
+    alert(`${successCount}人のユーザーに ${amount} ptを付与しました！`);
+    await fetchAdminData();
+    setIsLoading(false);
+  };
+
   const sendMail = async () => {
     if (!adminActionUser || !adminMailBody.trim()) return;
     const { error } = await supabase.from('notifications').insert({ user_id: adminActionUser.id, title: '✉️ 運営からのお知らせ', message: adminMailBody });
@@ -612,15 +645,44 @@ export default function Home() {
     alert("チケットを交換しました！");
   };
 
+  // ★ 追加・復活：シナリオ・キャラクター画像の自動生成
+  const generatePackageImage = async (baseText: string, type: 'scenario' | 'character') => {
+    setIsLoading(true);
+    try {
+      const autoPromptReq = type === 'scenario' 
+        ? `以下のシナリオプロットから、パッケージとなる情景を1文の日本語で抽出してください。\n\n${baseText}`
+        : `以下のキャラクター設定から、その人物の容姿（バストアップ）を1文の日本語で描写してください。\n\n${baseText}`;
+      const targetPrompt = await generateAITextWithPrompt(autoPromptReq, 'lite', 200, 0.7);
+      const translationPrompt = `以下の日本語を画像生成AI用のカンマ区切りの英語プロンプトに変換してください。最後に「SFW, masterpiece, high quality${type === 'character' ? ', 1girl or 1boy, solo, upper body' : ''}」を含めること。\n\n描写：${targetPrompt}`;
+      let englishPrompt = "";
+      try { englishPrompt = await generateAITextWithPrompt(translationPrompt, 'lite', 200, 0.3); } catch (err) { englishPrompt = `${targetPrompt}, SFW, masterpiece, high quality`; }
+      const base64data = await generateFreeImage(englishPrompt);
+      return base64data;
+    } catch (err: any) {
+      alert("画像生成に失敗しました。"); return null;
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
   const generateSceneImage = async (imageType: 'free' | 'premium') => {
     if (!activeRoom || !myScene || !currentUser || isRequestingRef.current) return;
     isRequestingRef.current = true; setIsLoading(true);
     try {
+      if (imageType === 'free') {
+        if ((activeRoom.free_image_count || 0) >= 3) {
+          alert("無料の情景生成は1セッションにつき3回までです。\nこれ以上はアイテムチケットをご利用ください。");
+          isRequestingRef.current = false; setIsLoading(false); return;
+        }
+        const newCount = (activeRoom.free_image_count || 0) + 1;
+        await supabase.from('rooms').update({ free_image_count: newCount }).eq('id', activeRoom.id);
+        setActiveRoom(prev => prev ? { ...prev, free_image_count: newCount } : null);
+      }
       if (imageType === 'premium') {
         if (isTicketSystemEnabled) {
-          if ((currentUser.imageGenCredits || 0) < 1) { alert("画像生成の回数がありません。「チャージ」ボタンから補充してください。"); isRequestingRef.current = false; setIsLoading(false); return; }
-          const { error } = await supabase.from('profiles').update({ image_gen_credits: (currentUser.imageGenCredits || 0) - 1 }).eq('id', currentUser.id);
-          if (!error) setCurrentUser(prev => prev ? { ...prev, imageGenCredits: (prev.imageGenCredits || 0) - 1 } : null);
+          if ((currentUser.ticketsItem || 0) < 1) { alert("アイテムチケットがありません。「購入ストア」から補充してください。"); isRequestingRef.current = false; setIsLoading(false); return; }
+          const { error } = await supabase.from('profiles').update({ tickets_item: (currentUser.ticketsItem || 0) - 1 }).eq('id', currentUser.id);
+          if (!error) setCurrentUser(prev => prev ? { ...prev, ticketsItem: (prev.ticketsItem || 0) - 1 } : null);
         }
       }
       const { data: memoryData } = await supabase.from('ai_memory').select('*').eq('room_id', activeRoom.id).order('created_at', { ascending: false }).limit(10);
@@ -739,7 +801,7 @@ export default function Home() {
     scenario.presetCharacters.forEach((c: any) => { initialInventories[c.id] = c.items || "特になし"; });
 
     const { data, error } = await supabase.from('rooms').insert({ 
-      scenario_id: scenario.id, host_name: currentUser.handleName, host_id: currentUser.id, status: "recruiting", scenes: initialScenes, privacy: privacy, host_message: message, joined_users: { [currentUser.id]: charId }, current_summary: "", difficulty: difficulty, rule: rule, is_paused: false, afk_users: [], is_trial: false, item_visibility: itemVisibility, inventories: initialInventories, current_chapter_index: 0, ai_model: aiModel, error_refunded: false
+      scenario_id: scenario.id, host_name: currentUser.handleName, host_id: currentUser.id, status: "recruiting", scenes: initialScenes, privacy: privacy, host_message: message, joined_users: { [currentUser.id]: charId }, current_summary: "", difficulty: difficulty, rule: rule, is_paused: false, afk_users: [], is_trial: false, item_visibility: itemVisibility, inventories: initialInventories, current_chapter_index: 0, ai_model: aiModel, error_refunded: false, free_image_count: 0, is_lost: false, lost_turn_count: 0
     }).select().single();
     
     if (error) { alert("データベースエラーが発生しました: " + error.message); return; }
@@ -747,7 +809,7 @@ export default function Home() {
       const currentSc = scenarios.find((s: any) => s.id === scenario.id);
       if (currentSc) await supabase.from('scenarios').update({ play_count: (currentSc.playCount || 0) + 1 }).eq('id', scenario.id);
       setRoomConfigModal(null); await fetchData();
-      const newRoom: Room = { id: data.id, scenario_id: data.scenario_id, scenario: scenario, host_name: data.host_name, host_id: data.host_id, status: data.status, scenes: data.scenes, privacy: data.privacy, host_message: data.host_message, joined_users: data.joined_users, current_summary: "", difficulty: data.difficulty, rule: data.rule, is_paused: false, afk_users: [], is_trial: false, item_visibility: data.item_visibility, inventories: data.inventories, current_chapter_index: 0, ai_model: data.ai_model, error_refunded: false };
+      const newRoom: Room = { id: data.id, scenario_id: data.scenario_id, scenario: scenario, host_name: data.host_name, host_id: data.host_id, status: data.status, scenes: data.scenes, privacy: data.privacy, host_message: data.host_message, joined_users: data.joined_users, current_summary: "", difficulty: data.difficulty, rule: data.rule, is_paused: false, afk_users: [], is_trial: false, item_visibility: data.item_visibility, inventories: data.inventories, current_chapter_index: 0, ai_model: data.ai_model, error_refunded: false, free_image_count: 0, is_lost: false, lost_turn_count: 0 };
       await supabase.from('ai_memory').delete().eq('room_id', newRoom.id);
       setActiveRoom(newRoom); setJoinedCharacter(hostChar); setMessages([]); 
       await pushMessage(newRoom.id, { sender: "system", text: `【入室完了】プレイヤー全員の準備が整うまでお待ちください。\n【案内】シークレット設定の場合、画面左上の「共有ID」をコピーして友人に伝えてください。`, type: "system", sceneId: newRoom.scenes?.[0]?.id, channel: "system" });
@@ -769,7 +831,7 @@ export default function Home() {
     scenario.presetCharacters.forEach((c: any) => { initialInventories[c.id] = c.items || "特になし"; });
 
     const { data, error } = await supabase.from('rooms').insert({ 
-      scenario_id: scenario.id, host_name: currentUser.handleName, host_id: currentUser.id, status: "recruiting", scenes: initialScenes, privacy: 'secret', host_message: "お試しプレイ", joined_users: { [currentUser.id]: charId }, current_summary: "", difficulty: "normal", rule: "coc_jp", is_paused: false, afk_users: [], is_trial: true, item_visibility: "none", inventories: initialInventories, current_chapter_index: 0, ai_model: 'lite', error_refunded: false 
+      scenario_id: scenario.id, host_name: currentUser.handleName, host_id: currentUser.id, status: "recruiting", scenes: initialScenes, privacy: 'secret', host_message: "お試しプレイ", joined_users: { [currentUser.id]: charId }, current_summary: "", difficulty: "normal", rule: "coc_jp", is_paused: false, afk_users: [], is_trial: true, item_visibility: "none", inventories: initialInventories, current_chapter_index: 0, ai_model: 'lite', error_refunded: false, free_image_count: 0, is_lost: false, lost_turn_count: 0 
     }).select().single();
     
     if (error) { alert("データベースエラーが発生しました: " + error.message); return; }
@@ -777,7 +839,7 @@ export default function Home() {
       const currentSc = scenarios.find((s: any) => s.id === scenario.id);
       if (currentSc) await supabase.from('scenarios').update({ play_count: (currentSc.playCount || 0) + 1 }).eq('id', scenario.id);
       await fetchData();
-      const newRoom: Room = { id: data.id, scenario_id: data.scenario_id, scenario: scenario, host_name: data.host_name, host_id: data.host_id, status: data.status, scenes: data.scenes, privacy: data.privacy, host_message: data.host_message, joined_users: data.joined_users, current_summary: "", difficulty: data.difficulty, rule: data.rule, is_paused: false, afk_users: [], is_trial: true, item_visibility: "none", inventories: data.inventories, current_chapter_index: 0, ai_model: data.ai_model, error_refunded: false };
+      const newRoom: Room = { id: data.id, scenario_id: data.scenario_id, scenario: scenario, host_name: data.host_name, host_id: data.host_id, status: data.status, scenes: data.scenes, privacy: data.privacy, host_message: data.host_message, joined_users: data.joined_users, current_summary: "", difficulty: data.difficulty, rule: data.rule, is_paused: false, afk_users: [], is_trial: true, item_visibility: "none", inventories: data.inventories, current_chapter_index: 0, ai_model: data.ai_model, error_refunded: false, free_image_count: 0, is_lost: false, lost_turn_count: 0 };
       await supabase.from('ai_memory').delete().eq('room_id', newRoom.id);
       setActiveRoom(newRoom); setJoinedCharacter(hostChar); setMessages([]); 
       const aiChars = scenario.presetCharacters.filter((c: any) => c.id !== charId); setAiPlayersList(aiChars);
@@ -999,9 +1061,6 @@ export default function Home() {
       let currentMemory = memoryDataRaw || [];
       let currentSummary = activeRoom.current_summary || "";
 
-      // ----------------------------------------------------
-      // ★ 裏側のシステム処理（あらすじ圧縮等）
-      // ----------------------------------------------------
       const contextLimit = 15;
       const compressionThreshold = contextLimit + 5; 
 
@@ -1032,7 +1091,11 @@ export default function Home() {
       const history = currentMemory.map((m: any) => ({ role: m.role === 'assistant' ? 'model' : 'user', parts: [{ text: m.content }] }));
       if (history.length === 0) history.push({ role: 'user', parts: [{ text: "セッションを開始してください。" }]});
 
-      const aiPlayersText = aiPlayersList.length > 0 ? aiPlayersList.map((c: any) => `・${c.name} (${c.genderOrRace || "性別不詳"}) | HP:${c.hp} SAN:${c.san}% STR:${c.str} DEX:${c.dex} INT:${c.int} CON:${c.con}\n 設定: ${c.personality}`).join("\n\n") : "なし（ソロプレイ）";
+      // ★ GMタブではAI相棒を出さない
+      const aiPlayersText = targetTab === 'gm' 
+        ? "なし（GMへの質問のためAI相棒は登場・発言しません）" 
+        : (aiPlayersList.length > 0 ? aiPlayersList.map((c: any) => `・${c.name} (${c.genderOrRace || "性別不詳"}) | HP:${c.hp} SAN:${c.san}% STR:${c.str} DEX:${c.dex} INT:${c.int} CON:${c.con}\n 設定: ${c.personality}`).join("\n\n") : "なし（ソロプレイ）");
+
       const afkNames = (activeRoom.afk_users || []).map((uid: string) => { const cId = activeRoom.joined_users?.[uid]; return activeRoom.scenario?.presetCharacters.find((c: any) => c.id === cId)?.name; }).filter(Boolean).join(", ");
       const afkInstruction = afkNames ? `\n【AFK（離席中）のプレイヤー】\n${afkNames}\n※このプレイヤーは現在離席中なので、行動を促したり意見を求めたりしないでください。` : "";
 
@@ -1063,16 +1126,40 @@ export default function Home() {
         return `[未到達（ネタバレ厳禁）] 第${idx + 1}章: ${c.title}`;
       }).join('\n');
 
-      let scenarioPlotText = `【物語の全体構成（全${chapters.length}章）】\n${chapterProgress}\n\n【現在（第${currentChapIndex + 1}章）のプロット・台本】\n${currentChapter.content}`;
+      // ★ ロストシナリオ（HP0）の処理
+      let isLostMode = activeRoom.is_lost || joinedCharacter.hp <= 0;
+      let currentLostTurns = activeRoom.lost_turn_count || 0;
+      
+      if (joinedCharacter.hp <= 0 && !activeRoom.is_lost) {
+        await supabase.from('rooms').update({ is_lost: true, lost_turn_count: 1 }).eq('id', activeRoom.id);
+        setActiveRoom(prev => prev ? { ...prev, is_lost: true, lost_turn_count: 1 } : null);
+        currentLostTurns = 1;
+        isLostMode = true;
+      } else if (isLostMode) {
+        currentLostTurns += 1;
+        await supabase.from('rooms').update({ lost_turn_count: currentLostTurns }).eq('id', activeRoom.id);
+        setActiveRoom(prev => prev ? { ...prev, lost_turn_count: currentLostTurns } : null);
+      }
+
+      let lostContext = "";
+      if (isLostMode) {
+        if (currentLostTurns < 5) {
+          lostContext = `\n\n【重要：ロストシナリオ進行中 (${currentLostTurns}/5ターン)】\nプレイヤーのHPが0になりました。即座にセッションを終了せず、死の淵や絶望の結末に向かう「ロストシナリオ」をドラマチックに描写してください。まだ完全に息絶えてはいません。`;
+        } else {
+          lostContext = `\n\n【重要：ロストシナリオ最終ターン】\nプレイヤーの最後の瞬間を重厚に描写し、絶望的な結末（ロスト）として完全に物語を終わらせてください。必ず「"chapterClear": true」を出力すること。`;
+        }
+      }
+
+      let scenarioPlotText = `【物語の全体構成（全${chapters.length}章）】\n${chapterProgress}\n\n【現在（第${currentChapIndex + 1}章）のプロット・台本】\n${currentChapter.content}${lostContext}`;
 
       let difficultyInstruction = "";
       switch (activeRoom.difficulty) {
         case "beginner": difficultyInstruction = "【難易度：初心者】接待プレイです。困っていればヒントや選択肢を出しても構いません。"; break;
         case "easy": difficultyInstruction = "【難易度：簡単】判定が通りやすく、探索で見つかる情報を多めに描写してください。ただし露骨な解法の指示は避けてください。"; break;
         case "normal": difficultyInstruction = "【難易度：普通】【ヒント・誘導・選択肢の提示・次期目標の指示は完全禁止】純粋な情景描写と結果のみを出力してください。「次は〜が残されています」「〜しましょう」といったタスクリストや次期目標の提示、解法の匂わせ（「※〜があるかもしれません」「〜が必要」等）は絶対に書かないでください。"; break;
-        case "hard": difficultyInstruction = "【難易度：難しい】【ノーヒント・厳格】解法のヒントや補足、目標の提示は一切禁止。PLから具体的な探索宣言がない限りオブジェクトの存在すら明かさないでください。判定失敗時は即座に状況を悪化させてください。"; break;
-        case "pro": difficultyInstruction = "【難易度：プロ】【容赦ない本格派】一切のヒントや誘導を禁止。PLの軽率な行動には即座に致命的なペナルティやロストの危機を与えてください。"; break;
-        case "oni": difficultyInstruction = "【難易度：鬼】【理不尽・極限】一切の手加減・ヒントを排除。死と隣り合わせの無慈悲な描写を徹底してください。"; break;
+        case "hard": difficultyInstruction = "【難易度：難しい】【ノーヒント・厳格】解法のヒントや補足、目標の提示は一切禁止。さらに「〇〇するか、別の手段をとるか」といった選択肢や行動の誘導は絶対に書かないでください。PLから具体的な探索宣言がない限りオブジェクトの存在すら明かさず、判定失敗時は即座に状況を悪化させてください。"; break;
+        case "pro": difficultyInstruction = "【難易度：プロ】【容赦ない本格派】一切のヒントや誘導、選択肢の提示を禁止。PLの軽率な行動には即座に致命的なペナルティやロストの危機を与えてください。"; break;
+        case "oni": difficultyInstruction = "【難易度：鬼】【理不尽・極限】一切の手加減・ヒント・選択肢を排除。死と隣り合わせの無慈悲な描写を徹底してください。"; break;
         default: difficultyInstruction = "【難易度：普通】【ヒント・誘導・選択肢の提示・次期目標の指示は完全禁止】純粋な情景描写と結果のみを出力してください。";
       }
 
@@ -1183,7 +1270,6 @@ export default function Home() {
          }
       }
     } catch (err: any) { 
-      // ★ エラー時のチケット自動返還ロジック
       if (!activeRoom.error_refunded) {
         const model = activeRoom.ai_model || 'lite';
         let ticketKey = 'tickets_bronze';
@@ -1202,6 +1288,12 @@ export default function Home() {
           const newAmount = currentAmount + 1;
           await supabase.from('profiles').update({ [ticketKey]: newAmount }).eq('id', currentUser.id);
           setCurrentUser(prev => prev ? { ...prev, [ticketKey]: newAmount } : null);
+
+          await supabase.from('notifications').insert({ 
+            user_id: currentUser.id, 
+            title: '【重要】システムエラーに伴うチケット返還のお知らせ', 
+            message: `プレイ中のセッション「${activeRoom.scenario?.title || '名称未設定'}」にてAIの応答エラーが発生したため、消費した「${ticketName}」を1枚返還いたしました。\nご不便をおかけして誠に申し訳ありません。` 
+          });
         }
 
         await pushMessage(activeRoom.id, { sender: "system", text: `【システムエラー】AIが混雑、または応答に失敗しました。\nお詫びとして消費した「${ticketName}」を1枚自動返還しました。`, type: "system", sceneId: myScene?.id, channel: "system" }, false);
@@ -1403,7 +1495,6 @@ export default function Home() {
     );
   };
 
-  // ★ 2. 広告動画視聴（ログインボーナス）の完了処理
   const executeAdReward = async () => {
     if (!currentUser) return;
     const today = new Date().toLocaleDateString('ja-JP');
@@ -1432,13 +1523,13 @@ export default function Home() {
 
       {currentView === "userProfile" && currentUser && (
         <UserProfileView 
-          currentUser={currentUser} targetUserId={targetUserId} setCurrentView={setCurrentView} allScenarios={scenarios} updateProfile={updateProfile} blockUser={blockUser} unblockUser={unblockUser} addFriend={addFriend} activeRooms={rooms} executeSpectateWithAd={(room: any) => setAdModal({ isOpen: true, step: 1, scenario: null, room: room, type: 'spectate' })} openRoomConfigModal={handleOpenRoomConfig} openUserProfile={openUserProfile}
+          currentUser={currentUser} targetUserId={targetUserId} setCurrentView={setCurrentView} allScenarios={scenarios} updateProfile={updateProfile} blockUser={blockUser} unblockUser={unblockUser} addFriend={addFriend} activeRooms={rooms} executeSpectateWithAd={(room: any) => setAdModal({ isOpen: true, step: 1, scenario: null, room: room, type: 'spectate' })} openRoomConfigModal={handleOpenRoomConfig} openUserProfile={openUserProfile} uploadAvatar={uploadAvatar}
         />
       )}
 
       {currentView === "admin" && currentUser?.isAdmin && (
         <AdminView
-          isMaintenance={isMaintenance} toggleMaintenance={toggleMaintenance} isTicketSystemEnabled={isTicketSystemEnabled} toggleTicketSystem={toggleTicketSystem} geminiFlashModel={geminiFlashModel} toggleGeminiFlashModel={toggleGeminiFlashModel} reports={reports} allUsers={allUsers} scenarios={scenarios} resolveReport={resolveReport} setBanTargetUser={setBanTargetUser} setBanReason={setBanReason} setBanTargetScenario={setBanTargetScenario} setScenarioBanReason={setScenarioBanReason} unbanScenarioFromAppeal={unbanScenarioFromAppeal} userSearchQuery={userSearchQuery} setUserSearchQuery={setUserSearchQuery} toggleAdminStatus={toggleAdminStatus} toggleTesterStatus={toggleTesterStatus} unbanUser={unbanUser} scenarioSearchQuery={scenarioSearchQuery} setScenarioSearchQuery={setScenarioSearchQuery} setCurrentView={setCurrentView} executeCreateTester={executeCreateTester} openUserActionModal={(user: any) => setAdminActionUser(user)}
+          isMaintenance={isMaintenance} toggleMaintenance={toggleMaintenance} isTicketSystemEnabled={isTicketSystemEnabled} toggleTicketSystem={toggleTicketSystem} geminiFlashModel={geminiFlashModel} toggleGeminiFlashModel={toggleGeminiFlashModel} reports={reports} allUsers={allUsers} scenarios={scenarios} resolveReport={resolveReport} setBanTargetUser={setBanTargetUser} setBanReason={setBanReason} setBanTargetScenario={setBanTargetScenario} setScenarioBanReason={setScenarioBanReason} unbanScenarioFromAppeal={unbanScenarioFromAppeal} userSearchQuery={userSearchQuery} setUserSearchQuery={setUserSearchQuery} toggleAdminStatus={toggleAdminStatus} toggleTesterStatus={toggleTesterStatus} unbanUser={unbanUser} scenarioSearchQuery={scenarioSearchQuery} setScenarioSearchQuery={setScenarioSearchQuery} setCurrentView={setCurrentView} executeCreateTester={executeCreateTester} openUserActionModal={(user: any) => setAdminActionUser(user)} grantPointsToAll={grantPointsToAll}
         />
       )}
 
@@ -1464,7 +1555,7 @@ export default function Home() {
       )}
       
       {currentView === "scenarioEdit" && editingScenario && (
-        <ScenarioEditView editingScenario={editingScenario} setEditingScenario={setEditingScenario} editingCharIndex={editingCharIndex} setEditingCharIndex={setEditingCharIndex} saveScenario={saveScenario} setCurrentView={setCurrentView} allScenarios={scenarios} />
+        <ScenarioEditView editingScenario={editingScenario} setEditingScenario={setEditingScenario} editingCharIndex={editingCharIndex} setEditingCharIndex={setEditingCharIndex} saveScenario={saveScenario} setCurrentView={setCurrentView} allScenarios={scenarios} generatePackageImage={generatePackageImage} />
       )}
       
       {currentView === "game" && activeRoom && myScene && currentUser && (
@@ -1663,161 +1754,6 @@ export default function Home() {
                </div>
                
             </div>
-          </div>
-        </div>
-      )}
-
-      {/* 管理画面のユーザーアクションモーダル */}
-      {adminActionUser && (
-        <div className="fixed inset-0 bg-black/80 z-[70] flex items-center justify-center p-4">
-          <div className="bg-slate-800 border border-blue-500/50 rounded-xl p-6 w-full max-w-lg shadow-2xl space-y-4">
-            <h3 className="text-lg font-bold text-white mb-2">🎁 ユーザー管理アクション</h3>
-            <p className="text-xs text-slate-400 border-b border-slate-700 pb-2 mb-4">対象: {adminActionUser.handleName} ({adminActionUser.email})</p>
-            <div>
-              <h4 className="font-bold text-sm text-emerald-400 mb-2">🎟️ チケットの個別付与</h4>
-              <div className="flex gap-2">
-                <select value={adminTicketType} onChange={e => setAdminTicketType(e.target.value)} className="bg-slate-900 border border-slate-700 rounded p-2 text-xs flex-1">
-                  <option value="bronze">ブロンズ (Flash Lite)</option>
-                  <option value="silver">シルバー (Flash)</option>
-                  <option value="gold">ゴールド (Pro)</option>
-                  <option value="platinum">プラチナ (Sonnet)</option>
-                  <option value="diamond">ダイヤモンド (Opus)</option>
-                  <option value="item">アイテム生成枠</option>
-                </select>
-                <input type="number" value={adminTicketAmount} onChange={e => setAdminTicketAmount(Number(e.target.value))} placeholder="枚数" className="w-16 bg-slate-900 border border-slate-700 rounded p-2 text-xs text-center" />
-                <button onClick={grantTickets} className="bg-emerald-600 hover:bg-emerald-500 px-4 rounded text-xs font-bold shadow">付与</button>
-              </div>
-            </div>
-            <div className="pt-2">
-              <h4 className="font-bold text-sm text-blue-400 mb-2">✉️ システムメール（個別通知）送信</h4>
-              <textarea value={adminMailBody} onChange={e => setAdminMailBody(e.target.value)} placeholder="メッセージ内容..." className="w-full h-24 bg-slate-900 border border-slate-700 rounded p-2 text-xs" />
-              <button onClick={sendMail} disabled={!adminMailBody.trim()} className="w-full bg-blue-600 hover:bg-blue-500 disabled:bg-slate-600 py-2 rounded text-xs font-bold mt-2 shadow">メールを送信する</button>
-            </div>
-            <button onClick={() => setAdminActionUser(null)} className="w-full bg-slate-700 hover:bg-slate-600 py-3 rounded text-sm font-bold mt-4">閉じる</button>
-          </div>
-        </div>
-      )}
-
-      {reportTarget && (
-        <div className="fixed inset-0 bg-black/80 z-[60] flex items-center justify-center p-4">
-          <div className="bg-slate-800 border border-red-700/50 rounded-xl p-6 w-full max-w-lg shadow-2xl">
-            <h3 className="text-xl font-bold text-red-400 mb-4">🚩 通報する</h3>
-            {reportTarget.roomId ? (
-              <div className="mb-4">
-                <label className="text-xs text-slate-400 block mb-1">通報対象を選択</label>
-                <select 
-                  className="w-full bg-slate-900 border border-slate-700 rounded p-2 text-sm text-white" 
-                  onChange={(e) => { 
-                    const val = e.target.value; 
-                    if (val === 'room') { setReportTarget({...reportTarget, type: 'room', id: reportTarget.roomId || "", name: 'この部屋の進行・チャット全般'}); } 
-                    else if (val === 'scenario') { setReportTarget({...reportTarget, type: 'scenario', id: reportTarget.scenarioId || "", name: `シナリオ: ${reportTarget.scenarioName}`}); } 
-                    else { const user = reportTarget.availableUsers?.find((u: any) => u.id === val); if (user) setReportTarget({...reportTarget, type: 'user', id: user.id, name: `プレイヤー: ${user.name}`}); } 
-                  }} 
-                  value={reportTarget.type === 'user' ? reportTarget.id : reportTarget.type}
-                >
-                  <option value="room">この部屋の進行・チャット全般</option>
-                  <option value="scenario">シナリオの不適切・規約違反</option>
-                  {reportTarget.availableUsers?.map((u: any) => <option key={u.id} value={u.id}>プレイヤー: {u.name} を通報</option>)}
-                </select>
-              </div>
-            ) : <p className="text-xs text-slate-400 mb-4">対象: {reportTarget.name}</p>}
-            <div className="space-y-3 mb-4">
-              <textarea value={reportReason} onChange={e=>setReportReason(e.target.value)} placeholder="不適切な発言や、規約違反の内容を詳しく記入してください。（対象のログも一緒に運営に送信されます）" className="w-full h-32 bg-slate-900 border border-slate-700 rounded p-3 text-sm text-white" />
-            </div>
-            <div className="flex gap-4">
-              <button onClick={() => { setReportTarget(null); setReportReason(""); }} className="flex-1 bg-slate-700 hover:bg-slate-600 py-3 rounded text-sm font-bold">キャンセル</button>
-              <button onClick={submitUserReport} disabled={!reportReason.trim()} className="flex-1 bg-red-600 hover:bg-red-500 disabled:bg-slate-600 py-3 rounded text-sm font-bold shadow-lg shadow-red-900/50">運営に送信する</button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {scenarioAppealTarget && (
-        <div className="fixed inset-0 bg-black/80 z-[60] flex items-center justify-center p-4">
-          <div className="bg-slate-800 border border-amber-700/50 rounded-xl p-6 w-full max-w-lg shadow-2xl">
-            <h3 className="text-xl font-bold text-amber-400 mb-2">📝 再審査（修正完了）の申請</h3>
-            <p className="text-xs text-slate-400 mb-4">対象シナリオ: {scenarioAppealTarget.title}</p>
-            <div className="space-y-3 mb-4">
-              <textarea value={scenarioAppealText} onChange={e=>setScenarioAppealText(e.target.value)} placeholder="修正した箇所や、非公開措置へのコメントを入力してください。" className="w-full h-32 bg-slate-900 border border-slate-700 rounded p-3 text-sm text-white" />
-            </div>
-            <div className="flex gap-4">
-              <button onClick={() => { setScenarioAppealTarget(null); setScenarioAppealText(""); }} className="flex-1 bg-slate-700 hover:bg-slate-600 py-3 rounded text-sm font-bold">キャンセル</button>
-              <button onClick={submitScenarioAppeal} disabled={!scenarioAppealText.trim()} className="flex-1 bg-amber-600 hover:bg-amber-500 disabled:bg-slate-600 py-3 rounded text-sm font-bold shadow-lg shadow-amber-900/50">運営に申請を送信する</button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {banTargetScenario && (
-        <div className="fixed inset-0 bg-black/80 z-[60] flex items-center justify-center p-4">
-          <div className="bg-slate-800 border border-slate-700 rounded-xl p-6 w-full max-w-lg shadow-2xl">
-            <h3 className="text-xl font-bold text-white mb-2">⚙️ シナリオの管理措置</h3>
-            <p className="text-xs text-slate-400 mb-4">対象: {banTargetScenario.title}</p>
-            <div className="space-y-3 mb-4">
-              <textarea value={scenarioBanReason} onChange={e=>setScenarioBanReason(e.target.value)} placeholder="措置の理由を入力してください（作者にメールで通知されます）" className="w-full h-32 bg-slate-900 border border-slate-700 rounded p-3 text-sm text-white" />
-            </div>
-            <div className="flex flex-col gap-3">
-              <div className="flex gap-2">
-                {!banTargetScenario.isBanned ? (
-                  <button onClick={() => executeScenarioBan('soft')} disabled={!scenarioBanReason.trim()} className="flex-1 bg-amber-600 hover:bg-amber-500 disabled:bg-slate-600 py-3 rounded text-sm font-bold shadow-lg">一時非公開にする</button>
-                ) : (
-                  <button onClick={() => executeScenarioBan('unban')} className="flex-1 bg-emerald-600 hover:bg-emerald-500 py-3 rounded text-sm font-bold shadow-lg">非公開を解除する</button>
-                )}
-                <button onClick={() => executeScenarioBan('hard')} disabled={!scenarioBanReason.trim()} className="flex-1 bg-red-600 hover:bg-red-500 disabled:bg-slate-600 py-3 rounded text-sm font-bold shadow-lg">完全に削除する</button>
-              </div>
-              <button onClick={() => setBanTargetScenario(null)} className="w-full bg-slate-700 hover:bg-slate-600 py-3 rounded text-sm font-bold mt-2">キャンセル</button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {banTargetUser && (
-        <div className="fixed inset-0 bg-black/80 z-[60] flex items-center justify-center p-4">
-          <div className="bg-slate-800 border border-red-700/50 rounded-xl p-6 w-full max-w-lg shadow-2xl">
-            <h3 className="text-xl font-bold text-red-500 mb-2">⛔ ユーザーをBANする</h3>
-            <p className="text-xs text-slate-400 mb-4">対象: {banTargetUser.handleName} ({banTargetUser.email})</p>
-            <div className="space-y-3 mb-4">
-              <textarea value={banReason} onChange={e=>setBanReason(e.target.value)} placeholder="通報ログ・BANの理由を入力してください" className="w-full h-32 bg-slate-900 border border-slate-700 rounded p-3 text-sm text-white" />
-            </div>
-            <div className="flex gap-4">
-              <button onClick={() => setBanTargetUser(null)} className="flex-1 bg-slate-700 hover:bg-slate-600 py-3 rounded text-sm font-bold">キャンセル</button>
-              <button onClick={executeBan} disabled={!banReason.trim()} className="flex-1 bg-red-600 hover:bg-red-500 disabled:bg-slate-600 py-3 rounded text-sm font-bold shadow-lg shadow-red-900/50">BANを実行する</button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {showMailbox && (
-        <div className="fixed inset-0 bg-black/80 z-[60] flex items-center justify-center p-4">
-          <div className="bg-slate-800 border border-slate-700 rounded-xl p-6 w-full max-w-lg shadow-2xl flex flex-col max-h-[80vh]">
-            <div className="flex justify-between items-center mb-4"><h3 className="text-xl font-bold">✉️ 受信箱</h3><button onClick={() => setShowMailbox(false)} className="text-xl">×</button></div>
-            <div className="h-[400px] overflow-y-scroll space-y-3 pr-2">
-              {myNotifications.length === 0 ? <p className="text-sm text-slate-500 text-center py-8">お知らせはありません。</p> : myNotifications.map((n: any) => (
-                <div key={n.id} className={`p-4 rounded-lg border ${n.isRead ? 'bg-slate-900 border-slate-700' : 'bg-slate-800 border-blue-500/50'}`}>
-                  <h4 className="font-bold text-sm">{n.title}</h4>
-                  <p className="text-xs text-slate-300 whitespace-pre-wrap mt-2">{n.message}</p>
-                  {!n.isRead && <button onClick={() => markNotificationAsRead(n.id)} className="text-[10px] bg-slate-700 px-3 py-1 rounded mt-3">既読にする</button>}
-                </div>
-              ))}
-            </div>
-          </div>
-        </div>
-      )}
-
-      {roomConfigModal && (
-        <div className="fixed inset-0 bg-black/80 z-[60] flex items-center justify-center p-4">
-          <div className="bg-slate-800 border border-emerald-700/50 rounded-xl p-6 w-full max-w-lg shadow-2xl">
-            <h3 className="text-xl font-bold text-emerald-400 mb-4">🚪 部屋の作成: {roomConfigModal.scenario?.title}</h3>
-            <div className="space-y-4 mb-6">
-              <div><label className="text-xs text-slate-400 block mb-1">使用するキャラクター <span className="text-red-400">*</span></label><select value={roomConfigModal.charId || ""} onChange={(e) => setRoomConfigModal({...roomConfigModal, charId: e.target.value})} className="w-full bg-slate-900 border border-slate-700 rounded p-2 text-sm text-white"><option value="" disabled>選択してください</option>{roomConfigModal.scenario?.presetCharacters?.map((c: any) => <option key={c.id} value={c.id}>{c.name} ({c.job})</option>)}</select></div>
-              <div><label className="text-xs text-slate-400 block mb-1">AIモデル (GM) {isTicketSystemEnabled && <span className="text-amber-400 text-[10px]">※チケット消費</span>}</label><select value={roomConfigModal.aiModel || "lite"} onChange={(e) => setRoomConfigModal({...roomConfigModal, aiModel: e.target.value})} className="w-full bg-slate-900 border border-slate-700 rounded p-2 text-sm text-white"><option value="lite">🟤 ブロンズ (Flash Lite) {isTicketSystemEnabled ? "(1枚消費)" : "(無料)"}</option><option value="flash">⚪ シルバー (Gemini Flash) {isTicketSystemEnabled ? "(1枚消費)" : "(無料)"}</option><option value="pro">🟡 ゴールド (Gemini Pro) {isTicketSystemEnabled ? "(1枚消費)" : "(無料)"}</option><option value="claude">🟣 プラチナ (Claude Sonnet) {isTicketSystemEnabled ? "(1枚消費)" : "(無料)"}</option><option value="opus">💎 ダイヤモンド (Claude Opus) {isTicketSystemEnabled ? "(1枚消費)" : "(無料)"}</option></select></div>
-              <div><label className="text-xs text-slate-400 block mb-1">ゲームルール（システム）</label><select value={roomConfigModal.rule || "coc_jp"} onChange={(e) => setRoomConfigModal({...roomConfigModal, rule: e.target.value})} className="w-full bg-slate-900 border border-slate-700 rounded p-2 text-sm text-white"><option value="coc_jp">🟩 日本クトゥルフ風（ドラマ・探索重視 / 1d100）</option><option value="coc_en">🟦 海外クトゥルフ風（シビア・ホラー / 1d100）</option><option value="dnd">🟥 D&D風（ヒロイック・ファンタジー / 1d20）</option><option value="sw25">🟨 ソードワールド風（明るい冒険 / 2d6）</option><option value="storytelling">🟪 ストーリーテリング（文学的・演出重視 / 1d6）</option></select></div>
-              <div><label className="text-xs text-slate-400 block mb-1">難易度</label><select value={roomConfigModal.difficulty || "normal"} onChange={(e) => setRoomConfigModal({...roomConfigModal, difficulty: e.target.value})} className="w-full bg-slate-900 border border-slate-700 rounded p-2 text-sm text-white"><option value="beginner">⬜ 初心者（接待GM / 手取り足取り30分限定）</option><option value="easy">🟩 簡単（やさしいGM / 判定が通りやすい）</option><option value="normal">🟦 普通（標準GM / 一般的なバランス）</option><option value="hard">🟧 難しい（厳しめGM / ヒント少なめ）</option><option value="pro">🟥 プロ（本格派GM / ロストの危険あり）</option><option value="oni">🟪 鬼（容赦ないGM / 死ぬ覚悟で挑むモード）</option></select></div>
-              <div><label className="text-xs text-slate-400 block mb-1">公開設定</label><div className="flex gap-4"><label className="flex items-center gap-2 text-sm"><input type="radio" checked={roomConfigModal.privacy === 'open'} onChange={() => setRoomConfigModal({...roomConfigModal, privacy: 'open'})} /> 🔓 オープン（誰でも観戦可能）</label><label className="flex items-center gap-2 text-sm"><input type="radio" checked={roomConfigModal.privacy === 'secret'} onChange={() => setRoomConfigModal({...roomConfigModal, privacy: 'secret'})} /> 🔒 シークレット（IDを知る人のみ）</label></div></div>
-              <div><label className="text-xs text-slate-400 block mb-1">アイテム表示機能</label><select value={roomConfigModal.itemVisibility || "none"} onChange={(e) => setRoomConfigModal({...roomConfigModal, itemVisibility: e.target.value})} className="w-full bg-slate-900 border border-slate-700 rounded p-2 text-sm text-white"><option value="none">非表示</option><option value="self">自分の所持品のみ表示</option><option value="all">パーティー全員の所持品を表示</option></select></div>
-              <div><label className="text-xs text-slate-400 block mb-1 mt-2">ひとことメッセージ</label><input type="text" value={roomConfigModal.message || ""} onChange={(e) => setRoomConfigModal({...roomConfigModal, message: e.target.value})} placeholder="例：初心者歓迎！ゆっくり遊びましょう" className="w-full bg-slate-900 border border-slate-700 rounded p-2 text-sm text-white" /></div>
-            </div>
-            <div className="flex gap-4"><button onClick={() => setRoomConfigModal(null)} className="flex-1 bg-slate-700 hover:bg-slate-600 py-3 rounded text-sm font-bold">キャンセル</button><button onClick={executeCreateRoom} disabled={!roomConfigModal.charId} className="flex-1 bg-emerald-600 hover:bg-emerald-500 disabled:bg-slate-600 py-3 rounded text-sm font-bold shadow-lg shadow-emerald-900/50">作成して入室</button></div>
           </div>
         </div>
       )}

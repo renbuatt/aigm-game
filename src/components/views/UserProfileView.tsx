@@ -1,11 +1,13 @@
 import React, { useState, useEffect } from "react";
-import { ViewState, UserProfile, Scenario, Room } from "../../types";
+import { UserProfile, Scenario, Room } from "../../types";
 import { supabase } from "../../lib/supabase";
+
+const DEFAULT_AVATAR = "https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&w=150&q=80";
 
 type Props = {
   currentUser: UserProfile;
   targetUserId: string;
-  setCurrentView: React.Dispatch<React.SetStateAction<ViewState>>;
+  setCurrentView: (view: any) => void;
   allScenarios: Scenario[];
   updateProfile: (updates: Partial<UserProfile>) => Promise<void>;
   blockUser: (targetId: string) => Promise<void>;
@@ -15,212 +17,226 @@ type Props = {
   executeSpectateWithAd: (room: Room) => void;
   openRoomConfigModal: (scenario: Scenario) => void;
   openUserProfile: (userId: string) => void;
+  uploadAvatar?: (file: File) => Promise<void>; // ★ 追加：アバターアップロード
 };
 
 export default function UserProfileView({
-  currentUser,
-  targetUserId,
-  setCurrentView,
-  allScenarios,
-  updateProfile,
-  blockUser,
-  unblockUser,
-  addFriend,
-  activeRooms,
-  executeSpectateWithAd,
-  openRoomConfigModal,
-  openUserProfile
+  currentUser, targetUserId, setCurrentView, allScenarios, updateProfile,
+  blockUser, unblockUser, addFriend, activeRooms, executeSpectateWithAd,
+  openRoomConfigModal, openUserProfile, uploadAvatar
 }: Props) {
-  const [targetUser, setTargetUser] = useState<UserProfile | null>(null);
-  const [friends, setFriends] = useState<UserProfile[]>([]);
-  const [activeTab, setActiveTab] = useState<'profile' | 'friends' | 'scenarios'>('profile');
-  
+  const [profile, setProfile] = useState<UserProfile | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
   const [isEditing, setIsEditing] = useState(false);
-  const [editName, setEditName] = useState("");
-  const [editBio, setEditBio] = useState("");
-  const [editAvatar, setEditAvatar] = useState("");
+  const [editData, setEditData] = useState({ handleName: "", bio: "", avatarUrl: "" });
+  const [friendsList, setFriendsList] = useState<UserProfile[]>([]);
 
   const isMe = currentUser.id === targetUserId;
+  const isBlocked = (currentUser.blockedUserIds || []).includes(targetUserId);
+  const isFriend = (currentUser.friendIds || []).includes(targetUserId);
 
   useEffect(() => {
-    const fetchUser = async () => {
-      if (isMe) {
-        setTargetUser(currentUser);
-        setEditName(currentUser.handleName);
-        setEditBio(currentUser.bio || "");
-        setEditAvatar(currentUser.avatarUrl || "");
-      } else {
-        const { data } = await supabase.from('profiles').select('*').eq('id', targetUserId).single();
-        if (data) {
-          setTargetUser({
-            id: data.id, handleName: data.handle_name, avatarUrl: data.avatar_url,
-            bio: data.bio, discordId: data.discord_id, ratingSum: data.rating_sum || 0,
-            ratingCount: data.rating_count || 0, isAdmin: data.is_admin, isTester: data.is_tester,
-            isBanned: data.is_banned, email: data.email, friendIds: data.friend_ids || [], blockedUserIds: data.blocked_user_ids || []
-          });
+    const fetchTargetProfile = async () => {
+      setIsLoading(true);
+      const { data } = await supabase.from('profiles').select('*').eq('id', targetUserId).single();
+      if (data) {
+        const p: UserProfile = {
+          id: data.id, handleName: data.handle_name, fullName: data.full_name, address: data.address,
+          phone: data.phone, avatarUrl: data.avatar_url, bio: data.bio, discordId: data.discord_id,
+          ratingSum: data.rating_sum || 0, ratingCount: data.rating_count || 0, isAdmin: data.is_admin || false,
+          isTester: data.is_tester || false, isBanned: data.is_banned || false, email: data.email,
+          friendIds: data.friend_ids || [], blockedUserIds: data.blocked_user_ids || [], points: data.points || 0
+        };
+        setProfile(p);
+        setEditData({ handleName: p.handleName, bio: p.bio, avatarUrl: p.avatarUrl });
+
+        if (p.friendIds && p.friendIds.length > 0) {
+          const { data: fData } = await supabase.from('profiles').select('*').in('id', p.friendIds);
+          if (fData) {
+            setFriendsList(fData.map(d => ({
+              id: d.id, handleName: d.handle_name, avatarUrl: d.avatar_url, bio: d.bio, discordId: d.discord_id,
+              ratingSum: d.rating_sum || 0, ratingCount: d.rating_count || 0, isAdmin: d.is_admin || false,
+              isTester: d.is_tester || false, isBanned: d.is_banned || false, email: d.email
+            })));
+          }
+        } else {
+          setFriendsList([]);
         }
       }
+      setIsLoading(false);
     };
-    fetchUser();
-  }, [targetUserId, isMe, currentUser]);
+    fetchTargetProfile();
+  }, [targetUserId]);
 
-  useEffect(() => {
-    const fetchFriends = async () => {
-      const fIds = targetUser?.friendIds || [];
-      if (fIds.length > 0) {
-        const { data } = await supabase.from('profiles').select('*').in('id', fIds);
-        if (data) {
-          setFriends(data.map((d: any) => ({
-            id: d.id, handleName: d.handle_name, avatarUrl: d.avatar_url, bio: d.bio, discordId: d.discord_id,
-            ratingSum: d.rating_sum, ratingCount: d.rating_count, isAdmin: d.is_admin, isTester: d.is_tester,
-            isBanned: d.is_banned, email: d.email
-          })));
-        }
-      } else {
-        setFriends([]);
-      }
-    };
-    if (targetUser && activeTab === 'friends') fetchFriends();
-  }, [targetUser, activeTab]);
-
-  const handleSave = async () => {
-    await updateProfile({ handleName: editName, bio: editBio, avatarUrl: editAvatar });
+  const handleSaveProfile = async () => {
+    await updateProfile(editData);
+    if (profile) setProfile({ ...profile, ...editData });
     setIsEditing(false);
+    alert("プロフィールを更新しました！");
   };
 
-  if (!targetUser) return <div className="p-8 text-center text-white">読み込み中...</div>;
+  const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (e.target.files && e.target.files[0] && uploadAvatar) {
+      await uploadAvatar(e.target.files[0]);
+    }
+  };
 
-  const isFriend = currentUser.friendIds?.includes(targetUser.id);
-  const isBlocked = currentUser.blockedUserIds?.includes(targetUser.id);
-  const userScenarios = allScenarios.filter(s => s.authorId === targetUser.id && !s.isBanned);
+  if (isLoading || !profile) {
+    return <div className="flex-1 flex items-center justify-center text-slate-400">読込中...</div>;
+  }
+
+  const userScenarios = allScenarios.filter(s => s.authorId === targetUserId && !s.isBanned);
+  const userPlayingRoom = activeRooms.find(r => r.joined_users && Object.keys(r.joined_users).includes(targetUserId) && r.status === 'playing');
 
   return (
-    <div className="flex-1 flex flex-col p-4 max-w-4xl mx-auto w-full min-h-0 overflow-y-auto custom-scrollbar">
+    <div className="flex flex-col h-full w-full bg-slate-900 text-slate-100 p-4 md:p-8 overflow-y-auto custom-scrollbar">
       <header className="mb-6 flex justify-between items-center border-b border-slate-700 pb-4">
-        <h2 className="text-2xl font-bold text-emerald-400">👤 プロフィール</h2>
-        <button onClick={() => setCurrentView("lobby")} className="text-sm bg-slate-700 px-4 py-2 rounded font-bold hover:bg-slate-600 transition-colors">戻る</button>
+        <button onClick={() => setCurrentView("lobby")} className="text-xs text-slate-400 hover:text-white flex items-center gap-1">
+          ← ロビーに戻る
+        </button>
+        {isMe && !isEditing && (
+          <button onClick={() => setIsEditing(true)} className="bg-slate-700 hover:bg-slate-600 px-3 py-1.5 rounded text-xs font-bold shadow">
+            ✏️ プロフィール編集
+          </button>
+        )}
       </header>
 
-      {/* プロフィールカード */}
-      <div className="bg-slate-800 border border-slate-700 rounded-xl p-6 shadow-lg mb-6 relative">
-        <div className="flex items-start gap-6">
-          <img src={targetUser.avatarUrl || "https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&w=150&q=80"} className="w-24 h-24 rounded-full object-cover border-4 border-slate-700 shadow-md" />
-          <div className="flex-1">
-            <div className="flex justify-between items-center">
-              <h3 className="text-2xl font-bold text-white">{targetUser.handleName}</h3>
-              {!isMe && (
-                <div className="flex gap-2">
-                  {!isFriend && !isBlocked && (
-                    <button onClick={() => addFriend(targetUser.id)} className="bg-emerald-600 hover:bg-emerald-500 text-white text-xs px-3 py-1.5 rounded font-bold shadow">＋ 友達追加</button>
-                  )}
-                  {isBlocked ? (
-                    <button onClick={() => unblockUser(targetUser.id)} className="bg-slate-600 hover:bg-slate-500 text-white text-xs px-3 py-1.5 rounded font-bold shadow">ブロック解除</button>
-                  ) : (
-                    <button onClick={() => blockUser(targetUser.id)} className="bg-red-900/80 hover:bg-red-800 text-red-200 text-xs px-3 py-1.5 rounded font-bold shadow border border-red-500/50">ブロック</button>
-                  )}
-                </div>
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        
+        {/* 左側：プロフィールカード */}
+        <div className="bg-slate-800 border border-slate-700 rounded-xl p-6 shadow-lg flex flex-col items-center text-center">
+          <img src={profile.avatarUrl || DEFAULT_AVATAR} className="w-24 h-24 rounded-full object-cover shadow-lg border-2 border-slate-600 mb-4" />
+          <h2 className="text-xl font-bold text-white mb-1 flex items-center gap-2">
+            {profile.handleName}
+            {profile.isAdmin && <span className="bg-red-600 text-white text-[8px] px-1.5 py-0.5 rounded">管理者</span>}
+            {profile.isTester && <span className="bg-emerald-600 text-white text-[8px] px-1.5 py-0.5 rounded">テスター</span>}
+          </h2>
+          <p className="text-xs text-amber-400 font-bold mb-4">
+            ⭐ 評価: {profile.ratingCount ? (profile.ratingSum / profile.ratingCount).toFixed(1) : "未評価"} ({profile.ratingCount}回)
+          </p>
+
+          <p className="text-xs text-slate-300 bg-slate-900 p-4 rounded-lg border border-slate-700/50 w-full text-left whitespace-pre-wrap mb-6">
+            {profile.bio || "自己紹介はありません。"}
+          </p>
+
+          {!isMe && (
+            <div className="flex flex-col gap-2 w-full">
+              {!isFriend && (
+                <button onClick={() => addFriend(profile.id)} className="w-full bg-blue-600 hover:bg-blue-500 py-2 rounded text-xs font-bold shadow transition-colors">
+                  🤝 友達に追加する
+                </button>
               )}
-              {isMe && !isEditing && (
-                <button onClick={() => setIsEditing(true)} className="bg-blue-600 hover:bg-blue-500 text-white text-xs px-4 py-2 rounded font-bold shadow">編集</button>
+              {isBlocked ? (
+                <button onClick={() => unblockUser(profile.id)} className="w-full bg-slate-700 hover:bg-slate-600 py-2 rounded text-xs font-bold text-slate-300 transition-colors">
+                  ブロック解除
+                </button>
+              ) : (
+                <button onClick={() => blockUser(profile.id)} className="w-full bg-red-900/30 hover:bg-red-900/50 border border-red-700/50 text-red-300 py-2 rounded text-xs font-bold transition-colors">
+                  🚫 このユーザーをブロック
+                </button>
               )}
             </div>
-            <div className="mt-4 text-slate-300 whitespace-pre-wrap text-sm">
-              {targetUser.bio || "自己紹介はまだありません。"}
+          )}
+
+          {userPlayingRoom && (
+            <div className="mt-6 w-full bg-indigo-900/20 border border-indigo-500/30 p-3 rounded-lg text-left">
+              <p className="text-[10px] text-indigo-300 font-bold mb-1">🎮 現在セッション中</p>
+              <p className="text-xs text-white font-bold truncate">{userPlayingRoom.scenario?.title}</p>
+              <button onClick={() => executeSpectateWithAd(userPlayingRoom)} className="w-full bg-indigo-600 hover:bg-indigo-500 text-white text-[10px] py-1.5 rounded font-bold mt-2 shadow">
+                👁️ セッションを観戦する
+              </button>
             </div>
-          </div>
-        </div>
-
-        {/* 編集モード */}
-        {isEditing && isMe && (
-          <div className="mt-6 border-t border-slate-700 pt-6 space-y-4">
-            <div><label className="text-xs text-slate-400 block mb-1">表示名</label><input type="text" value={editName} onChange={e=>setEditName(e.target.value)} className="w-full bg-slate-900 border border-slate-700 rounded p-2 text-sm text-white" /></div>
-            <div><label className="text-xs text-slate-400 block mb-1">アイコン画像URL</label><input type="text" value={editAvatar} onChange={e=>setEditAvatar(e.target.value)} className="w-full bg-slate-900 border border-slate-700 rounded p-2 text-sm text-white" /></div>
-            <div><label className="text-xs text-slate-400 block mb-1">自己紹介</label><textarea value={editBio} onChange={e=>setEditBio(e.target.value)} className="w-full h-24 bg-slate-900 border border-slate-700 rounded p-2 text-sm text-white" /></div>
-            <div className="flex gap-2 justify-end">
-              <button onClick={() => setIsEditing(false)} className="bg-slate-700 hover:bg-slate-600 px-4 py-2 rounded text-sm font-bold">キャンセル</button>
-              <button onClick={handleSave} className="bg-emerald-600 hover:bg-emerald-500 px-4 py-2 rounded text-sm font-bold shadow">保存</button>
-            </div>
-          </div>
-        )}
-      </div>
-
-      {/* タブ */}
-      <div className="flex gap-2 border-b border-slate-700 mb-4">
-        <button onClick={() => setActiveTab('profile')} className={`px-4 py-2 text-sm font-bold border-b-2 transition-colors ${activeTab === 'profile' ? 'border-emerald-500 text-emerald-400' : 'border-transparent text-slate-400 hover:text-white'}`}>基本情報</button>
-        <button onClick={() => setActiveTab('scenarios')} className={`px-4 py-2 text-sm font-bold border-b-2 transition-colors ${activeTab === 'scenarios' ? 'border-purple-500 text-purple-400' : 'border-transparent text-slate-400 hover:text-white'}`}>作成シナリオ ({userScenarios.length})</button>
-        <button onClick={() => setActiveTab('friends')} className={`px-4 py-2 text-sm font-bold border-b-2 transition-colors ${activeTab === 'friends' ? 'border-blue-500 text-blue-400' : 'border-transparent text-slate-400 hover:text-white'}`}>友達 ({targetUser.friendIds?.length || 0})</button>
-      </div>
-
-      {/* タブコンテンツ：基本情報 */}
-      {activeTab === 'profile' && (
-         <div className="text-slate-400 text-sm py-4">
-            <p>評価スコア: {(targetUser.ratingSum / (targetUser.ratingCount || 1)).toFixed(1)} / 5.0 (レビュー数: {targetUser.ratingCount})</p>
-         </div>
-      )}
-
-      {/* タブコンテンツ：作成シナリオ */}
-      {activeTab === 'scenarios' && (
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          {userScenarios.length === 0 ? (
-            <div className="text-slate-500 col-span-2 text-center py-8">作成したシナリオはありません。</div>
-          ) : (
-            userScenarios.map(s => (
-              <div key={s.id} className="bg-slate-800 border border-slate-700 p-4 rounded-xl shadow flex flex-col justify-between">
-                <div>
-                  <h4 className="text-md font-bold text-white mb-2">{s.title}</h4>
-                  <p className="text-xs text-slate-400 line-clamp-2">{s.setting}</p>
-                </div>
-                <div className="mt-4 flex gap-2">
-                  <button onClick={() => openRoomConfigModal(s)} className="flex-1 bg-emerald-600 hover:bg-emerald-500 text-white text-xs py-2 rounded font-bold shadow">部屋を立てる</button>
-                </div>
-              </div>
-            ))
           )}
         </div>
-      )}
 
-      {/* タブコンテンツ：友達 */}
-      {activeTab === 'friends' && (
-        <div className="space-y-4">
-          {friends.length === 0 ? (
-            <div className="text-slate-500 text-center py-8">友達はまだいません。</div>
-          ) : (
-            friends.map(f => {
-              // 友達が参加している部屋をリアルタイム検索
-              const playingRoom = activeRooms.find(r => Object.keys(r.joined_users || {}).includes(f.id));
-              
-              return (
-                <div key={f.id} className="bg-slate-800 border border-slate-700 rounded-xl p-4 flex items-center justify-between shadow">
-                  <div className="flex items-center gap-3 cursor-pointer group" onClick={() => openUserProfile(f.id)}>
-                    <img src={f.avatarUrl || "https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&w=150&q=80"} className="w-12 h-12 rounded-full object-cover border border-slate-600 group-hover:border-emerald-500 transition-colors" />
-                    <div>
-                      <p className="font-bold text-white group-hover:text-emerald-400 transition">{f.handleName}</p>
-                      <p className="text-xs text-slate-400 truncate w-48">{f.bio}</p>
+        {/* 右側：公開シナリオと友達リスト */}
+        <div className="lg:col-span-2 space-y-6">
+          
+          {/* 編集モーダル */}
+          {isEditing && (
+            <div className="bg-slate-800 border border-blue-500/50 rounded-xl p-6 shadow-xl mb-6">
+              <h3 className="text-lg font-bold text-blue-400 mb-4 border-b border-slate-700 pb-2">✏️ プロフィールの編集</h3>
+              <div className="space-y-4">
+                <div>
+                  <label className="text-xs text-slate-400 block mb-1">表示名</label>
+                  <input type="text" value={editData.handleName} onChange={e=>setEditData({...editData, handleName: e.target.value})} className="w-full bg-slate-900 border border-slate-700 rounded p-2 text-sm text-white" />
+                </div>
+                
+                {/* ★ 追加：ファイルからの画像アップロード */}
+                <div>
+                  <label className="text-xs text-slate-400 block mb-1">アイコン画像</label>
+                  <div className="flex flex-col sm:flex-row gap-3 items-start sm:items-center">
+                    <img src={editData.avatarUrl || DEFAULT_AVATAR} className="w-14 h-14 rounded-full object-cover border border-slate-600 shrink-0" />
+                    <div className="flex-1 w-full">
+                      <input type="file" accept="image/*" onChange={handleFileChange} className="block w-full text-xs text-slate-400 file:mr-2 file:py-1.5 file:px-3 file:rounded file:border-0 file:text-xs file:font-bold file:bg-blue-600 file:text-white hover:file:bg-blue-500 cursor-pointer mb-2" />
+                      <input type="text" value={editData.avatarUrl} onChange={e=>setEditData({...editData, avatarUrl: e.target.value})} placeholder="または画像URLを直接入力..." className="w-full bg-slate-900 border border-slate-700 rounded p-1.5 text-xs text-white" />
                     </div>
                   </div>
-
-                  {playingRoom && playingRoom.scenario ? (
-                    <div className="flex flex-col items-end gap-1">
-                      <span className="text-[10px] bg-indigo-900/50 border border-indigo-500/50 text-indigo-300 px-2 py-0.5 rounded font-bold animate-pulse">
-                        🎮 プレイ中: {playingRoom.scenario.title}
-                      </span>
-                      {playingRoom.privacy === 'open' ? (
-                        <button onClick={() => executeSpectateWithAd(playingRoom)} className="text-[10px] bg-pink-600 hover:bg-pink-500 text-white px-3 py-1 rounded shadow flex items-center gap-1">
-                          📺 広告を見て観戦する
-                        </button>
-                      ) : (
-                        <span className="text-[10px] text-slate-500 border border-slate-600 bg-slate-800 px-2 py-0.5 rounded">🔒 シークレット部屋</span>
-                      )}
-                    </div>
-                  ) : (
-                    <span className="text-[10px] text-slate-500">オフライン</span>
-                  )}
                 </div>
-              );
-            })
+
+                <div>
+                  <label className="text-xs text-slate-400 block mb-1">自己紹介</label>
+                  <textarea value={editData.bio} onChange={e=>setEditData({...editData, bio: e.target.value})} rows={4} className="w-full bg-slate-900 border border-slate-700 rounded p-2 text-sm text-white resize-none" />
+                </div>
+                <div className="flex gap-2">
+                  <button onClick={() => setIsEditing(false)} className="flex-1 bg-slate-700 hover:bg-slate-600 py-2 rounded text-xs font-bold">キャンセル</button>
+                  <button onClick={handleSaveProfile} className="flex-1 bg-blue-600 hover:bg-blue-500 py-2 rounded text-xs font-bold shadow">変更を保存</button>
+                </div>
+              </div>
+            </div>
           )}
+
+          {/* 公開しているシナリオ */}
+          <div className="bg-slate-800 border border-slate-700 rounded-xl p-6 shadow-lg">
+            <h3 className="text-lg font-bold text-white mb-4 border-b border-slate-700 pb-2 flex items-center gap-2">
+              📜 公開しているシナリオ ({userScenarios.length}本)
+            </h3>
+            {userScenarios.length === 0 ? (
+              <p className="text-xs text-slate-400 py-4 text-center">公開されているシナリオはありません。</p>
+            ) : (
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                {userScenarios.map(s => (
+                  <div key={s.id} className="bg-slate-900 border border-slate-700 rounded-lg p-3 flex gap-3">
+                    <img src={s.imageUrl} className="w-16 h-16 object-cover rounded border border-slate-700 shrink-0" />
+                    <div className="flex-1 min-w-0 flex flex-col justify-between">
+                      <div>
+                        <h4 className="text-sm font-bold text-white truncate">{s.title}</h4>
+                        <p className="text-[10px] text-amber-400 mt-0.5">⭐ {s.ratingCount ? (s.ratingSum / s.ratingCount).toFixed(1) : "未評価"}</p>
+                      </div>
+                      <button onClick={() => openRoomConfigModal(s)} className="bg-emerald-600 hover:bg-emerald-500 text-white text-[10px] py-1 rounded font-bold mt-2 shadow">
+                        部屋を作る
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+
+          {/* 友達リスト */}
+          <div className="bg-slate-800 border border-slate-700 rounded-xl p-6 shadow-lg">
+            <h3 className="text-lg font-bold text-white mb-4 border-b border-slate-700 pb-2 flex items-center gap-2">
+              🤝 友達リスト ({friendsList.length}人)
+            </h3>
+            {friendsList.length === 0 ? (
+              <p className="text-xs text-slate-400 py-4 text-center">登録されている友達はいません。</p>
+            ) : (
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                {friendsList.map(f => (
+                  <div key={f.id} onClick={() => openUserProfile(f.id)} className="bg-slate-900 border border-slate-700 hover:border-blue-500 rounded-lg p-3 flex items-center gap-3 cursor-pointer transition-colors">
+                    <img src={f.avatarUrl || DEFAULT_AVATAR} className="w-10 h-10 rounded-full object-cover shrink-0" />
+                    <div className="min-w-0">
+                      <h4 className="text-xs font-bold text-white truncate">{f.handleName}</h4>
+                      <p className="text-[9px] text-slate-400 truncate">{f.bio || "ひとことなし"}</p>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+
         </div>
-      )}
+      </div>
     </div>
   );
 }

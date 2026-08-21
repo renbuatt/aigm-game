@@ -22,12 +22,12 @@ export type UserProfile = {
   blockedUserIds?: string[];
   points?: number;            
   ticketsNormal?: number;     
-  ticketsBronze?: number;    // ★ 追加：ブロンズチケット（Flash Lite用）
+  ticketsBronze?: number;    
   ticketsSilver?: number;     
   ticketsGold?: number;       
   ticketsPlatinum?: number;
   ticketsDiamond?: number;
-  ticketsItem?: number;      // ★ 追加：アイテムチケット（画像生成・書籍化・書庫保存用）
+  ticketsItem?: number;      
   imageGenCredits?: number;
 };
 
@@ -35,8 +35,18 @@ export type Character = { id: string; name: string; job: string; genderOrRace?: 
 export type Scenario = { id: string; title: string; system: string; tags: string; setting: string; npcList: string; plot: string; prologue?: string; epilogue?: string; imageUrl: string; presetCharacters: Character[]; ratingSum: number; ratingCount: number; authorId?: string; price?: number; playLimit?: number; giftLimit?: number; purchasedTickets?: Record<string, number>; isBanned?: boolean; playTime?: number; isPlayableByOthers?: boolean; isTrialOk?: boolean; itemVisibility?: "all" | "self" | "none"; requiredScenarioId?: string; playCount?: number; viewCount?: number; };
 export type Scene = { id: string; name: string; memberIds: string[]; leaderId?: string; isMerged?: boolean; };
 export type RoomStatus = "recruiting" | "playing" | "splitting" | "finished";
-// ★ 下記の Room 型の最後に error_refunded?: boolean; を追加しました！
-export type Room = { id: string; scenario_id: string; scenario?: Scenario; host_name: string; host_id: string; status: RoomStatus; scenes: Scene[]; privacy: 'open' | 'secret'; host_message: string; joined_users: Record<string, string>; current_summary?: string; difficulty: RoomDifficulty; rule: GameRule; is_paused?: boolean; afk_users?: string[]; is_trial?: boolean; show_items?: boolean; item_visibility?: "all" | "self" | "none"; inventories?: Record<string, string>; current_chapter_index?: number; isWarning?: boolean; spectator_ids?: string[]; ai_model?: string; error_refunded?: boolean; };
+export type Room = { 
+  id: string; scenario_id: string; scenario?: Scenario; host_name: string; host_id: string; 
+  status: RoomStatus; scenes: Scene[]; privacy: 'open' | 'secret'; host_message: string; 
+  joined_users: Record<string, string>; current_summary?: string; difficulty: RoomDifficulty; 
+  rule: GameRule; is_paused?: boolean; afk_users?: string[]; is_trial?: boolean; 
+  show_items?: boolean; item_visibility?: "all" | "self" | "none"; inventories?: Record<string, string>; 
+  current_chapter_index?: number; isWarning?: boolean; spectator_ids?: string[]; ai_model?: string; 
+  error_refunded?: boolean;
+  free_image_count?: number; 
+  is_lost?: boolean;         
+  lost_turn_count?: number;  
+};
 export type Message = { sender: "player" | "gm" | "ai_player" | "system"; text: string; type: "system" | "ic" | "ooc" | "image"; sceneId?: string; charName?: string; channel?: string; imageUrl?: string; };
 export type ChatTab = "story" | "consult" | "gm";
 export type Notification = { id: string; userId: string; title: string; message: string; isRead: boolean; createdAt: string; };
