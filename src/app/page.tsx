@@ -432,6 +432,14 @@ export default function Home() {
     } finally { isRequestingRef.current = false; setIsLoading(false); }
   };
 
+  const deleteScenario = async (id: string) => {
+    if (!confirm("本当にこのシナリオを削除しますか？\n（※関連する部屋も削除されます）")) return;
+    await supabase.from('rooms').delete().eq('scenario_id', id);
+    const { error } = await supabase.from('scenarios').delete().eq('id', id);
+    if (error) alert("削除に失敗しました: " + error.message);
+    else { alert("シナリオを削除しました。"); await fetchData(); }
+  };
+
   const saveScenario = async () => {
     if (!editingScenario || !currentUser) return;
     setIsLoading(true);
@@ -447,81 +455,8 @@ export default function Home() {
             generateAITextWithPrompt(promptBase.replace('[TARGET_LANG]', 'Simplified Chinese'), 'flash', 2000, 0.3)
           ]);
           translationEn = JSON.parse(resEn.replace(/```json/g, "").replace(/```/g, "").trim());
-          translationZh = JSON.parse(resZh.replace(/```json/g, "").replace(/```/g, "").trim());
-        } catch (e) { alert("自動翻訳に一部失敗しましたが、シナリオは保存されます。"); }
-      }
-      const dbData = { 
-        title: editingScenario.title, description: editingScenario.description || "", system: editingScenario.system || "", tags: editingScenario.tags || "", setting: editingScenario.setting || "", 
-        npc_list: editingScenario.npcList || "", plot: editingScenario.plot || "", prologue: editingScenario.prologue || "", epilogue: editingScenario.epilogue || "",
-        image_url: editingScenario.imageUrl || "", preset_characters: editingScenario.presetCharacters, rating_sum: editingScenario.ratingSum, rating_count: editingScenario.ratingCount, author_id: currentUser.id, purchased_tickets: editingScenario.purchasedTickets || {}, price: editingScenario.price || 500, play_limit: editingScenario.playLimit || 1, giftLimit: editingScenario.giftLimit || 1, play_time: editingScenario.playTime || 60, is_playable_by_others: editingScenario.isPlayableByOthers || false, is_trial_ok: editingScenario.isTrialOk || false, item_visibility: editingScenario.itemVisibility || "none", required_scenario_id: editingScenario.requiredScenarioId || "",
-        translation_en: translationEn, translation_zh: translationZh
-      };
-      if (editingScenario.id && !editingScenario.id.startsWith('s')) await supabase.from('scenarios').update(dbData).eq('id', editingScenario.id);
-      else await supabase.from('scenarios').insert(dbData);
-      alert("シナリオを保存（多言語翻訳）しました！"); await fetchData(); setCurrentView("lobby");
-    } catch (err: any) { alert("保存エラー: " + err.message); } finally { setIsLoading(false); }
-  };
-
-  const submitEvaluation = async () => {
-    if(!activeRoom || !activeRoom.scenario || !currentUser) return;
-    const newScSum = activeRoom.scenario.ratingSum + ratingScenario;
-    const newScCount = activeRoom.scenario.ratingCount + 1;
-    await supabase.from('scenarios').update({ rating_sum: newScSum, rating_count: newScCount }).eq('id', activeRoom.scenario.id);
-    if(activeRoom.host_id) {
-      const { data: hostData } = await supabase.from('profiles').select('rating_sum, rating_count').eq('id', activeRoom.host_id).single();
-      if(hostData) await supabase.from('profiles').update({ rating_sum: (hostData.rating_sum || 0) + ratingGM, rating_count: (hostData.rating_count || 0) + 1 }).eq('id', activeRoom.host_id);
-    }
-    alert("評価を送信しました！ロビーに戻ります。");
-    setActiveRoom(null); setJoinedCharacter(null); await fetchData(); setCurrentView("lobby");
-  };
-
-  const submitUserReport = async () => {
-    if (!currentUser || !reportTarget || !reportReason.trim()) return;
-    const { error } = await supabase.from('reports').insert({ reporter_id: currentUser.id, target_type: reportTarget.type, target_id: reportTarget.id, room_id: reportTarget.roomId || null, reason: reportReason });
-    if (!error) { alert("運営に通報を送信しました。ご協力ありがとうございます。"); setReportTarget(null); setReportReason(""); } 
-    else alert("エラーが発生しました: " + error.message);
-  };
-
-  const submitScenarioAppeal = async () => {
-    if (!currentUser || !scenarioAppealTarget || !scenarioAppealText.trim()) return;
-    const { error } = await supabase.from('reports').insert({ reporter_id: currentUser.id, target_type: 'scenario_appeal', target_id: scenarioAppealTarget.id, reason: scenarioAppealText });
-    if (!error) { alert("運営に再審査（修正完了）の申請を送信しました。"); setScenarioAppealTarget(null); setScenarioAppealText(""); await fetchAdminData(); } 
-    else alert("エラーが発生しました: " + error.message);
-  };
-
-  // =============== ★ 管理画面（AdminView）用 API関数 =============== //
-
-  const adminExecuteBan = async (userId: string, reason: string) => {
-    await supabase.from('profiles').update({ is_banned: true }).eq('id', userId);
-    await supabase.from('ban_appeals').insert({ user_id: userId, reason: reason, status: 'banned' });
-    alert("BANを実行しました。"); await fetchAdminData();
-  };
-  const adminUnbanUser = async (userId: string) => {
-    await supabase.from('profiles').update({ is_banned: false }).eq('id', userId);
-    await supabase.from('ban_appeals').update({ status: 'resolved' }).eq('user_id', userId);
-    alert("BANを解除しました。"); await fetchAdminData();
-  };
-  const adminSuspendUser = async (userId: string) => {
-    await supabase.from('profiles').update({ is_suspended: true }).eq('id', userId);
-    alert("一時BAN（参加制限）措置を実行しました。"); await fetchAdminData();
-  };
-  const adminUnsuspendUser = async (userId: string) => {
-    await supabase.from('profiles').update({ is_suspended: false }).eq('id', userId);
-    alert("一時BAN（参加制限）を解除しました。"); await fetchAdminData();
-  };
-  const adminExecuteScenarioBan = async (scenarioId: string, reason: string) => {
-    const { error } = await supabase.from('scenarios').update({ is_banned: true }).eq('id', scenarioId);
-    if (!error) {
-      const s = scenarios.find((x: any) => x.id === scenarioId);
-      if (s?.authorId) await supabase.from('notifications').insert({ user_id: s.authorId, title: '【重要】シナリオ修正依頼（一時非公開）', message: `あなたが作成したシナリオ「${s.title}」について、運営から修正依頼があります。\n\n【理由・修正内容】\n${reason}` });
-      alert("シナリオを一時非公開にし、作者に修正依頼メールを送信しました。"); await fetchData(); await fetchAdminData();
-    }
-  };
-  const adminUnbanScenario = async (scenarioId: string) => {
-    await supabase.from('scenarios').update({ is_banned: false }).eq('id', scenarioId);
-    alert("シナリオの非公開設定を解除しました。"); await fetchData(); await fetchAdminData();
-  };
-  const adminDeleteScenario = async (scenarioId: string) => {
+          translationZh = JSON.parse(resZh.replace(/```json/g, "").replace(/
+            const adminDeleteScenario = async (scenarioId: string) => {
     if(!confirm("本当にこのシナリオを強制削除しますか？\n関連する部屋も削除されます。")) return;
     await supabase.from('rooms').delete().eq('scenario_id', scenarioId);
     const { error } = await supabase.from('scenarios').delete().eq('id', scenarioId);
