@@ -144,22 +144,45 @@ export default function LobbyView({
                           ⚠️ あなたをブロックしているユーザーが参加しています
                         </div>
                       )}
-                      <img src={room.scenario?.imageUrl || NO_IMAGE_SCENARIO} className="w-full sm:w-24 h-32 sm:h-24 object-cover rounded" />
-                      <div className="flex-1">
-                        <div className="flex justify-between items-start">
-                          <h3 className="text-lg font-bold text-white mb-1 flex items-center gap-2">
-                            {room.privacy === 'secret' ? "🔒" : "🔓"} {room.scenario?.title}
-                            {isHost && <span className="text-[10px] bg-amber-600 text-white px-2 py-0.5 rounded ml-auto">あなたがホスト</span>}
-                          </h3>
+                      <img src={room.scenario?.imageUrl || NO_IMAGE_SCENARIO} className="w-full sm:w-32 h-40 sm:h-auto object-cover rounded shrink-0" />
+                      <div className="flex-1 min-w-0 flex flex-col justify-between">
+                        <div>
+                          <div className="flex justify-between items-start mb-1">
+                            <h3 className="text-lg font-bold text-white flex items-center gap-2 truncate">
+                              {room.privacy === 'secret' ? "🔒" : "🔓"} {room.scenario?.title}
+                              {isHost && <span className="text-[10px] bg-amber-600 text-white px-2 py-0.5 rounded ml-auto shrink-0">あなたがホスト</span>}
+                            </h3>
+                          </div>
+                          <div className="text-xs text-slate-400 mb-2 flex flex-wrap items-center gap-2">
+                            <span>ホスト: <span className="underline cursor-pointer hover:text-blue-300 transition-colors" onClick={() => openUserProfile(room.host_id)}>{room.host_name}</span></span>
+                            <span className="text-amber-400 font-bold ml-2">⭐ {room.scenario?.ratingCount ? (room.scenario.ratingSum / room.scenario.ratingCount).toFixed(1) : "未評価"}</span>
+                            <span className={`px-1.5 py-0.5 rounded text-white ${room.difficulty === 'beginner' ? 'bg-pink-500' : room.difficulty === 'easy' ? 'bg-green-600' : room.difficulty === 'normal' ? 'bg-blue-600' : room.difficulty === 'hard' ? 'bg-orange-600' : room.difficulty === 'pro' ? 'bg-red-600' : 'bg-purple-600'}`}>
+                              {room.difficulty === 'beginner' ? '⬜ 初心者' : room.difficulty === 'easy' ? '🟩 簡単' : room.difficulty === 'normal' ? '🟦 普通' : room.difficulty === 'hard' ? '🟧 難しい' : room.difficulty === 'pro' ? '🟥 プロ' : '🟪 鬼'}
+                            </span>
+                          </div>
+
+                          <div className="bg-slate-900/50 p-3 rounded-lg border border-slate-700/50 mb-3">
+                            {room.host_message && <p className="text-xs text-blue-300 font-bold mb-2">📢 ホストより: 「{room.host_message}」</p>}
+                            <p className="text-[10px] text-slate-300 line-clamp-2 leading-relaxed mb-2">{room.scenario?.description || room.scenario?.setting || room.scenario?.prologue || room.scenario?.plot}</p>
+                            
+                            {availableChars.length > 0 && (
+                              <div>
+                                <p className="text-[9px] text-emerald-400 font-bold mb-1">👤 選択可能なキャラクター</p>
+                                <div className="flex gap-2 overflow-x-auto pb-1 custom-scrollbar">
+                                  {availableChars.map(c => (
+                                    <div key={c.id} className="flex items-center gap-1.5 bg-slate-800 px-2 py-1 rounded border border-slate-600 shrink-0">
+                                      <img src={c.imageUrl || DEFAULT_AVATAR} className="w-5 h-5 rounded-full object-cover" />
+                                      <div className="text-left">
+                                        <p className="text-[9px] text-white font-bold">{c.name}</p>
+                                        <p className="text-[7px] text-slate-400">{c.job}</p>
+                                      </div>
+                                    </div>
+                                  ))}
+                                </div>
+                              </div>
+                            )}
+                          </div>
                         </div>
-                        <div className="text-xs text-slate-400 mb-2 flex flex-wrap items-center gap-2">
-                          <span>ホスト: <span className="underline cursor-pointer hover:text-blue-300 transition-colors" onClick={() => openUserProfile(room.host_id)}>{room.host_name}</span></span>
-                          <span className="text-amber-400 font-bold ml-2">⭐ {room.scenario?.ratingCount ? (room.scenario.ratingSum / room.scenario.ratingCount).toFixed(1) : "未評価"}</span>
-                          <span className={`px-1.5 py-0.5 rounded text-white ${room.difficulty === 'beginner' ? 'bg-pink-500' : room.difficulty === 'easy' ? 'bg-green-600' : room.difficulty === 'normal' ? 'bg-blue-600' : room.difficulty === 'hard' ? 'bg-orange-600' : room.difficulty === 'pro' ? 'bg-red-600' : 'bg-purple-600'}`}>
-                            {room.difficulty === 'beginner' ? '⬜ 初心者' : room.difficulty === 'easy' ? '🟩 簡単' : room.difficulty === 'normal' ? '🟦 普通' : room.difficulty === 'hard' ? '🟧 難しい' : room.difficulty === 'pro' ? '🟥 プロ' : '🟪 鬼'}
-                          </span>
-                        </div>
-                        {room.host_message && <p className="text-xs text-slate-300 italic mb-2">「{room.host_message}」</p>}
                         
                         {!hasClearRequired && !isHost ? (
                           <div className="bg-red-900/30 border border-red-500/50 p-2 rounded mt-2">
@@ -169,15 +192,15 @@ export default function LobbyView({
                         ) : (
                           <div className="flex flex-col sm:flex-row gap-2">
                             {availableChars.length > 0 ? (
-                              <select className="bg-slate-900 border border-slate-700 rounded p-1 text-xs text-white flex-1" onChange={(e) => executeJoinRoom(room, e.target.value)} value="">
+                              <select className="bg-slate-900 border border-slate-700 rounded p-1.5 text-xs text-white flex-1" onChange={(e) => executeJoinRoom(room, e.target.value)} value="">
                                 <option value="" disabled>キャラクターを選択して参加...</option>
-                                {availableChars.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+                                {availableChars.map(c => <option key={c.id} value={c.id}>{c.name} ({c.job})</option>)}
                               </select>
                             ) : (
                               <span className="text-xs text-red-400 font-bold bg-slate-900 p-1.5 rounded flex-1 text-center">満員です</span>
                             )}
                             {room.privacy === 'open' && (
-                              <button onClick={() => spectateRoom(room)} className="bg-slate-700 hover:bg-slate-600 text-white text-xs px-3 py-1 sm:py-0 rounded font-bold">👁️ 観戦</button>
+                              <button onClick={() => spectateRoom(room)} className="bg-slate-700 hover:bg-slate-600 text-white text-xs px-4 py-1.5 sm:py-0 rounded font-bold shadow">👁️ 観戦</button>
                             )}
                           </div>
                         )}
@@ -200,15 +223,38 @@ export default function LobbyView({
 
                   return (
                     <div key={s.id} className="bg-slate-800 border border-slate-700 rounded-xl p-4 flex flex-col sm:flex-row gap-4 hover:border-emerald-500 transition-colors">
-                      <img src={s.imageUrl || NO_IMAGE_SCENARIO} className="w-full sm:w-24 h-32 sm:h-24 object-cover rounded" />
-                      <div className="flex-1">
-                        <h3 className="text-lg font-bold text-white mb-1 flex items-center gap-2">
-                          {s.title}
-                          {reqId && <span className="text-[10px] bg-indigo-600 px-2 py-0.5 rounded">続編</span>}
-                        </h3>
-                        <div className="text-xs text-slate-400 mb-2 flex gap-3">
-                          <span className="text-emerald-400">目安: {s.playTime || 60}分</span>
-                          <span className="text-amber-400 font-bold">⭐ {s.ratingCount ? (s.ratingSum / s.ratingCount).toFixed(1) : "未評価"}</span>
+                      <img src={s.imageUrl || NO_IMAGE_SCENARIO} className="w-full sm:w-32 h-40 sm:h-auto object-cover rounded shrink-0" />
+                      <div className="flex-1 min-w-0 flex flex-col justify-between">
+                        <div>
+                          <h3 className="text-lg font-bold text-white mb-1 flex items-center gap-2 truncate">
+                            {s.title}
+                            {reqId && <span className="text-[10px] bg-indigo-600 px-2 py-0.5 rounded shrink-0">続編</span>}
+                          </h3>
+                          <div className="text-xs text-slate-400 mb-2 flex gap-3">
+                            <span className="text-emerald-400">目安: {s.playTime || 60}分</span>
+                            <span className="text-amber-400 font-bold">⭐ {s.ratingCount ? (s.ratingSum / s.ratingCount).toFixed(1) : "未評価"}</span>
+                          </div>
+                          
+                          <div className="bg-slate-900/50 p-3 rounded-lg border border-slate-700/50 mb-3">
+                            <p className="text-xs text-slate-300 mb-3 line-clamp-2 leading-relaxed">{s.description || s.setting || s.prologue || s.plot}</p>
+                            
+                            {s.presetCharacters && s.presetCharacters.length > 0 && (
+                              <div>
+                                <p className="text-[10px] text-emerald-400 font-bold mb-1.5">👥 登場キャラクター</p>
+                                <div className="flex gap-2 overflow-x-auto pb-1 custom-scrollbar">
+                                  {s.presetCharacters.map(c => (
+                                    <div key={c.id} className="flex items-center gap-1.5 bg-slate-800 px-2 py-1 rounded border border-slate-600 shrink-0">
+                                      <img src={c.imageUrl || DEFAULT_AVATAR} className="w-6 h-6 rounded-full object-cover" />
+                                      <div className="text-left">
+                                        <p className="text-[10px] text-white font-bold">{c.name}</p>
+                                        <p className="text-[8px] text-slate-400">{c.job}</p>
+                                      </div>
+                                    </div>
+                                  ))}
+                                </div>
+                              </div>
+                            )}
+                          </div>
                         </div>
                         
                         {!hasClearRequired ? (
@@ -223,7 +269,7 @@ export default function LobbyView({
                             )}
                           </div>
                         ) : (
-                          <button onClick={() => setRoomConfigModal({ scenario: s, charId: "", privacy: "open", message: "", difficulty: "normal", rule: "coc_jp", itemVisibility: s.itemVisibility || "none", aiModel: 'lite' })} className="w-full bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold py-2 rounded shadow mt-2">
+                          <button onClick={() => setRoomConfigModal({ scenario: s, charId: "", privacy: "open", message: "", difficulty: "normal", rule: "coc_jp", itemVisibility: s.itemVisibility || "none", aiModel: 'lite' })} className="w-full bg-emerald-600 hover:bg-emerald-500 text-white text-sm font-bold py-2.5 rounded shadow mt-2 transition-colors">
                             このシナリオで部屋を作成する
                           </button>
                         )}
@@ -240,14 +286,35 @@ export default function LobbyView({
               {trialScenarios.length === 0 ? <p className="text-slate-400 text-sm p-4 text-center">お試しプレイ可能なシナリオはありません。</p> :
                 trialScenarios.map(ts => (
                   <div key={ts.id} className="bg-pink-900/10 border border-pink-500/30 rounded-xl p-4 flex flex-col sm:flex-row gap-4 hover:border-pink-500 transition-colors">
-                    <img src={ts.imageUrl || NO_IMAGE_SCENARIO} className="w-full sm:w-24 h-32 sm:h-24 object-cover rounded" />
-                    <div className="flex-1 flex flex-col justify-between">
+                    <img src={ts.imageUrl || NO_IMAGE_SCENARIO} className="w-full sm:w-32 h-40 sm:h-auto object-cover rounded shrink-0" />
+                    <div className="flex-1 min-w-0 flex flex-col justify-between">
                       <div>
-                        <h3 className="text-lg font-bold text-white mb-1">{ts.title}</h3>
-                        <p className="text-[10px] text-pink-300 mb-1">【設定固定】ルール: 国内CoC風 / 難易度: 普通 / アイテム表示なし</p>
-                        <span className="text-xs text-amber-400 font-bold">⭐ {ts.ratingCount ? (ts.ratingSum / ts.ratingCount).toFixed(1) : "未評価"}</span>
+                        <h3 className="text-lg font-bold text-white mb-1 truncate">{ts.title}</h3>
+                        <p className="text-[10px] text-pink-300 mb-2">【設定固定】ルール: 国内CoC風 / 難易度: 普通 / アイテム表示なし</p>
+                        <span className="text-xs text-amber-400 font-bold block mb-3">⭐ {ts.ratingCount ? (ts.ratingSum / ts.ratingCount).toFixed(1) : "未評価"}</span>
+
+                        <div className="bg-slate-900/50 p-3 rounded-lg border border-slate-700/50 mb-3">
+                          <p className="text-xs text-slate-300 mb-3 line-clamp-2 leading-relaxed">{ts.description || ts.setting || ts.prologue || ts.plot}</p>
+                          
+                          {ts.presetCharacters && ts.presetCharacters.length > 0 && (
+                            <div>
+                              <p className="text-[10px] text-pink-400 font-bold mb-1.5">👥 登場キャラクター</p>
+                              <div className="flex gap-2 overflow-x-auto pb-1 custom-scrollbar">
+                                {ts.presetCharacters.map(c => (
+                                  <div key={c.id} className="flex items-center gap-1.5 bg-slate-800 px-2 py-1 rounded border border-slate-600 shrink-0">
+                                    <img src={c.imageUrl || DEFAULT_AVATAR} className="w-6 h-6 rounded-full object-cover" />
+                                    <div className="text-left">
+                                      <p className="text-[10px] text-white font-bold">{c.name}</p>
+                                      <p className="text-[8px] text-slate-400">{c.job}</p>
+                                    </div>
+                                  </div>
+                                ))}
+                              </div>
+                            </div>
+                          )}
+                        </div>
                       </div>
-                      <button onClick={() => startTrialPlay(ts)} className="w-full bg-pink-600 hover:bg-pink-500 text-white text-xs font-bold py-2 rounded shadow mt-2">
+                      <button onClick={() => startTrialPlay(ts)} className="w-full bg-pink-600 hover:bg-pink-500 text-white text-sm font-bold py-2.5 rounded shadow mt-2 transition-colors">
                         📺 広告を見てお試しプレイ
                       </button>
                     </div>
@@ -269,10 +336,11 @@ export default function LobbyView({
                 {rankingType === 'played' && playableScenarios.slice().sort((a,b) => (b.playCount || 0) - (a.playCount || 0)).slice(0, 10).map((s, idx) => (
                   <div key={s.id} className="bg-slate-800 border border-slate-700 p-4 rounded-xl flex items-center gap-4">
                     <div className="w-10 flex justify-center items-center">{getRankIcon(idx)}</div>
-                    <img src={s.imageUrl || NO_IMAGE_SCENARIO} className="w-16 h-16 object-cover rounded" />
+                    <img src={s.imageUrl || NO_IMAGE_SCENARIO} className="w-16 h-16 object-cover rounded shrink-0" />
                     <div className="flex-1 min-w-0">
                       <h3 className="font-bold text-white truncate">{s.title}</h3>
-                      <p className="text-xs text-amber-400 mt-1">🎮 {s.playCount || 0} 回プレイ</p>
+                      <p className="text-[10px] text-slate-400 line-clamp-1 mt-1">{s.description || s.setting || s.plot}</p>
+                      <p className="text-xs text-amber-400 mt-1 font-bold">🎮 {s.playCount || 0} 回プレイ</p>
                     </div>
                     <button onClick={() => setRoomConfigModal({ scenario: s, charId: "", privacy: "open", message: "", difficulty: "normal", rule: "coc_jp", itemVisibility: "none", aiModel: 'lite' })} className="text-[10px] bg-emerald-600 hover:bg-emerald-500 text-white px-3 py-2 rounded font-bold shadow whitespace-nowrap">部屋を作る</button>
                   </div>
@@ -281,10 +349,11 @@ export default function LobbyView({
                 {rankingType === 'viewed' && playableScenarios.slice().sort((a,b) => (b.viewCount || 0) - (a.viewCount || 0)).slice(0, 10).map((s, idx) => (
                   <div key={s.id} className="bg-slate-800 border border-slate-700 p-4 rounded-xl flex items-center gap-4">
                     <div className="w-10 flex justify-center items-center">{getRankIcon(idx)}</div>
-                    <img src={s.imageUrl || NO_IMAGE_SCENARIO} className="w-16 h-16 object-cover rounded" />
+                    <img src={s.imageUrl || NO_IMAGE_SCENARIO} className="w-16 h-16 object-cover rounded shrink-0" />
                     <div className="flex-1 min-w-0">
                       <h3 className="font-bold text-white truncate">{s.title}</h3>
-                      <p className="text-xs text-blue-400 mt-1">👁️ {s.viewCount || 0} 回閲覧</p>
+                      <p className="text-[10px] text-slate-400 line-clamp-1 mt-1">{s.description || s.setting || s.plot}</p>
+                      <p className="text-xs text-blue-400 mt-1 font-bold">👁️ {s.viewCount || 0} 回閲覧</p>
                     </div>
                     <button onClick={() => setRoomConfigModal({ scenario: s, charId: "", privacy: "open", message: "", difficulty: "normal", rule: "coc_jp", itemVisibility: "none", aiModel: 'lite' })} className="text-[10px] bg-emerald-600 hover:bg-emerald-500 text-white px-3 py-2 rounded font-bold shadow whitespace-nowrap">部屋を作る</button>
                   </div>
@@ -308,7 +377,7 @@ export default function LobbyView({
                     return (
                       <div key={c.id} className="bg-slate-800 border border-slate-700 p-4 rounded-xl flex items-center gap-4">
                         <div className="w-10 flex justify-center items-center">{getRankIcon(idx)}</div>
-                        <img src={profile?.avatar || DEFAULT_AVATAR} className="w-16 h-16 object-cover rounded-full border-2 border-purple-500 cursor-pointer" onClick={() => openUserProfile(c.id)} />
+                        <img src={profile?.avatar || DEFAULT_AVATAR} className="w-16 h-16 object-cover rounded-full border-2 border-purple-500 cursor-pointer shrink-0" onClick={() => openUserProfile(c.id)} />
                         <div className="flex-1 min-w-0">
                           <h3 className="font-bold text-white cursor-pointer hover:text-purple-300 truncate" onClick={() => openUserProfile(c.id)}>{profile?.name || '読込中...'}</h3>
                           <div className="text-xs text-slate-400 mt-1 flex flex-wrap gap-3">
@@ -339,10 +408,10 @@ export default function LobbyView({
               onClick={() => openUserProfile(currentUser.id)} 
               className="flex gap-4 items-center p-2 rounded-lg cursor-pointer hover:bg-slate-700 transition-colors"
             >
-              <img src={currentUser.avatarUrl} className="w-14 h-14 rounded-full object-cover shadow" />
-              <div>
-                <p className="text-lg font-bold text-white flex items-center gap-1">{currentUser.handleName}</p>
-                <p className="text-[10px] text-slate-500 mt-1">ID: {currentUser.id}</p>
+              <img src={currentUser.avatarUrl} className="w-14 h-14 rounded-full object-cover shadow shrink-0" />
+              <div className="min-w-0">
+                <p className="text-lg font-bold text-white flex items-center gap-1 truncate">{currentUser.handleName}</p>
+                <p className="text-[10px] text-slate-500 mt-1 truncate">ID: {currentUser.id}</p>
               </div>
             </div>
 
@@ -389,7 +458,7 @@ export default function LobbyView({
           <div className="bg-slate-800 border border-slate-700 rounded-xl p-4 flex flex-col shadow-lg border-t-2 border-t-emerald-500">
             <div className="flex justify-between items-center mb-3">
               <h2 className="text-sm font-bold text-emerald-400">📜 作成したシナリオ</h2>
-              <button onClick={() => { setEditingScenario({ id: "", title: "", system: "", tags: "", setting: "", npcList: "", plot: "", imageUrl: "", presetCharacters: [], ratingSum: 0, ratingCount: 0, price: 500, playLimit: 1, giftLimit: 1, playTime: 60, isTrialOk: false, isPlayableByOthers: false, itemVisibility: "none" }); setCurrentView("scenarioEdit"); }} className="text-[10px] bg-slate-700 px-2 py-1 rounded hover:bg-slate-600">＋ 新規作成</button>
+              <button onClick={() => { setEditingScenario({ id: "", title: "", description: "", system: "", tags: "", setting: "", npcList: "", plot: "", imageUrl: "", presetCharacters: [], ratingSum: 0, ratingCount: 0, price: 500, playLimit: 1, giftLimit: 1, playTime: 60, isTrialOk: false, isPlayableByOthers: false, itemVisibility: "none" }); setCurrentView("scenarioEdit"); }} className="text-[10px] bg-slate-700 px-2 py-1 rounded hover:bg-slate-600">＋ 新規作成</button>
             </div>
             {createdScenarios.length === 0 ? (
               <p className="text-xs text-slate-400 mt-2 text-center p-2 bg-slate-900 rounded border border-slate-700/50">作成したシナリオはありません。</p>
@@ -399,15 +468,15 @@ export default function LobbyView({
                   return (
                     <div key={s.id} className={`bg-slate-900 border rounded-lg p-3 flex flex-col gap-2 ${s.isBanned ? 'border-red-900/50 opacity-80' : 'border-slate-700'}`}>
                       <div className="flex items-start gap-3">
-                        <img src={s.imageUrl || NO_IMAGE_SCENARIO} className="w-12 h-12 object-cover rounded border border-slate-600" />
-                        <div className="flex-1">
-                          <h4 className="text-sm font-bold text-white flex gap-1 items-center">
+                        <img src={s.imageUrl || NO_IMAGE_SCENARIO} className="w-12 h-12 object-cover rounded border border-slate-600 shrink-0" />
+                        <div className="flex-1 min-w-0">
+                          <h4 className="text-sm font-bold text-white flex gap-1 items-center truncate">
                             {s.title} 
-                            {s.isTrialOk && <span className="text-[8px] bg-pink-600 text-white px-1 rounded">試</span>}
-                            {s.isPlayableByOthers && <span className="text-[8px] bg-blue-600 text-white px-1 rounded">公</span>}
-                            {s.isBanned && <span className="text-[8px] bg-red-600 text-white px-1 rounded">BAN</span>}
+                            {s.isTrialOk && <span className="text-[8px] bg-pink-600 text-white px-1 rounded shrink-0">試</span>}
+                            {s.isPlayableByOthers && <span className="text-[8px] bg-blue-600 text-white px-1 rounded shrink-0">公</span>}
+                            {s.isBanned && <span className="text-[8px] bg-red-600 text-white px-1 rounded shrink-0">BAN</span>}
                           </h4>
-                          <p className="text-[9px] text-emerald-400">目安: {s.playTime || 60}分</p>
+                          <p className="text-[9px] text-emerald-400 mt-0.5">目安: {s.playTime || 60}分</p>
                           <div className="flex gap-2 mt-2 items-center">
                             <button onClick={() => { setEditingScenario(s); setCurrentView("scenarioEdit"); }} className="text-[10px] bg-slate-700 px-2 py-1 rounded text-white hover:bg-slate-600">編集</button>
                             <button onClick={() => deleteScenario(s.id)} className="text-[10px] bg-red-900/50 px-2 py-1 rounded text-red-300 hover:bg-red-800/80">削除</button>
@@ -437,6 +506,141 @@ export default function LobbyView({
         <a href="/tokushoho" target="_blank" className="hover:text-white transition-colors">特定商取引法に基づく表記</a>
         <span className="ml-2">&copy; {new Date().getFullYear()} 五輪警備保障株式会社</span>
       </footer>
+
+      {showTicketModal && (
+        <div className="fixed inset-0 bg-black/80 z-[80] flex items-center justify-center p-4">
+          <div className="bg-slate-800 border border-slate-700 rounded-xl p-6 w-full max-w-4xl shadow-2xl">
+            <div className="flex justify-between items-center mb-4 border-b border-slate-700 pb-3">
+              <h3 className="text-xl font-bold text-emerald-400">🎟️ チケット購入・交換ストア</h3>
+              <button onClick={() => setShowTicketModal(false)} className="text-2xl text-slate-400 hover:text-white">×</button>
+            </div>
+            
+            <div className="flex flex-col md:flex-row gap-4 mb-4">
+              <div className="flex-1 bg-slate-900 border border-slate-700 rounded-lg p-4 flex flex-col justify-center items-center shadow-inner">
+                 <span className="text-sm text-slate-400 mb-1">現在の所持ポイント</span>
+                 <span className="text-3xl font-bold text-yellow-400">🪙 {currentUser?.points || 0} pt</span>
+              </div>
+              <div className="flex-1 bg-pink-900/20 border border-pink-500/50 rounded-lg p-4 flex flex-col justify-center items-center shadow-inner relative overflow-hidden">
+                 <span className="text-xs text-pink-300 mb-2 font-bold">ログインボーナス（1日3回まで）</span>
+                 <button onClick={() => alert("※動画広告実装準備中")} className="w-full bg-pink-600 hover:bg-pink-500 text-white font-bold py-2 rounded-lg shadow-lg flex items-center justify-center gap-2">
+                   📺 動画を見て 20pt 獲得する (0/3)
+                 </button>
+                 <p className="text-[10px] text-pink-400/70 mt-2">※3回視聴でブロンズチケット1枚分(60pt)になります。</p>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 max-h-[50vh] overflow-y-auto pr-2 custom-scrollbar">
+               
+               {/* ブロンズ */}
+               <div className="bg-stone-800/50 border border-stone-600 p-4 rounded-xl flex flex-col justify-between">
+                  <div>
+                    <div className="flex justify-between items-center mb-2">
+                      <h4 className="text-lg font-bold text-stone-300">ブロンズ</h4>
+                      <span className="bg-stone-600 text-white text-[10px] px-2 py-1 rounded font-bold">所持: {currentUser?.ticketsBronze || 0}枚</span>
+                    </div>
+                    <p className="text-[11px] text-stone-400">日常的な探索やテストプレイに。<br/>超高速・低コストな最安プラン。</p>
+                  </div>
+                  <div className="mt-4 pt-3 border-t border-stone-600">
+                    <div className="flex gap-2 mb-2">
+                      <button onClick={() => alert("※決済システム準備中")} className="flex-1 bg-stone-600 hover:bg-stone-500 text-white text-xs py-2 rounded font-bold shadow">¥240</button>
+                      <button onClick={() => exchangeTicketWithPoints('bronze', 60)} className="flex-1 bg-yellow-600 hover:bg-yellow-500 text-white text-xs py-2 rounded font-bold shadow flex items-center justify-center gap-1">🪙 60pt</button>
+                    </div>
+                    <button onClick={() => alert("※決済システム準備中")} className="w-full bg-stone-700/50 hover:bg-stone-600 text-stone-300 text-[10px] py-1.5 rounded font-bold border border-stone-600 transition-colors">3枚セット - ¥640 (11%OFF)</button>
+                  </div>
+               </div>
+               
+               {/* シルバー */}
+               <div className="bg-slate-700/30 border border-slate-600 p-4 rounded-xl flex flex-col justify-between">
+                  <div>
+                    <div className="flex justify-between items-center mb-2">
+                      <h4 className="text-lg font-bold text-slate-300">シルバー</h4>
+                      <span className="bg-slate-600 text-white text-[10px] px-2 py-1 rounded font-bold">所持: {currentUser?.ticketsSilver || 0}枚</span>
+                    </div>
+                    <p className="text-[11px] text-slate-400">手軽にサクッと遊びたい方向け。<br/>テンポの良いスピーディーなセッション。</p>
+                  </div>
+                  <div className="mt-4 pt-3 border-t border-slate-600">
+                    <div className="flex gap-2 mb-2">
+                      <button onClick={() => alert("※決済システム準備中")} className="flex-1 bg-blue-600 hover:bg-blue-500 text-white text-xs py-2 rounded font-bold shadow">¥360</button>
+                      <button onClick={() => exchangeTicketWithPoints('silver', 100)} className="flex-1 bg-yellow-600 hover:bg-yellow-500 text-white text-xs py-2 rounded font-bold shadow flex items-center justify-center gap-1">🪙 100pt</button>
+                    </div>
+                    <button onClick={() => alert("※決済システム準備中")} className="w-full bg-slate-800 hover:bg-slate-700 text-slate-300 text-[10px] py-1.5 rounded font-bold border border-slate-600 transition-colors">3枚セット - ¥970 (10%OFF)</button>
+                  </div>
+               </div>
+               
+               {/* ゴールド (ポイント交換削除) */}
+               <div className="bg-amber-900/10 border border-amber-700/50 p-4 rounded-xl flex flex-col justify-between">
+                  <div>
+                    <div className="flex justify-between items-center mb-2">
+                      <h4 className="text-lg font-bold text-amber-400">ゴールド</h4>
+                      <span className="bg-amber-600 text-white text-[10px] px-2 py-1 rounded font-bold">所持: {currentUser?.ticketsGold || 0}枚</span>
+                    </div>
+                    <p className="text-[11px] text-amber-500/70">論理的で緻密なシナリオ向け。<br/>※AIプレイヤーは参加できません。</p>
+                  </div>
+                  <div className="mt-4 pt-3 border-t border-amber-900/50">
+                    <div className="flex flex-col gap-2">
+                      <button onClick={() => alert("※決済システム準備中")} className="w-full bg-amber-600 hover:bg-amber-500 text-white text-xs py-2 rounded font-bold shadow">1枚購入 - ¥600</button>
+                      <button onClick={() => alert("※決済システム準備中")} className="w-full bg-amber-900/50 hover:bg-amber-800/80 text-amber-300 text-[10px] py-1.5 rounded font-bold border border-amber-700/50 transition-colors">3枚セット - ¥1,620 (10%OFF)</button>
+                    </div>
+                  </div>
+               </div>
+               
+               {/* プラチナ (ポイント交換削除) */}
+               <div className="bg-indigo-900/10 border border-indigo-700/50 p-4 rounded-xl flex flex-col justify-between">
+                  <div>
+                    <div className="flex justify-between items-center mb-2">
+                      <h4 className="text-lg font-bold text-indigo-300">プラチナ</h4>
+                      <span className="bg-indigo-600 text-white text-[10px] px-2 py-1 rounded font-bold">所持: {currentUser?.ticketsPlatinum || 0}枚</span>
+                    </div>
+                    <p className="text-[11px] text-indigo-400/70">エモーショナルな体験を求める方向け。<br/>※AIプレイヤーは参加できません。</p>
+                  </div>
+                  <div className="mt-4 pt-3 border-t border-indigo-900/50">
+                    <div className="flex flex-col gap-2">
+                      <button onClick={() => alert("※決済システム準備中")} className="w-full bg-indigo-600 hover:bg-indigo-500 text-white text-xs py-2 rounded font-bold shadow">1枚購入 - ¥1,200</button>
+                      <button onClick={() => alert("※決済システム準備中")} className="w-full bg-indigo-900/50 hover:bg-indigo-800/80 text-indigo-300 text-[10px] py-1.5 rounded font-bold border border-indigo-700/50 transition-colors">3枚セット - ¥3,240 (10%OFF)</button>
+                    </div>
+                  </div>
+               </div>
+               
+               {/* ダイヤモンド (ポイント交換削除) */}
+               <div className="bg-gradient-to-br from-fuchsia-900/40 to-rose-900/20 border-2 border-fuchsia-500/50 p-4 rounded-xl flex flex-col justify-between relative overflow-hidden lg:col-span-2">
+                  <div className="absolute top-0 right-0 bg-fuchsia-600 text-white text-[8px] font-bold px-4 py-1 rotate-45 translate-x-3 translate-y-2 shadow-lg">最高級</div>
+                  <div>
+                    <div className="flex justify-between items-center mb-2">
+                      <h4 className="text-lg font-bold text-fuchsia-300">ダイヤモンド</h4>
+                      <span className="bg-fuchsia-600 text-white text-[10px] px-2 py-1 rounded font-bold relative z-10">所持: {currentUser?.ticketsDiamond || 0}枚</span>
+                    </div>
+                    <p className="text-[11px] text-fuchsia-200/80 relative z-10">最高峰のVIP TRPG体験。人間を超える神業GMで、絶対に失敗できない究極のセッションを。<br/>※AIプレイヤーは参加できません。</p>
+                  </div>
+                  <div className="mt-4 pt-3 border-t border-fuchsia-900/50 relative z-10">
+                    <div className="flex flex-col sm:flex-row gap-2">
+                      <button onClick={() => alert("※決済システム準備中")} className="flex-1 bg-fuchsia-600 hover:bg-fuchsia-500 text-white text-xs py-2 rounded font-bold shadow">1枚購入 - ¥1,800</button>
+                      <button onClick={() => alert("※決済システム準備中")} className="flex-1 bg-fuchsia-900/50 hover:bg-fuchsia-800/80 text-fuchsia-300 text-[10px] py-2 rounded font-bold border border-fuchsia-700/50 transition-colors">3枚セット - ¥4,860 (10%OFF)</button>
+                    </div>
+                  </div>
+               </div>
+               
+               {/* アイテム */}
+               <div className="bg-slate-700/30 border border-slate-600 p-4 rounded-xl flex flex-col justify-between">
+                  <div>
+                    <div className="flex justify-between items-center mb-2">
+                      <h4 className="text-lg font-bold text-white">アイテム</h4>
+                      <span className="bg-slate-500 text-white text-[10px] px-2 py-1 rounded font-bold">所持: {currentUser?.ticketsItem || 0}枚</span>
+                    </div>
+                    <p className="text-[11px] text-slate-400">高品質画像生成(3回分)や、<br/>小説執筆、書庫保存などに使用します。</p>
+                  </div>
+                  <div className="mt-4 pt-3 border-t border-slate-600">
+                    <div className="flex gap-2 mb-2">
+                      <button onClick={() => alert("※決済システム準備中")} className="flex-1 bg-slate-600 hover:bg-slate-500 text-white text-xs py-2 rounded font-bold shadow">¥200</button>
+                      <button onClick={() => exchangeTicketWithPoints('item', 500)} className="flex-1 bg-yellow-600 hover:bg-yellow-500 text-white text-xs py-2 rounded font-bold shadow flex items-center justify-center gap-1">🪙 500pt</button>
+                    </div>
+                    <button onClick={() => alert("※決済システム準備中")} className="w-full bg-slate-800 border border-slate-500 hover:bg-slate-700 text-slate-300 text-[10px] py-1.5 rounded font-bold transition-colors">3枚セット - ¥540 (10%OFF)</button>
+                  </div>
+               </div>
+               
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

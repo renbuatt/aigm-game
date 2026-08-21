@@ -32,7 +32,7 @@ export type UserProfile = {
 };
 
 export type Character = { id: string; name: string; job: string; genderOrRace?: string; personality: string; imageUrl: string; hp: number; san: number; str: number; dex: number; int: number; con: number; wis: number; cha: number; items?: string; playerName?: string; };
-export type Scenario = { id: string; title: string; system: string; tags: string; setting: string; npcList: string; plot: string; prologue?: string; epilogue?: string; imageUrl: string; presetCharacters: Character[]; ratingSum: number; ratingCount: number; authorId?: string; price?: number; playLimit?: number; giftLimit?: number; purchasedTickets?: Record<string, number>; isBanned?: boolean; playTime?: number; isPlayableByOthers?: boolean; isTrialOk?: boolean; itemVisibility?: "all" | "self" | "none"; requiredScenarioId?: string; playCount?: number; viewCount?: number; };
+export type Scenario = { id: string; title: string; system: string; tags: string; setting: string; npcList: string; plot: string; prologue?: string; epilogue?: string; imageUrl: string; presetCharacters: Character[]; ratingSum: number; ratingCount: number; authorId?: string; price?: number; playLimit?: number; giftLimit?: number; purchasedTickets?: Record<string, number>; isBanned?: boolean; playTime?: number; isPlayableByOthers?: boolean; isTrialOk?: boolean; itemVisibility?: "all" | "self" | "none"; requiredScenarioId?: string; playCount?: number; viewCount?: number; description?: string; };
 export type Scene = { id: string; name: string; memberIds: string[]; leaderId?: string; isMerged?: boolean; };
 export type RoomStatus = "recruiting" | "playing" | "splitting" | "finished";
 export type Room = { 

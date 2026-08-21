@@ -9,7 +9,7 @@ type Props = {
   saveScenario: () => Promise<void>;
   setCurrentView: (view: any) => void;
   allScenarios: Scenario[];
-  generatePackageImage: (baseText: string, type: 'scenario' | 'character') => Promise<string | null>; // ★ 画像生成関数を追加
+  generatePackageImage: (baseText: string, type: 'scenario' | 'character') => Promise<string | null>;
 };
 
 export default function ScenarioEditView({
@@ -51,6 +51,12 @@ export default function ScenarioEditView({
                 <input type="text" value={editingScenario.title} onChange={e=>setEditingScenario({...editingScenario, title: e.target.value})} className="w-full bg-slate-900 border border-slate-700 rounded p-2 text-sm text-white" placeholder="例：狂気山脈の影" />
               </div>
               
+              {/* ★ 追加：プレイヤー向け（ネタバレなし）の公開用紹介文 */}
+              <div>
+                <label className="text-xs text-slate-400 block mb-1">公開用紹介文・あらすじ <span className="text-emerald-400">※ネタバレなし</span></label>
+                <textarea value={editingScenario.description || ""} onChange={e=>setEditingScenario({...editingScenario, description: e.target.value})} rows={3} className="w-full bg-slate-900 border border-slate-700 rounded p-2 text-sm text-white resize-none" placeholder="ロビー画面でプレイヤー向けに表示される紹介文です。ネタバレを含まないあらすじを入力してください。" />
+              </div>
+
               <div className="flex gap-4">
                 <div className="flex-1">
                   <label className="text-xs text-slate-400 block mb-1">システム / ルール</label>
@@ -66,10 +72,10 @@ export default function ScenarioEditView({
                 <label className="text-xs text-slate-400 block mb-1">パッケージ画像URL</label>
                 <div className="flex gap-2">
                   <input type="text" value={editingScenario.imageUrl} onChange={e=>setEditingScenario({...editingScenario, imageUrl: e.target.value})} className="flex-1 bg-slate-900 border border-slate-700 rounded p-2 text-sm text-white" placeholder="https://..." />
-                  {/* ★ 追加：シナリオ画像のAI自動生成ボタン */}
                   <button onClick={async () => { 
-                    if(!editingScenario.plot) { alert("先に「プロット・あらすじ」を入力してください。"); return; }
-                    const url = await generatePackageImage(editingScenario.plot, 'scenario'); 
+                    if(!editingScenario.plot && !editingScenario.description) { alert("先に「あらすじ」か「プロット」を入力してください。"); return; }
+                    const baseText = editingScenario.description || editingScenario.plot;
+                    const url = await generatePackageImage(baseText, 'scenario'); 
                     if(url) setEditingScenario({...editingScenario, imageUrl: url}); 
                   }} className="bg-purple-600 hover:bg-purple-500 text-white px-3 rounded text-xs font-bold whitespace-nowrap shadow-lg">
                     ✨ AI生成
@@ -81,14 +87,14 @@ export default function ScenarioEditView({
           </div>
 
           <div className="bg-slate-800 border border-slate-700 rounded-xl p-6 shadow-lg">
-            <h2 className="text-lg font-bold text-white mb-4 border-b border-slate-700 pb-2">🗺️ 世界観とプロット</h2>
+            <h2 className="text-lg font-bold text-white mb-4 border-b border-slate-700 pb-2">🗺️ 世界観とプロット <span className="text-xs text-red-400 font-normal">※AI（GM）専用</span></h2>
             <div className="space-y-4">
               <div>
                 <label className="text-xs text-slate-400 block mb-1">世界観・背景設定</label>
                 <textarea value={editingScenario.setting} onChange={e=>setEditingScenario({...editingScenario, setting: e.target.value})} rows={3} className="w-full bg-slate-900 border border-slate-700 rounded p-2 text-sm text-white resize-none" placeholder="時代背景や舞台となる場所の説明..." />
               </div>
               <div>
-                <label className="text-xs text-slate-400 block mb-1">プロット・あらすじ・真相 <span className="text-red-400">*</span></label>
+                <label className="text-xs text-slate-400 block mb-1">プロット・真相 <span className="text-red-400">*</span></label>
                 <textarea value={editingScenario.plot} onChange={e=>setEditingScenario({...editingScenario, plot: e.target.value})} rows={6} className="w-full bg-slate-900 border border-slate-700 rounded p-2 text-sm text-white resize-none" placeholder="※AI GMが進行するための台本になります。物語の始まりから結末までを詳しく書いてください。&#10;※チャプター分割する場合はJSON形式で入力してください。" />
               </div>
               <div>
@@ -193,7 +199,6 @@ export default function ScenarioEditView({
                     <label className="text-[10px] text-slate-400 block mb-1">アイコン画像URL</label>
                     <div className="flex gap-2">
                       <input type="text" value={editingChar.imageUrl} onChange={e=>handleCharChange('imageUrl', e.target.value)} className="flex-1 bg-slate-800 border border-slate-700 rounded p-1.5 text-sm" />
-                      {/* ★ 追加：キャラクター画像のAI自動生成ボタン */}
                       <button onClick={async () => { 
                         if(!editingChar.personality) { alert("先に「性格・背景設定」を入力してください。"); return; }
                         const url = await generatePackageImage(`名前:${editingChar.name}\n職業:${editingChar.job}\n性別:${editingChar.genderOrRace}\n設定:${editingChar.personality}`, 'character'); 

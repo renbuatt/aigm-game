@@ -66,7 +66,6 @@ export default function Home() {
   const [myNotifications, setMyNotifications] = useState<Notification[]>([]);
   const [showMailbox, setShowMailbox] = useState(false);
 
-  // 管理画面用アクション
   const [adminActionUser, setAdminActionUser] = useState<UserProfile | null>(null);
   const [adminTicketType, setAdminTicketType] = useState("silver");
   const [adminTicketAmount, setAdminTicketAmount] = useState(1);
@@ -103,7 +102,6 @@ export default function Home() {
   const prevMessagesLength = useRef(0);
   const [playArchives, setPlayArchives] = useState<PlayArchive[]>([]);
 
-  // 広告視聴（ログインボーナス）用のステート
   const [adViewInfo, setAdViewInfo] = useState({ count: 0, date: "" });
 
   const isRequestingRef = useRef(false);
@@ -171,7 +169,6 @@ export default function Home() {
     else setCurrentUser({ ...currentUser, ...updates });
   };
 
-  // ★ 追加：アバター画像のアップロード
   const uploadAvatar = async (file: File) => {
     if (!currentUser) return;
     setIsLoading(true);
@@ -257,7 +254,7 @@ export default function Home() {
     let loadedScenarios: Scenario[] = [];
     if (scData && scData.length > 0) {
       loadedScenarios = scData.map((d: any) => ({
-        id: d.id, title: d.title, system: d.system || "", tags: d.tags || "", setting: d.setting || "",
+        id: d.id, title: d.title, description: d.description || "", system: d.system || "", tags: d.tags || "", setting: d.setting || "",
         npcList: d.npc_list || "", plot: d.plot || "", prologue: d.prologue || "", epilogue: d.epilogue || "",
         imageUrl: d.image_url || "", presetCharacters: d.preset_characters || [], ratingSum: d.rating_sum || 0, ratingCount: d.rating_count || 0,
         authorId: d.author_id, price: d.price || 500, playLimit: d.play_limit || 1, giftLimit: d.gift_limit || 1,
@@ -456,7 +453,7 @@ export default function Home() {
   const saveScenario = async () => {
     if (!editingScenario || !currentUser) return;
     const dbData = { 
-      title: editingScenario.title, system: editingScenario.system || "", tags: editingScenario.tags || "", setting: editingScenario.setting || "", 
+      title: editingScenario.title, description: editingScenario.description || "", system: editingScenario.system || "", tags: editingScenario.tags || "", setting: editingScenario.setting || "", 
       npc_list: editingScenario.npcList || "", plot: editingScenario.plot || "", prologue: editingScenario.prologue || "", epilogue: editingScenario.epilogue || "",
       image_url: editingScenario.imageUrl || "", preset_characters: editingScenario.presetCharacters,
       rating_sum: editingScenario.ratingSum, rating_count: editingScenario.ratingCount, author_id: currentUser.id, purchased_tickets: editingScenario.purchasedTickets || {},
@@ -596,7 +593,6 @@ export default function Home() {
     alert("チケットを付与しました！"); setAdminActionUser(null);
   };
 
-  // ★ 追加：全員にポイントを付与するロジック
   const grantPointsToAll = async (amount: number) => {
     if (!confirm(`全ユーザーに一律 ${amount} ptを付与しますか？`)) return;
     setIsLoading(true);
@@ -645,7 +641,6 @@ export default function Home() {
     alert("チケットを交換しました！");
   };
 
-  // ★ 追加・復活：シナリオ・キャラクター画像の自動生成
   const generatePackageImage = async (baseText: string, type: 'scenario' | 'character') => {
     setIsLoading(true);
     try {
@@ -1091,7 +1086,6 @@ export default function Home() {
       const history = currentMemory.map((m: any) => ({ role: m.role === 'assistant' ? 'model' : 'user', parts: [{ text: m.content }] }));
       if (history.length === 0) history.push({ role: 'user', parts: [{ text: "セッションを開始してください。" }]});
 
-      // ★ GMタブではAI相棒を出さない
       const aiPlayersText = targetTab === 'gm' 
         ? "なし（GMへの質問のためAI相棒は登場・発言しません）" 
         : (aiPlayersList.length > 0 ? aiPlayersList.map((c: any) => `・${c.name} (${c.genderOrRace || "性別不詳"}) | HP:${c.hp} SAN:${c.san}% STR:${c.str} DEX:${c.dex} INT:${c.int} CON:${c.con}\n 設定: ${c.personality}`).join("\n\n") : "なし（ソロプレイ）");
@@ -1126,7 +1120,6 @@ export default function Home() {
         return `[未到達（ネタバレ厳禁）] 第${idx + 1}章: ${c.title}`;
       }).join('\n');
 
-      // ★ ロストシナリオ（HP0）の処理
       let isLostMode = activeRoom.is_lost || joinedCharacter.hp <= 0;
       let currentLostTurns = activeRoom.lost_turn_count || 0;
       
@@ -1757,161 +1750,6 @@ export default function Home() {
           </div>
         </div>
       )}
-
-      {/* 管理画面のユーザーアクションモーダル */}
-      {adminActionUser && (
-        <div className="fixed inset-0 bg-black/80 z-[70] flex items-center justify-center p-4">
-          <div className="bg-slate-800 border border-blue-500/50 rounded-xl p-6 w-full max-w-lg shadow-2xl space-y-4">
-            <h3 className="text-lg font-bold text-white mb-2">🎁 ユーザー管理アクション</h3>
-            <p className="text-xs text-slate-400 border-b border-slate-700 pb-2 mb-4">対象: {adminActionUser.handleName} ({adminActionUser.email})</p>
-            <div>
-              <h4 className="font-bold text-sm text-emerald-400 mb-2">🎟️ チケットの個別付与</h4>
-              <div className="flex gap-2">
-                <select value={adminTicketType} onChange={e => setAdminTicketType(e.target.value)} className="bg-slate-900 border border-slate-700 rounded p-2 text-xs flex-1">
-                  <option value="bronze">ブロンズ (Flash Lite)</option>
-                  <option value="silver">シルバー (Flash)</option>
-                  <option value="gold">ゴールド (Pro)</option>
-                  <option value="platinum">プラチナ (Sonnet)</option>
-                  <option value="diamond">ダイヤモンド (Opus)</option>
-                  <option value="item">アイテム生成枠</option>
-                </select>
-                <input type="number" value={adminTicketAmount} onChange={e => setAdminTicketAmount(Number(e.target.value))} placeholder="枚数" className="w-16 bg-slate-900 border border-slate-700 rounded p-2 text-xs text-center" />
-                <button onClick={grantTickets} className="bg-emerald-600 hover:bg-emerald-500 px-4 rounded text-xs font-bold shadow">付与</button>
-              </div>
-            </div>
-            <div className="pt-2">
-              <h4 className="font-bold text-sm text-blue-400 mb-2">✉️ システムメール（個別通知）送信</h4>
-              <textarea value={adminMailBody} onChange={e => setAdminMailBody(e.target.value)} placeholder="メッセージ内容..." className="w-full h-24 bg-slate-900 border border-slate-700 rounded p-2 text-xs" />
-              <button onClick={sendMail} disabled={!adminMailBody.trim()} className="w-full bg-blue-600 hover:bg-blue-500 disabled:bg-slate-600 py-2 rounded text-xs font-bold mt-2 shadow">メールを送信する</button>
-            </div>
-            <button onClick={() => setAdminActionUser(null)} className="w-full bg-slate-700 hover:bg-slate-600 py-3 rounded text-sm font-bold mt-4">閉じる</button>
-          </div>
-        </div>
-      )}
-
-      {reportTarget && (
-        <div className="fixed inset-0 bg-black/80 z-[60] flex items-center justify-center p-4">
-          <div className="bg-slate-800 border border-red-700/50 rounded-xl p-6 w-full max-w-lg shadow-2xl">
-            <h3 className="text-xl font-bold text-red-400 mb-4">🚩 通報する</h3>
-            {reportTarget.roomId ? (
-              <div className="mb-4">
-                <label className="text-xs text-slate-400 block mb-1">通報対象を選択</label>
-                <select 
-                  className="w-full bg-slate-900 border border-slate-700 rounded p-2 text-sm text-white" 
-                  onChange={(e) => { 
-                    const val = e.target.value; 
-                    if (val === 'room') { setReportTarget({...reportTarget, type: 'room', id: reportTarget.roomId || "", name: 'この部屋の進行・チャット全般'}); } 
-                    else if (val === 'scenario') { setReportTarget({...reportTarget, type: 'scenario', id: reportTarget.scenarioId || "", name: `シナリオ: ${reportTarget.scenarioName}`}); } 
-                    else { const user = reportTarget.availableUsers?.find((u: any) => u.id === val); if (user) setReportTarget({...reportTarget, type: 'user', id: user.id, name: `プレイヤー: ${user.name}`}); } 
-                  }} 
-                  value={reportTarget.type === 'user' ? reportTarget.id : reportTarget.type}
-                >
-                  <option value="room">この部屋の進行・チャット全般</option>
-                  <option value="scenario">シナリオの不適切・規約違反</option>
-                  {reportTarget.availableUsers?.map((u: any) => <option key={u.id} value={u.id}>プレイヤー: {u.name} を通報</option>)}
-                </select>
-              </div>
-            ) : <p className="text-xs text-slate-400 mb-4">対象: {reportTarget.name}</p>}
-            <div className="space-y-3 mb-4">
-              <textarea value={reportReason} onChange={e=>setReportReason(e.target.value)} placeholder="不適切な発言や、規約違反の内容を詳しく記入してください。（対象のログも一緒に運営に送信されます）" className="w-full h-32 bg-slate-900 border border-slate-700 rounded p-3 text-sm text-white" />
-            </div>
-            <div className="flex gap-4">
-              <button onClick={() => { setReportTarget(null); setReportReason(""); }} className="flex-1 bg-slate-700 hover:bg-slate-600 py-3 rounded text-sm font-bold">キャンセル</button>
-              <button onClick={submitUserReport} disabled={!reportReason.trim()} className="flex-1 bg-red-600 hover:bg-red-500 disabled:bg-slate-600 py-3 rounded text-sm font-bold shadow-lg shadow-red-900/50">運営に送信する</button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {scenarioAppealTarget && (
-        <div className="fixed inset-0 bg-black/80 z-[60] flex items-center justify-center p-4">
-          <div className="bg-slate-800 border border-amber-700/50 rounded-xl p-6 w-full max-w-lg shadow-2xl">
-            <h3 className="text-xl font-bold text-amber-400 mb-2">📝 再審査（修正完了）の申請</h3>
-            <p className="text-xs text-slate-400 mb-4">対象シナリオ: {scenarioAppealTarget.title}</p>
-            <div className="space-y-3 mb-4">
-              <textarea value={scenarioAppealText} onChange={e=>setScenarioAppealText(e.target.value)} placeholder="修正した箇所や、非公開措置へのコメントを入力してください。" className="w-full h-32 bg-slate-900 border border-slate-700 rounded p-3 text-sm text-white" />
-            </div>
-            <div className="flex gap-4">
-              <button onClick={() => { setScenarioAppealTarget(null); setScenarioAppealText(""); }} className="flex-1 bg-slate-700 hover:bg-slate-600 py-3 rounded text-sm font-bold">キャンセル</button>
-              <button onClick={submitScenarioAppeal} disabled={!scenarioAppealText.trim()} className="flex-1 bg-amber-600 hover:bg-amber-500 disabled:bg-slate-600 py-3 rounded text-sm font-bold shadow-lg shadow-amber-900/50">運営に申請を送信する</button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {banTargetScenario && (
-        <div className="fixed inset-0 bg-black/80 z-[60] flex items-center justify-center p-4">
-          <div className="bg-slate-800 border border-slate-700 rounded-xl p-6 w-full max-w-lg shadow-2xl">
-            <h3 className="text-xl font-bold text-white mb-2">⚙️ シナリオの管理措置</h3>
-            <p className="text-xs text-slate-400 mb-4">対象: {banTargetScenario.title}</p>
-            <div className="space-y-3 mb-4">
-              <textarea value={scenarioBanReason} onChange={e=>setScenarioBanReason(e.target.value)} placeholder="措置の理由を入力してください（作者にメールで通知されます）" className="w-full h-32 bg-slate-900 border border-slate-700 rounded p-3 text-sm text-white" />
-            </div>
-            <div className="flex flex-col gap-3">
-              <div className="flex gap-2">
-                {!banTargetScenario.isBanned ? (
-                  <button onClick={() => executeScenarioBan('soft')} disabled={!scenarioBanReason.trim()} className="flex-1 bg-amber-600 hover:bg-amber-500 disabled:bg-slate-600 py-3 rounded text-sm font-bold shadow-lg">一時非公開にする</button>
-                ) : (
-                  <button onClick={() => executeScenarioBan('unban')} className="flex-1 bg-emerald-600 hover:bg-emerald-500 py-3 rounded text-sm font-bold shadow-lg">非公開を解除する</button>
-                )}
-                <button onClick={() => executeScenarioBan('hard')} disabled={!scenarioBanReason.trim()} className="flex-1 bg-red-600 hover:bg-red-500 disabled:bg-slate-600 py-3 rounded text-sm font-bold shadow-lg">完全に削除する</button>
-              </div>
-              <button onClick={() => setBanTargetScenario(null)} className="w-full bg-slate-700 hover:bg-slate-600 py-3 rounded text-sm font-bold mt-2">キャンセル</button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {banTargetUser && (
-        <div className="fixed inset-0 bg-black/80 z-[60] flex items-center justify-center p-4">
-          <div className="bg-slate-800 border border-red-700/50 rounded-xl p-6 w-full max-w-lg shadow-2xl">
-            <h3 className="text-xl font-bold text-red-500 mb-2">⛔ ユーザーをBANする</h3>
-            <p className="text-xs text-slate-400 mb-4">対象: {banTargetUser.handleName} ({banTargetUser.email})</p>
-            <div className="space-y-3 mb-4">
-              <textarea value={banReason} onChange={e=>setBanReason(e.target.value)} placeholder="通報ログ・BANの理由を入力してください" className="w-full h-32 bg-slate-900 border border-slate-700 rounded p-3 text-sm text-white" />
-            </div>
-            <div className="flex gap-4">
-              <button onClick={() => setBanTargetUser(null)} className="flex-1 bg-slate-700 hover:bg-slate-600 py-3 rounded text-sm font-bold">キャンセル</button>
-              <button onClick={executeBan} disabled={!banReason.trim()} className="flex-1 bg-red-600 hover:bg-red-500 disabled:bg-slate-600 py-3 rounded text-sm font-bold shadow-lg shadow-red-900/50">BANを実行する</button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {showMailbox && (
-        <div className="fixed inset-0 bg-black/80 z-[60] flex items-center justify-center p-4">
-          <div className="bg-slate-800 border border-slate-700 rounded-xl p-6 w-full max-w-lg shadow-2xl flex flex-col max-h-[80vh]">
-            <div className="flex justify-between items-center mb-4"><h3 className="text-xl font-bold">✉️ 受信箱</h3><button onClick={() => setShowMailbox(false)} className="text-xl">×</button></div>
-            <div className="h-[400px] overflow-y-scroll space-y-3 pr-2">
-              {myNotifications.length === 0 ? <p className="text-sm text-slate-500 text-center py-8">お知らせはありません。</p> : myNotifications.map((n: any) => (
-                <div key={n.id} className={`p-4 rounded-lg border ${n.isRead ? 'bg-slate-900 border-slate-700' : 'bg-slate-800 border-blue-500/50'}`}>
-                  <h4 className="font-bold text-sm">{n.title}</h4>
-                  <p className="text-xs text-slate-300 whitespace-pre-wrap mt-2">{n.message}</p>
-                  {!n.isRead && <button onClick={() => markNotificationAsRead(n.id)} className="text-[10px] bg-slate-700 px-3 py-1 rounded mt-3">既読にする</button>}
-                </div>
-              ))}
-            </div>
-          </div>
-        </div>
-      )}
-
-      {roomConfigModal && (
-        <div className="fixed inset-0 bg-black/80 z-[60] flex items-center justify-center p-4">
-          <div className="bg-slate-800 border border-emerald-700/50 rounded-xl p-6 w-full max-w-lg shadow-2xl">
-            <h3 className="text-xl font-bold text-emerald-400 mb-4">🚪 部屋の作成: {roomConfigModal.scenario?.title}</h3>
-            <div className="space-y-4 mb-6">
-              <div><label className="text-xs text-slate-400 block mb-1">使用するキャラクター <span className="text-red-400">*</span></label><select value={roomConfigModal.charId || ""} onChange={(e) => setRoomConfigModal({...roomConfigModal, charId: e.target.value})} className="w-full bg-slate-900 border border-slate-700 rounded p-2 text-sm text-white"><option value="" disabled>選択してください</option>{roomConfigModal.scenario?.presetCharacters?.map((c: any) => <option key={c.id} value={c.id}>{c.name} ({c.job})</option>)}</select></div>
-              <div><label className="text-xs text-slate-400 block mb-1">AIモデル (GM) {isTicketSystemEnabled && <span className="text-amber-400 text-[10px]">※チケット消費</span>}</label><select value={roomConfigModal.aiModel || "lite"} onChange={(e) => setRoomConfigModal({...roomConfigModal, aiModel: e.target.value})} className="w-full bg-slate-900 border border-slate-700 rounded p-2 text-sm text-white"><option value="lite">🟤 ブロンズ (Flash Lite) {isTicketSystemEnabled ? "(1枚消費)" : "(無料)"}</option><option value="flash">⚪ シルバー (Gemini Flash) {isTicketSystemEnabled ? "(1枚消費)" : "(無料)"}</option><option value="pro">🟡 ゴールド (Gemini Pro) {isTicketSystemEnabled ? "(1枚消費)" : "(無料)"}</option><option value="claude">🟣 プラチナ (Claude Sonnet) {isTicketSystemEnabled ? "(1枚消費)" : "(無料)"}</option><option value="opus">💎 ダイヤモンド (Claude Opus) {isTicketSystemEnabled ? "(1枚消費)" : "(無料)"}</option></select></div>
-              <div><label className="text-xs text-slate-400 block mb-1">ゲームルール（システム）</label><select value={roomConfigModal.rule || "coc_jp"} onChange={(e) => setRoomConfigModal({...roomConfigModal, rule: e.target.value})} className="w-full bg-slate-900 border border-slate-700 rounded p-2 text-sm text-white"><option value="coc_jp">🟩 日本クトゥルフ風（ドラマ・探索重視 / 1d100）</option><option value="coc_en">🟦 海外クトゥルフ風（シビア・ホラー / 1d100）</option><option value="dnd">🟥 D&D風（ヒロイック・ファンタジー / 1d20）</option><option value="sw25">🟨 ソードワールド風（明るい冒険 / 2d6）</option><option value="storytelling">🟪 ストーリーテリング（文学的・演出重視 / 1d6）</option></select></div>
-              <div><label className="text-xs text-slate-400 block mb-1">難易度</label><select value={roomConfigModal.difficulty || "normal"} onChange={(e) => setRoomConfigModal({...roomConfigModal, difficulty: e.target.value})} className="w-full bg-slate-900 border border-slate-700 rounded p-2 text-sm text-white"><option value="beginner">⬜ 初心者（接待GM / 手取り足取り30分限定）</option><option value="easy">🟩 簡単（やさしいGM / 判定が通りやすい）</option><option value="normal">🟦 普通（標準GM / 一般的なバランス）</option><option value="hard">🟧 難しい（厳しめGM / ヒント少なめ）</option><option value="pro">🟥 プロ（本格派GM / ロストの危険あり）</option><option value="oni">🟪 鬼（容赦ないGM / 死ぬ覚悟で挑むモード）</option></select></div>
-              <div><label className="text-xs text-slate-400 block mb-1">公開設定</label><div className="flex gap-4"><label className="flex items-center gap-2 text-sm"><input type="radio" checked={roomConfigModal.privacy === 'open'} onChange={() => setRoomConfigModal({...roomConfigModal, privacy: 'open'})} /> 🔓 オープン（誰でも観戦可能）</label><label className="flex items-center gap-2 text-sm"><input type="radio" checked={roomConfigModal.privacy === 'secret'} onChange={() => setRoomConfigModal({...roomConfigModal, privacy: 'secret'})} /> 🔒 シークレット（IDを知る人のみ）</label></div></div>
-              <div><label className="text-xs text-slate-400 block mb-1">アイテム表示機能</label><select value={roomConfigModal.itemVisibility || "none"} onChange={(e) => setRoomConfigModal({...roomConfigModal, itemVisibility: e.target.value})} className="w-full bg-slate-900 border border-slate-700 rounded p-2 text-sm text-white"><option value="none">非表示</option><option value="self">自分の所持品のみ表示</option><option value="all">パーティー全員の所持品を表示</option></select></div>
-              <div><label className="text-xs text-slate-400 block mb-1 mt-2">ひとことメッセージ</label><input type="text" value={roomConfigModal.message || ""} onChange={(e) => setRoomConfigModal({...roomConfigModal, message: e.target.value})} placeholder="例：初心者歓迎！ゆっくり遊びましょう" className="w-full bg-slate-900 border border-slate-700 rounded p-2 text-sm text-white" /></div>
-            </div>
-            <div className="flex gap-4"><button onClick={() => setRoomConfigModal(null)} className="flex-1 bg-slate-700 hover:bg-slate-600 py-3 rounded text-sm font-bold">キャンセル</button><button onClick={executeCreateRoom} disabled={!roomConfigModal.charId} className="flex-1 bg-emerald-600 hover:bg-emerald-500 disabled:bg-slate-600 py-3 rounded text-sm font-bold shadow-lg shadow-emerald-900/50">作成して入室</button></div>
-          </div>
-        </div>
-      )}
-    </main>
+    </div>
   );
 }
