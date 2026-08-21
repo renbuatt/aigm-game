@@ -26,6 +26,42 @@ export default function ScenarioEditView({
 
   const editingChar = editingCharIndex !== null ? editingScenario.presetCharacters[editingCharIndex] : null;
 
+  // ★ 章立て（チャプター）のJSONパース＆初期化
+  const getChapters = (): {title: string, content: string}[] => {
+    if (!editingScenario.plot) return [{ title: "第1章: 導入", content: "" }];
+    try {
+      const parsed = JSON.parse(editingScenario.plot);
+      if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+    } catch (e) {
+      // JSONじゃない古いテキストデータが入っていた場合は、1つの章として扱う
+      return [{ title: "本編", content: editingScenario.plot }];
+    }
+    return [{ title: "第1章: 導入", content: "" }];
+  };
+
+  const chapters = getChapters();
+
+  const updateChapter = (index: number, field: 'title' | 'content', value: string) => {
+    const newChapters = [...chapters];
+    newChapters[index][field] = value;
+    setEditingScenario({ ...editingScenario, plot: JSON.stringify(newChapters) });
+  };
+
+  const addChapter = () => {
+    const newChapters = [...chapters, { title: `第${chapters.length + 1}章`, content: "" }];
+    setEditingScenario({ ...editingScenario, plot: JSON.stringify(newChapters) });
+  };
+
+  const removeChapter = (index: number) => {
+    if (chapters.length <= 1) {
+      alert("少なくとも1つの章は必要です。");
+      return;
+    }
+    if (!confirm(`チャプター ${index + 1} を削除しますか？`)) return;
+    const newChapters = chapters.filter((_, i) => i !== index);
+    setEditingScenario({ ...editingScenario, plot: JSON.stringify(newChapters) });
+  };
+
   return (
     <div className="flex flex-col h-full w-full bg-slate-900 text-slate-100 p-4 md:p-8 overflow-y-auto custom-scrollbar">
       <header className="mb-6 flex justify-between items-end border-b border-slate-700 pb-4">
@@ -51,7 +87,6 @@ export default function ScenarioEditView({
                 <input type="text" value={editingScenario.title} onChange={e=>setEditingScenario({...editingScenario, title: e.target.value})} className="w-full bg-slate-900 border border-slate-700 rounded p-2 text-sm text-white" placeholder="例：狂気山脈の影" />
               </div>
               
-              {/* ★ 追加：プレイヤー向け（ネタバレなし）の公開用紹介文 */}
               <div>
                 <label className="text-xs text-slate-400 block mb-1">公開用紹介文・あらすじ <span className="text-emerald-400">※ネタバレなし</span></label>
                 <textarea value={editingScenario.description || ""} onChange={e=>setEditingScenario({...editingScenario, description: e.target.value})} rows={3} className="w-full bg-slate-900 border border-slate-700 rounded p-2 text-sm text-white resize-none" placeholder="ロビー画面でプレイヤー向けに表示される紹介文です。ネタバレを含まないあらすじを入力してください。" />
@@ -93,12 +128,51 @@ export default function ScenarioEditView({
                 <label className="text-xs text-slate-400 block mb-1">世界観・背景設定</label>
                 <textarea value={editingScenario.setting} onChange={e=>setEditingScenario({...editingScenario, setting: e.target.value})} rows={3} className="w-full bg-slate-900 border border-slate-700 rounded p-2 text-sm text-white resize-none" placeholder="時代背景や舞台となる場所の説明..." />
               </div>
+              
+              {/* ★ 新しい章立てUI */}
               <div>
-                <label className="text-xs text-slate-400 block mb-1">プロット・真相 <span className="text-red-400">*</span></label>
-                <textarea value={editingScenario.plot} onChange={e=>setEditingScenario({...editingScenario, plot: e.target.value})} rows={6} className="w-full bg-slate-900 border border-slate-700 rounded p-2 text-sm text-white resize-none" placeholder="※AI GMが進行するための台本になります。物語の始まりから結末までを詳しく書いてください。&#10;※チャプター分割する場合はJSON形式で入力してください。" />
+                <div className="flex justify-between items-center mb-2">
+                  <label className="text-xs text-slate-400 block">プロット・真相（章立て） <span className="text-red-400">*</span></label>
+                  <button onClick={addChapter} className="bg-slate-700 hover:bg-slate-600 px-3 py-1 rounded text-[10px] text-white font-bold shadow transition-colors border border-slate-500">
+                    ＋ 章を追加
+                  </button>
+                </div>
+                <p className="text-[10px] text-slate-500 mb-3">※AI GMが進行するための台本になります。物語の始まりから結末まで、チャプターごとに区切って詳細に書いてください。</p>
+                
+                <div className="space-y-3">
+                  {chapters.map((chap, idx) => (
+                    <div key={idx} className="bg-slate-900/80 border border-slate-700 p-3 rounded-lg flex flex-col gap-2 relative shadow-inner">
+                      <div className="flex justify-between items-center">
+                        <span className="text-xs font-bold text-emerald-400 flex items-center gap-2">
+                          <span className="bg-emerald-900/50 text-emerald-300 px-2 py-0.5 rounded border border-emerald-800/50">Chapter {idx + 1}</span>
+                        </span>
+                        {chapters.length > 1 && (
+                          <button onClick={() => removeChapter(idx)} className="text-[10px] text-red-400 hover:text-red-300 bg-red-900/20 px-2 py-1 rounded border border-red-900/50 transition-colors">
+                            削除
+                          </button>
+                        )}
+                      </div>
+                      <input 
+                        type="text" 
+                        value={chap.title} 
+                        onChange={e => updateChapter(idx, 'title', e.target.value)} 
+                        placeholder="章のタイトル (例: 館への到着)" 
+                        className="w-full bg-slate-800 border border-slate-600 rounded p-2 text-sm text-white font-bold" 
+                      />
+                      <textarea 
+                        value={chap.content} 
+                        onChange={e => updateChapter(idx, 'content', e.target.value)} 
+                        rows={5} 
+                        placeholder="この章で起こる出来事、NPCの振る舞い、判定の指示などを詳細に記載してください。" 
+                        className="w-full bg-slate-800 border border-slate-600 rounded p-2 text-xs text-white resize-none leading-relaxed" 
+                      />
+                    </div>
+                  ))}
+                </div>
               </div>
+
               <div>
-                <label className="text-xs text-slate-400 block mb-1">プロローグ（導入の読み上げテキスト）</label>
+                <label className="text-xs text-slate-400 block mb-1 mt-2">プロローグ（導入の読み上げテキスト）</label>
                 <textarea value={editingScenario.prologue} onChange={e=>setEditingScenario({...editingScenario, prologue: e.target.value})} rows={3} className="w-full bg-slate-900 border border-slate-700 rounded p-2 text-sm text-white resize-none" placeholder="セッション開始時にGMが読み上げる情景描写..." />
               </div>
               <div>
