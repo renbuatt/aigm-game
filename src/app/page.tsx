@@ -116,39 +116,15 @@ export default function Home() {
   const unreadCount = myNotifications.filter((n: any) => !n.isRead).length;
   const isChatDisabled = Boolean(isLoading || (isSplitMode && myScene && myScene.isMerged === true && chatTab !== 'consult'));
 
-  const handleOpenRoomConfig = (scenario: Scenario) => {
-    setRoomConfigModal({ 
-      scenario, 
-      charId: "", 
-      privacy: "open", 
-      message: "", 
-      difficulty: "normal", 
-      rule: "coc_jp", 
-      itemVisibility: "none", 
-      aiModel: "lite",
-      language: "ja" 
-    });
-  };
-
-  const openUserProfile = (userId: string) => { 
-    setTargetUserId(userId); 
-    setCurrentView("userProfile"); 
-  };
+  const openUserProfile = (userId: string) => { setTargetUserId(userId); setCurrentView("userProfile"); };
 
   const addFriend = async (targetId: string) => {
     if (!currentUser) return;
-    if (currentUser.friendIds?.includes(targetId)) { 
-      alert("既に友達に登録されています。"); 
-      return; 
-    }
+    if (currentUser.friendIds?.includes(targetId)) { alert("既に友達に登録されています。"); return; }
     const newFriends = [...(currentUser.friendIds || []), targetId];
     const { error } = await supabase.from('profiles').update({ friend_ids: newFriends }).eq('id', currentUser.id);
-    if (!error) { 
-      setCurrentUser({ ...currentUser, friendIds: newFriends }); 
-      alert("友達に追加しました！"); 
-    } else { 
-      alert("エラーが発生しました: " + error.message); 
-    }
+    if (!error) { setCurrentUser({ ...currentUser, friendIds: newFriends }); alert("友達に追加しました！"); } 
+    else { alert("エラーが発生しました: " + error.message); }
   };
 
   const blockUser = async (targetId: string) => {
@@ -157,10 +133,7 @@ export default function Home() {
       const newBlocked = [...(currentUser.blockedUserIds || []), targetId];
       const newFriends = (currentUser.friendIds || []).filter((id: string) => id !== targetId);
       const { error } = await supabase.from('profiles').update({ blocked_user_ids: newBlocked, friend_ids: newFriends }).eq('id', currentUser.id);
-      if (!error) { 
-        setCurrentUser({ ...currentUser, blockedUserIds: newBlocked, friendIds: newFriends }); 
-        alert("ブロックしました。"); 
-      }
+      if (!error) { setCurrentUser({ ...currentUser, blockedUserIds: newBlocked, friendIds: newFriends }); alert("ブロックしました。"); }
     }
   };
 
@@ -168,25 +141,14 @@ export default function Home() {
     if (!currentUser) return;
     const newBlocked = (currentUser.blockedUserIds || []).filter((id: string) => id !== targetId);
     const { error } = await supabase.from('profiles').update({ blocked_user_ids: newBlocked }).eq('id', currentUser.id);
-    if (!error) { 
-      setCurrentUser({ ...currentUser, blockedUserIds: newBlocked }); 
-      alert("ブロックを解除しました。"); 
-    }
+    if (!error) { setCurrentUser({ ...currentUser, blockedUserIds: newBlocked }); alert("ブロックを解除しました。"); }
   };
 
   const updateProfile = async (updates: Partial<UserProfile>) => {
     if (!currentUser) return;
-    const { error } = await supabase.from('profiles').update({ 
-      handle_name: updates.handleName, 
-      bio: updates.bio, 
-      avatar_url: updates.avatarUrl 
-    }).eq('id', currentUser.id);
-
-    if (error) {
-      alert("プロフィールの更新に失敗しました: " + error.message);
-    } else {
-      setCurrentUser({ ...currentUser, ...updates });
-    }
+    const { error } = await supabase.from('profiles').update({ handle_name: updates.handleName, bio: updates.bio, avatar_url: updates.avatarUrl }).eq('id', currentUser.id);
+    if (error) alert("プロフィールの更新に失敗しました: " + error.message);
+    else setCurrentUser({ ...currentUser, ...updates });
   };
 
   const uploadAvatar = async (file: File) => {
@@ -209,11 +171,8 @@ export default function Home() {
 
   const loadChatLogs = async (roomId: string) => {
     const { data } = await supabase.from('chat_logs').select('message').eq('room_id', roomId).order('id', { ascending: true });
-    if (data && data.length > 0) {
-      setMessages(data.map((d: any) => d.message));
-    } else {
-      setMessages([]);
-    }
+    if (data && data.length > 0) setMessages(data.map((d: any) => d.message));
+    else setMessages([]);
   };
 
   const pushMessage = async (roomId: string, msg: Message, save: boolean = true) => {
@@ -222,9 +181,7 @@ export default function Home() {
       if (isDuplicate) return prev;
       return [...prev, msg];
     });
-    if (save && roomId) { 
-      await supabase.from('chat_logs').insert({ room_id: roomId, message: msg }); 
-    }
+    if (save && roomId) { await supabase.from('chat_logs').insert({ room_id: roomId, message: msg }); }
   };
 
   useEffect(() => {
@@ -243,16 +200,11 @@ export default function Home() {
           setActiveRoom(prev => prev ? { ...prev, ...payload.new, scenario: prev.scenario } : payload.new as Room);
         }).subscribe();
 
-      return () => { 
-        supabase.removeChannel(chatChannel); 
-        supabase.removeChannel(roomChannel); 
-      };
+      return () => { supabase.removeChannel(chatChannel); supabase.removeChannel(roomChannel); };
     }
   }, [currentView, activeRoom?.id]);
 
-  useEffect(() => { 
-    chatTabRef.current = chatTab; 
-  }, [chatTab]);
+  useEffect(() => { chatTabRef.current = chatTab; }, [chatTab]);
 
   useEffect(() => {
     if (messages.length > prevMessagesLength.current) {
@@ -263,8 +215,7 @@ export default function Home() {
         newMsgs.forEach((m: any) => {
           const isMySceneMsg = !m.sceneId || m.sceneId === 'scene_main' || m.sceneId === myScene?.id;
           if (isMySceneMsg && m.channel && m.channel !== "system" && m.channel !== chatTabRef.current) {
-            next[m.channel as keyof typeof next] = true; 
-            changed = true;
+            next[m.channel as keyof typeof next] = true; changed = true;
           }
         });
         return changed ? next : prev;
@@ -276,81 +227,38 @@ export default function Home() {
   useEffect(() => {
     if (activeRoom && isSplitMode && currentUser?.id === activeRoom.host_id && activeRoom.status === 'playing') {
       const nonMainScenes = activeRoom.scenes.filter((s: any) => s.id !== 'scene_main');
-      if (nonMainScenes.length > 0 && nonMainScenes.every((s: any) => s.isMerged)) {
-        executeMergeAll();
-      }
+      if (nonMainScenes.length > 0 && nonMainScenes.every((s: any) => s.isMerged)) executeMergeAll();
     }
   }, [activeRoom?.scenes, activeRoom?.status, activeRoom?.host_id, currentUser?.id, isSplitMode]);
 
   const fetchData = async () => {
     const { data: scData } = await supabase.from('scenarios').select('*').order('id', { ascending: false });
     let loadedScenarios: Scenario[] = [];
-    
     if (scData && scData.length > 0) {
       loadedScenarios = scData.map((d: any) => ({
-        id: d.id, 
-        title: d.title, 
-        description: d.description || "", 
-        system: d.system || "", 
-        tags: d.tags || "", 
-        setting: d.setting || "",
-        npcList: d.npc_list || "", 
-        plot: d.plot || "", 
-        prologue: d.prologue || "", 
-        epilogue: d.epilogue || "",
-        imageUrl: d.image_url || "", 
-        presetCharacters: d.preset_characters || [], 
-        ratingSum: d.rating_sum || 0, 
-        ratingCount: d.rating_count || 0,
-        authorId: d.author_id, 
-        price: d.price || 500, 
-        playLimit: d.play_limit || 1, 
-        giftLimit: d.gift_limit || 1,
-        purchasedTickets: d.purchased_tickets || {}, 
-        isBanned: d.is_banned || false, 
-        playTime: d.play_time || 60,
-        isPlayableByOthers: d.is_playable_by_others || false, 
-        isTrialOk: d.is_trial_ok || false, 
-        itemVisibility: d.item_visibility || "none",
-        requiredScenarioId: d.required_scenario_id || "", 
-        playCount: d.play_count || 0, 
-        viewCount: d.view_count || 0,
-        translationEn: d.translation_en || {}, 
-        translationZh: d.translation_zh || {}
+        id: d.id, title: d.title, description: d.description || "", system: d.system || "", tags: d.tags || "", setting: d.setting || "",
+        npcList: d.npc_list || "", plot: d.plot || "", prologue: d.prologue || "", epilogue: d.epilogue || "",
+        imageUrl: d.image_url || "", presetCharacters: d.preset_characters || [], ratingSum: d.rating_sum || 0, ratingCount: d.rating_count || 0,
+        authorId: d.author_id, price: d.price || 500, playLimit: d.play_limit || 1, giftLimit: d.gift_limit || 1,
+        purchasedTickets: d.purchased_tickets || {}, isBanned: d.is_banned || false, playTime: d.play_time || 60,
+        isPlayableByOthers: d.is_playable_by_others || false, isTrialOk: d.is_trial_ok || false, itemVisibility: d.item_visibility || "none",
+        requiredScenarioId: d.required_scenario_id || "", playCount: d.play_count || 0, viewCount: d.view_count || 0,
+        translationEn: d.translation_en || {}, translationZh: d.translation_zh || {}
       }));
       setScenarios(loadedScenarios);
     }
-
     const { data: rmData } = await supabase.from('rooms').select('*').neq('status', 'finished').order('id', { ascending: false });
     let formattedRooms: Room[] = [];
-    
     if (rmData && loadedScenarios.length > 0) {
       formattedRooms = rmData.map((r: any) => ({
-        id: r.id, 
-        scenario_id: r.scenario_id, 
-        scenario: loadedScenarios.find((s: any) => s.id === r.scenario_id),
-        host_name: r.host_name, 
-        host_id: r.host_id, 
-        status: r.status, 
-        scenes: r.scenes || [],
-        privacy: r.privacy || "open", 
-        host_message: r.host_message || "", 
-        joined_users: r.joined_users || {},
-        current_summary: r.current_summary || "", 
-        difficulty: r.difficulty || "normal", 
-        rule: r.rule || "coc_jp",
-        is_paused: r.is_paused || false, 
-        afk_users: r.afk_users || [], 
-        is_trial: r.is_trial || false,
-        item_visibility: r.item_visibility || "none", 
-        inventories: r.inventories || {},
-        current_chapter_index: r.current_chapter_index || 0, 
-        spectator_ids: r.spectator_ids || [], 
-        ai_model: r.ai_model || 'flash',
-        error_refunded: r.error_refunded || false, 
-        free_image_count: r.free_image_count || 0, 
-        is_lost: r.is_lost || false, 
-        lost_turn_count: r.lost_turn_count || 0,
+        id: r.id, scenario_id: r.scenario_id, scenario: loadedScenarios.find((s: any) => s.id === r.scenario_id),
+        host_name: r.host_name, host_id: r.host_id, status: r.status, scenes: r.scenes || [],
+        privacy: r.privacy || "open", host_message: r.host_message || "", joined_users: r.joined_users || {},
+        current_summary: r.current_summary || "", difficulty: r.difficulty || "normal", rule: r.rule || "coc_jp",
+        is_paused: r.is_paused || false, afk_users: r.afk_users || [], is_trial: r.is_trial || false,
+        item_visibility: r.item_visibility || "none", inventories: r.inventories || {},
+        current_chapter_index: r.current_chapter_index || 0, spectator_ids: r.spectator_ids || [], ai_model: r.ai_model || 'flash',
+        error_refunded: r.error_refunded || false, free_image_count: r.free_image_count || 0, is_lost: r.is_lost || false, lost_turn_count: r.lost_turn_count || 0,
         language: r.language || 'ja'
       })).filter((r: any) => r.scenario) as Room[];
       setRooms(formattedRooms);
@@ -360,69 +268,27 @@ export default function Home() {
 
   const fetchNotifications = async (userId: string) => {
     const { data } = await supabase.from('notifications').select('*').eq('user_id', userId).order('created_at', { ascending: false });
-    if(data) {
-      setMyNotifications(data.map((d: any) => ({ 
-        id: d.id, 
-        userId: d.user_id, 
-        title: d.title, 
-        message: d.message, 
-        isRead: d.is_read, 
-        createdAt: d.created_at 
-      })));
-    }
+    if(data) setMyNotifications(data.map((d: any) => ({ id: d.id, userId: d.user_id, title: d.title, message: d.message, isRead: d.is_read, createdAt: d.created_at })));
   };
 
   const fetchProfile = async (userId: string, emailStr: string, currentMaintenance: boolean, roomsData: Room[]) => {
     const { data } = await supabase.from('profiles').select('*').eq('id', userId).single();
-    if (!data || !data.full_name) { 
-      setEmail(emailStr); 
-      setCurrentView("onboarding"); 
-      return; 
-    }
+    if (!data || !data.full_name) { setEmail(emailStr); setCurrentView("onboarding"); return; }
     
     const today = new Date().toLocaleDateString('ja-JP');
     let vCount = data.ad_view_count || 0;
     let vDate = data.last_ad_view_date || "";
-    if (vDate !== today) { 
-      vCount = 0; 
-      vDate = today; 
-    }
+    if (vDate !== today) { vCount = 0; vDate = today; }
     setAdViewInfo({ count: vCount, date: vDate });
 
     const profileData: UserProfile = { 
-      id: data.id, 
-      handleName: data.handle_name, 
-      fullName: data.full_name, 
-      address: data.address, 
-      phone: data.phone, 
-      avatarUrl: data.avatar_url, 
-      bio: data.bio, 
-      discordId: data.discord_id, 
-      ratingSum: data.rating_sum || 0, 
-      ratingCount: data.rating_count || 0, 
-      isAdmin: data.is_admin || false, 
-      isTester: data.is_tester || false, 
-      isBanned: data.is_banned || false, 
+      id: data.id, handleName: data.handle_name, fullName: data.full_name, address: data.address, phone: data.phone, avatarUrl: data.avatar_url, bio: data.bio, discordId: data.discord_id, ratingSum: data.rating_sum || 0, ratingCount: data.rating_count || 0, isAdmin: data.is_admin || false, isTester: data.is_tester || false, isBanned: data.is_banned || false, 
       isSuspended: data.is_suspended || false, 
-      email: data.email, 
-      friendIds: data.friend_ids || [], 
-      blockedUserIds: data.blocked_user_ids || [],
-      points: data.points || 0, 
-      ticketsNormal: data.tickets_normal || 0, 
-      ticketsBronze: data.tickets_bronze || 0, 
-      ticketsSilver: data.tickets_silver || 0, 
-      ticketsGold: data.tickets_gold || 0, 
-      ticketsPlatinum: data.tickets_platinum || 0, 
-      ticketsDiamond: data.tickets_diamond || 0, 
-      ticketsItem: data.tickets_item || 0, 
-      imageGenCredits: data.image_gen_credits || 0
+      email: data.email, friendIds: data.friend_ids || [], blockedUserIds: data.blocked_user_ids || [],
+      points: data.points || 0, ticketsNormal: data.tickets_normal || 0, ticketsBronze: data.tickets_bronze || 0, ticketsSilver: data.tickets_silver || 0, ticketsGold: data.tickets_gold || 0, ticketsPlatinum: data.tickets_platinum || 0, ticketsDiamond: data.tickets_diamond || 0, ticketsItem: data.tickets_item || 0, imageGenCredits: data.image_gen_credits || 0
     };
-
-    if (data.email !== emailStr) {
-      await supabase.from('profiles').update({ email: emailStr }).eq('id', userId);
-    }
-    setCurrentUser(profileData); 
-    await fetchNotifications(userId);
+    if (data.email !== emailStr) await supabase.from('profiles').update({ email: emailStr }).eq('id', userId);
+    setCurrentUser(profileData); await fetchNotifications(userId);
 
     const { data: blockedMeData } = await supabase.from('profiles').select('id').contains('blocked_user_ids', [userId]);
     setBlockedMeIds(blockedMeData ? blockedMeData.map((d: any) => d.id) : []);
@@ -430,18 +296,8 @@ export default function Home() {
     const { data: archiveData } = await supabase.from('play_archives').select('*').eq('user_id', userId).order('created_at', { ascending: false });
     if (archiveData) {
       setPlayArchives(archiveData.map((d: any) => ({
-        id: d.id, 
-        userId: d.user_id, 
-        scenarioId: d.scenario_id, 
-        scenarioTitle: d.scenario_title, 
-        scenarioImage: d.scenario_image,
-        characterName: d.character_name, 
-        chatLogs: d.chat_logs, 
-        createdAt: d.created_at, 
-        rule: d.rule, 
-        coPlayers: d.co_players, 
-        novels: d.novels || {}, 
-        characters: d.characters || []
+        id: d.id, userId: d.user_id, scenarioId: d.scenario_id, scenarioTitle: d.scenario_title, scenarioImage: d.scenario_image,
+        characterName: d.character_name, chatLogs: d.chat_logs, createdAt: d.created_at, rule: d.rule, coPlayers: d.co_players, novels: d.novels || {}, characters: d.characters || []
       })));
     }
 
@@ -451,21 +307,15 @@ export default function Home() {
         const charId = activeMyRoom.joined_users[userId];
         const char = activeMyRoom.scenario.presetCharacters.find((c: any) => c.id === charId);
         if (char) {
-          setActiveRoom(activeMyRoom); 
-          setJoinedCharacter(char);
+          setActiveRoom(activeMyRoom); setJoinedCharacter(char);
           const takenIds = Object.values(activeMyRoom.joined_users || {});
           setAiPlayersList(activeMyRoom.scenario.presetCharacters.filter((c: any) => !takenIds.includes(c.id)));
-          await loadChatLogs(activeMyRoom.id); 
-          setCurrentView("game"); 
-          return;
+          await loadChatLogs(activeMyRoom.id); setCurrentView("game"); return;
         }
       }
       setCurrentView("lobby");
-    } else if (profileData.isBanned) { 
-      setCurrentView("banned"); 
-    } else { 
-      setCurrentView("maintenance"); 
-    }
+    } else if (profileData.isBanned) { setCurrentView("banned"); } 
+    else { setCurrentView("maintenance"); }
   };
 
   useEffect(() => {
@@ -474,16 +324,11 @@ export default function Home() {
       const currentMaintenance = appData ? appData.is_maintenance : false;
       const currentTicketSystem = appData ? appData.is_ticket_system_enabled : false;
       const currentFlashModel = appData?.gemini_flash_model || '3.5-lite';
-      
-      setIsMaintenance(currentMaintenance); 
-      setIsTicketSystemEnabled(currentTicketSystem); 
-      setGeminiFlashModel(currentFlashModel);
+      setIsMaintenance(currentMaintenance); setIsTicketSystemEnabled(currentTicketSystem); setGeminiFlashModel(currentFlashModel);
 
       const { formattedRooms } = await fetchData();
       const { data: { session } } = await supabase.auth.getSession();
-      if (session?.user) {
-        await fetchProfile(session.user.id, session.user.email || "", currentMaintenance, formattedRooms);
-      }
+      if (session?.user) await fetchProfile(session.user.id, session.user.email || "", currentMaintenance, formattedRooms);
     };
     initApp();
   }, []);
@@ -496,14 +341,8 @@ export default function Home() {
       const { data, error } = await supabase.auth.signInWithPassword({ email, password });
       if (error) throw error;
       const { formattedRooms } = await fetchData();
-      if (data.user) {
-        await fetchProfile(data.user.id, email, isMaintenance, formattedRooms);
-      }
-    } catch (error: any) { 
-      alert("ログインエラー: " + error.message); 
-    } finally { 
-      setAuthLoading(false); 
-    }
+      if (data.user) await fetchProfile(data.user.id, email, isMaintenance, formattedRooms);
+    } catch (error: any) { alert("ログインエラー: " + error.message); } finally { setAuthLoading(false); }
   };
 
   const handleEmailSignUp = async (e: React.FormEvent, name: string, addr: string, phone: string) => {
@@ -514,26 +353,13 @@ export default function Home() {
       const { data, error } = await supabase.auth.signUp({ email, password });
       if (error) throw error;
       if (data.user) {
-        const { error: upsertError } = await supabase.from('profiles').upsert({ 
-          id: data.user.id, 
-          handle_name: name.split(" ")[0] || email.split("@")[0], 
-          full_name: name, 
-          address: addr, 
-          phone: phone, 
-          avatar_url: DEFAULT_AVATAR, 
-          bio: "よろしくお願いします。", 
-          email: email 
-        });
+        const { error: upsertError } = await supabase.from('profiles').upsert({ id: data.user.id, handle_name: name.split(" ")[0] || email.split("@")[0], full_name: name, address: addr, phone: phone, avatar_url: DEFAULT_AVATAR, bio: "よろしくお願いします。", email: email });
         if (upsertError) throw upsertError;
         alert("アカウントを作成しました！");
         const { formattedRooms } = await fetchData();
         await fetchProfile(data.user.id, email, isMaintenance, formattedRooms);
       }
-    } catch (error: any) { 
-      alert("登録エラー: " + error.message); 
-    } finally { 
-      setAuthLoading(false); 
-    }
+    } catch (error: any) { alert("登録エラー: " + error.message); } finally { setAuthLoading(false); }
   };
 
   const handleProfileSetup = async (name: string, addr: string, phone: string) => {
@@ -541,27 +367,12 @@ export default function Home() {
     try {
       const { data: { session } } = await supabase.auth.getSession();
       if (!session?.user) throw new Error("セッションが見つかりません。");
-      
-      const { error: upsertError } = await supabase.from('profiles').upsert({ 
-        id: session.user.id, 
-        handle_name: name.split(" ")[0] || session.user.email?.split("@")[0], 
-        full_name: name, 
-        address: addr, 
-        phone: phone, 
-        avatar_url: DEFAULT_AVATAR, 
-        bio: "よろしくお願いします。", 
-        email: session.user.email 
-      });
+      const { error: upsertError } = await supabase.from('profiles').upsert({ id: session.user.id, handle_name: name.split(" ")[0] || session.user.email?.split("@")[0], full_name: name, address: addr, phone: phone, avatar_url: DEFAULT_AVATAR, bio: "よろしくお願いします。", email: session.user.email });
       if (upsertError) throw upsertError;
-      
       alert("登録が完了しました！");
       const { formattedRooms } = await fetchData();
       await fetchProfile(session.user.id, session.user.email || "", isMaintenance, formattedRooms);
-    } catch (error: any) { 
-      alert("登録エラー: " + error.message); 
-    } finally { 
-      setAuthLoading(false); 
-    }
+    } catch (error: any) { alert("登録エラー: " + error.message); } finally { setAuthLoading(false); }
   };
 
   const handleGoogleAuth = async () => {
@@ -571,37 +382,22 @@ export default function Home() {
     setAuthLoading(false);
   };
 
-  const handleLogout = async () => { 
-    await supabase.auth.signOut(); 
-    setCurrentUser(null); 
-    setCurrentView("login"); 
-    setActiveRoom(null); 
-    setJoinedCharacter(null); 
-  };
+  const handleLogout = async () => { await supabase.auth.signOut(); setCurrentUser(null); setCurrentView("login"); setActiveRoom(null); setJoinedCharacter(null); };
 
   const togglePauseRoom = async () => {
     if (!activeRoom) return;
     const newStatus = !activeRoom.is_paused;
     await supabase.from('rooms').update({ is_paused: newStatus }).eq('id', activeRoom.id);
     setActiveRoom({ ...activeRoom, is_paused: newStatus });
-    await pushMessage(activeRoom.id, { 
-      sender: "system", 
-      text: newStatus ? "【システム】セッションを中断（セーブ）しました。再開するまでAI GMは停止し、タイマーは進みません。" : "【システム】セッションを再開しました！", 
-      type: "system", 
-      channel: "system" 
-    });
+    await pushMessage(activeRoom.id, { sender: "system", text: newStatus ? "【システム】セッションを中断（セーブ）しました。再開するまでAI GMは停止し、タイマーは進みません。" : "【システム】セッションを再開しました！", type: "system", channel: "system" });
   };
 
   const toggleAFK = async (userId: string, forceRemove: boolean = false) => {
     if (!activeRoom) return;
     let newAfk = [...(activeRoom.afk_users || [])];
-    if (forceRemove) {
-      newAfk = newAfk.filter((id: string) => id !== userId);
-    } else if (newAfk.includes(userId)) {
-      newAfk = newAfk.filter((id: string) => id !== userId);
-    } else {
-      newAfk.push(userId);
-    }
+    if (forceRemove) newAfk = newAfk.filter((id: string) => id !== userId);
+    else if (newAfk.includes(userId)) newAfk = newAfk.filter((id: string) => id !== userId);
+    else newAfk.push(userId);
     await supabase.from('rooms').update({ afk_users: newAfk }).eq('id', activeRoom.id);
     setActiveRoom({ ...activeRoom, afk_users: newAfk });
     const cId = activeRoom.joined_users?.[userId];
@@ -625,15 +421,19 @@ export default function Home() {
 
   const triggerAutoAction = async () => {
     if (!activeRoom || activeRoom.is_paused || activeRoom.status !== 'playing' || isScenarioEnded || isRequestingRef.current) return;
-    isRequestingRef.current = true; 
-    setIsLoading(true);
+    isRequestingRef.current = true; setIsLoading(true);
     try {
       const extraUserContext = ["【システムコマンド：タイムアウト自動行動】", "最後の行動から5分間、PLからの入力がありませんでした。", "物語の進行を促すため、現在AFKではないキャラクター（およびAI相棒）の行動をAI GMが自動で決定・描写し、事態を強制的に前進させてください。", "必要であればダイスロール結果もAI自身が捏造して構いません。"].join('\n');
       await callAIGM(extraUserContext, "story");
-    } finally { 
-      isRequestingRef.current = false; 
-      setIsLoading(false); 
-    }
+    } finally { isRequestingRef.current = false; setIsLoading(false); }
+  };
+
+  const deleteScenario = async (id: string) => {
+    if (!confirm("本当にこのシナリオを削除しますか？\n（※関連する部屋も削除されます）")) return;
+    await supabase.from('rooms').delete().eq('scenario_id', id);
+    const { error } = await supabase.from('scenarios').delete().eq('id', id);
+    if (error) alert("削除に失敗しました: " + error.message);
+    else { alert("シナリオを削除しました。"); await fetchData(); }
   };
 
   const saveScenario = async () => {
@@ -642,68 +442,28 @@ export default function Home() {
     try {
       let translationEn = editingScenario.translationEn || {};
       let translationZh = editingScenario.translationZh || {};
-
       if (editingScenario.title && editingScenario.description) {
         try {
           const charsData = editingScenario.presetCharacters.map((c: any) => ({ name: c.name, job: c.job, personality: c.personality }));
           const promptBase = `Translate the following TRPG scenario information into [TARGET_LANG]. Return ONLY a valid JSON object with no markdown formatting. Structure: {"title": "...", "description": "...", "characters": [{"name": "...", "job": "...", "personality": "..."}]}.\n\nTitle: ${editingScenario.title}\nDescription: ${editingScenario.description}\nCharacters: ${JSON.stringify(charsData)}`;
-          
           const [resEn, resZh] = await Promise.all([
             generateAITextWithPrompt(promptBase.replace('[TARGET_LANG]', 'English'), 'flash', 2000, 0.3),
             generateAITextWithPrompt(promptBase.replace('[TARGET_LANG]', 'Simplified Chinese'), 'flash', 2000, 0.3)
           ]);
-
           translationEn = JSON.parse(resEn.replace(/```json/g, "").replace(/```/g, "").trim());
           translationZh = JSON.parse(resZh.replace(/```json/g, "").replace(/```/g, "").trim());
-        } catch (e) {
-          console.error("Translation failed", e);
-          alert("自動翻訳に一部失敗しましたが、シナリオは保存されます。");
-        }
+        } catch (e) { alert("自動翻訳に一部失敗しましたが、シナリオは保存されます。"); }
       }
-
       const dbData = { 
-        title: editingScenario.title, 
-        description: editingScenario.description || "", 
-        system: editingScenario.system || "", 
-        tags: editingScenario.tags || "", 
-        setting: editingScenario.setting || "", 
-        npc_list: editingScenario.npcList || "", 
-        plot: editingScenario.plot || "", 
-        prologue: editingScenario.prologue || "", 
-        epilogue: editingScenario.epilogue || "",
-        image_url: editingScenario.imageUrl || "", 
-        preset_characters: editingScenario.presetCharacters,
-        rating_sum: editingScenario.ratingSum, 
-        rating_count: editingScenario.ratingCount, 
-        author_id: currentUser.id, 
-        purchased_tickets: editingScenario.purchasedTickets || {},
-        price: editingScenario.price || 500, 
-        play_limit: editingScenario.playLimit || 1, 
-        gift_limit: editingScenario.giftLimit || 1, 
-        play_time: editingScenario.playTime || 60,
-        is_playable_by_others: editingScenario.isPlayableByOthers || false, 
-        is_trial_ok: editingScenario.isTrialOk || false, 
-        item_visibility: editingScenario.itemVisibility || "none",
-        required_scenario_id: editingScenario.requiredScenarioId || "",
-        translation_en: translationEn,
-        translation_zh: translationZh
+        title: editingScenario.title, description: editingScenario.description || "", system: editingScenario.system || "", tags: editingScenario.tags || "", setting: editingScenario.setting || "", 
+        npc_list: editingScenario.npcList || "", plot: editingScenario.plot || "", prologue: editingScenario.prologue || "", epilogue: editingScenario.epilogue || "",
+        image_url: editingScenario.imageUrl || "", preset_characters: editingScenario.presetCharacters, rating_sum: editingScenario.ratingSum, rating_count: editingScenario.ratingCount, author_id: currentUser.id, purchased_tickets: editingScenario.purchasedTickets || {}, price: editingScenario.price || 500, play_limit: editingScenario.playLimit || 1, giftLimit: editingScenario.giftLimit || 1, play_time: editingScenario.playTime || 60, is_playable_by_others: editingScenario.isPlayableByOthers || false, is_trial_ok: editingScenario.isTrialOk || false, item_visibility: editingScenario.itemVisibility || "none", required_scenario_id: editingScenario.requiredScenarioId || "",
+        translation_en: translationEn, translation_zh: translationZh
       };
-
-      if (editingScenario.id && !editingScenario.id.startsWith('s')) {
-        const { error } = await supabase.from('scenarios').update(dbData).eq('id', editingScenario.id);
-        if (error) { alert("保存に失敗しました: " + error.message); return; }
-      } else {
-        const { error } = await supabase.from('scenarios').insert(dbData);
-        if (error) { alert("作成に失敗しました: " + error.message); return; }
-      }
-      alert("シナリオを保存（および多言語への翻訳）しました！"); 
-      await fetchData(); 
-      setCurrentView("lobby");
-    } catch (err: any) {
-      alert("保存エラー: " + err.message);
-    } finally {
-      setIsLoading(false);
-    }
+      if (editingScenario.id && !editingScenario.id.startsWith('s')) await supabase.from('scenarios').update(dbData).eq('id', editingScenario.id);
+      else await supabase.from('scenarios').insert(dbData);
+      alert("シナリオを保存（多言語翻訳）しました！"); await fetchData(); setCurrentView("lobby");
+    } catch (err: any) { alert("保存エラー: " + err.message); } finally { setIsLoading(false); }
   };
 
   const submitEvaluation = async () => {
@@ -713,54 +473,24 @@ export default function Home() {
     await supabase.from('scenarios').update({ rating_sum: newScSum, rating_count: newScCount }).eq('id', activeRoom.scenario.id);
     if(activeRoom.host_id) {
       const { data: hostData } = await supabase.from('profiles').select('rating_sum, rating_count').eq('id', activeRoom.host_id).single();
-      if(hostData) {
-        await supabase.from('profiles').update({ 
-          rating_sum: (hostData.rating_sum || 0) + ratingGM, 
-          rating_count: (hostData.rating_count || 0) + 1 
-        }).eq('id', activeRoom.host_id);
-      }
+      if(hostData) await supabase.from('profiles').update({ rating_sum: (hostData.rating_sum || 0) + ratingGM, rating_count: (hostData.rating_count || 0) + 1 }).eq('id', activeRoom.host_id);
     }
     alert("評価を送信しました！ロビーに戻ります。");
-    setActiveRoom(null); 
-    setJoinedCharacter(null); 
-    await fetchData(); 
-    setCurrentView("lobby");
+    setActiveRoom(null); setJoinedCharacter(null); await fetchData(); setCurrentView("lobby");
   };
 
   const submitUserReport = async () => {
     if (!currentUser || !reportTarget || !reportReason.trim()) return;
-    const { error } = await supabase.from('reports').insert({ 
-      reporter_id: currentUser.id, 
-      target_type: reportTarget.type, 
-      target_id: reportTarget.id, 
-      room_id: reportTarget.roomId || null, 
-      reason: reportReason 
-    });
-    if (!error) { 
-      alert("運営に通報を送信しました。ご協力ありがとうございます。"); 
-      setReportTarget(null); 
-      setReportReason(""); 
-    } else {
-      alert("エラーが発生しました: " + error.message);
-    }
+    const { error } = await supabase.from('reports').insert({ reporter_id: currentUser.id, target_type: reportTarget.type, target_id: reportTarget.id, room_id: reportTarget.roomId || null, reason: reportReason });
+    if (!error) { alert("運営に通報を送信しました。ご協力ありがとうございます。"); setReportTarget(null); setReportReason(""); } 
+    else alert("エラーが発生しました: " + error.message);
   };
 
   const submitScenarioAppeal = async () => {
     if (!currentUser || !scenarioAppealTarget || !scenarioAppealText.trim()) return;
-    const { error } = await supabase.from('reports').insert({ 
-      reporter_id: currentUser.id, 
-      target_type: 'scenario_appeal', 
-      target_id: scenarioAppealTarget.id, 
-      reason: scenarioAppealText 
-    });
-    if (!error) { 
-      alert("運営に再審査（修正完了）の申請を送信しました。"); 
-      setScenarioAppealTarget(null); 
-      setScenarioAppealText(""); 
-      await fetchAdminData(); 
-    } else {
-      alert("エラーが発生しました: " + error.message);
-    }
+    const { error } = await supabase.from('reports').insert({ reporter_id: currentUser.id, target_type: 'scenario_appeal', target_id: scenarioAppealTarget.id, reason: scenarioAppealText });
+    if (!error) { alert("運営に再審査（修正完了）の申請を送信しました。"); setScenarioAppealTarget(null); setScenarioAppealText(""); await fetchAdminData(); } 
+    else alert("エラーが発生しました: " + error.message);
   };
 
   // =============== ★ 管理画面（AdminView）用 API関数 =============== //
@@ -768,64 +498,39 @@ export default function Home() {
   const adminExecuteBan = async (userId: string, reason: string) => {
     await supabase.from('profiles').update({ is_banned: true }).eq('id', userId);
     await supabase.from('ban_appeals').insert({ user_id: userId, reason: reason, status: 'banned' });
-    alert("BANを実行しました。"); 
-    await fetchAdminData();
+    alert("BANを実行しました。"); await fetchAdminData();
   };
-
   const adminUnbanUser = async (userId: string) => {
     await supabase.from('profiles').update({ is_banned: false }).eq('id', userId);
     await supabase.from('ban_appeals').update({ status: 'resolved' }).eq('user_id', userId);
-    alert("BANを解除しました。"); 
-    await fetchAdminData();
+    alert("BANを解除しました。"); await fetchAdminData();
   };
-
   const adminSuspendUser = async (userId: string) => {
     await supabase.from('profiles').update({ is_suspended: true }).eq('id', userId);
-    alert("一時BAN（参加制限）措置を実行しました。"); 
-    await fetchAdminData();
+    alert("一時BAN（参加制限）措置を実行しました。"); await fetchAdminData();
   };
-
   const adminUnsuspendUser = async (userId: string) => {
     await supabase.from('profiles').update({ is_suspended: false }).eq('id', userId);
-    alert("一時BAN（参加制限）を解除しました。"); 
-    await fetchAdminData();
+    alert("一時BAN（参加制限）を解除しました。"); await fetchAdminData();
   };
-
   const adminExecuteScenarioBan = async (scenarioId: string, reason: string) => {
     const { error } = await supabase.from('scenarios').update({ is_banned: true }).eq('id', scenarioId);
     if (!error) {
       const s = scenarios.find((x: any) => x.id === scenarioId);
-      if (s?.authorId) {
-        await supabase.from('notifications').insert({ 
-          user_id: s.authorId, 
-          title: '【重要】シナリオ修正依頼（一時非公開）', 
-          message: `あなたが作成したシナリオ「${s.title}」について、運営から修正依頼があります。\n\n【理由・修正内容】\n${reason}` 
-        });
-      }
-      alert("シナリオを一時非公開にし、作者に修正依頼メールを送信しました。"); 
-      await fetchData(); 
-      await fetchAdminData();
+      if (s?.authorId) await supabase.from('notifications').insert({ user_id: s.authorId, title: '【重要】シナリオ修正依頼（一時非公開）', message: `あなたが作成したシナリオ「${s.title}」について、運営から修正依頼があります。\n\n【理由・修正内容】\n${reason}` });
+      alert("シナリオを一時非公開にし、作者に修正依頼メールを送信しました。"); await fetchData(); await fetchAdminData();
     }
   };
-
   const adminUnbanScenario = async (scenarioId: string) => {
     await supabase.from('scenarios').update({ is_banned: false }).eq('id', scenarioId);
-    alert("シナリオの非公開設定を解除しました。"); 
-    await fetchData(); 
-    await fetchAdminData();
+    alert("シナリオの非公開設定を解除しました。"); await fetchData(); await fetchAdminData();
   };
-
   const adminDeleteScenario = async (scenarioId: string) => {
     if(!confirm("本当にこのシナリオを強制削除しますか？\n関連する部屋も削除されます。")) return;
     await supabase.from('rooms').delete().eq('scenario_id', scenarioId);
     const { error } = await supabase.from('scenarios').delete().eq('id', scenarioId);
-    if(!error) { 
-      alert("シナリオを完全に削除しました。"); 
-      await fetchData(); 
-      await fetchAdminData(); 
-    }
+    if(!error) { alert("シナリオを完全に削除しました。"); await fetchData(); await fetchAdminData(); }
   };
-
   const adminSendMailToUser = async (userId: string, body: string) => {
     await supabase.from('notifications').insert({ user_id: userId, title: '✉️ 運営からのお知らせ', message: body });
     alert("メールを送信しました！");
@@ -833,67 +538,23 @@ export default function Home() {
 
   const fetchAdminData = async () => {
     const { data: usersData } = await supabase.from('profiles').select('*').order('created_at', { ascending: false });
-    if (usersData) {
-      setAllUsers(usersData.map((d: any) => ({ 
-        id: d.id, handleName: d.handle_name, avatarUrl: d.avatar_url, bio: d.bio, discordId: d.discord_id, 
-        ratingSum: d.rating_sum || 0, ratingCount: d.rating_count || 0, isAdmin: d.is_admin || false, 
-        isTester: d.is_tester || false, isBanned: d.is_banned || false, isSuspended: d.is_suspended || false, 
-        email: d.email, points: d.points 
-      })));
-    }
+    if (usersData) setAllUsers(usersData.map((d: any) => ({ 
+      id: d.id, handleName: d.handle_name, avatarUrl: d.avatar_url, bio: d.bio, discordId: d.discord_id, 
+      ratingSum: d.rating_sum || 0, ratingCount: d.rating_count || 0, isAdmin: d.is_admin || false, 
+      isTester: d.is_tester || false, isBanned: d.is_banned || false, isSuspended: d.is_suspended || false, 
+      email: d.email, points: d.points 
+    })));
     const { data: reportsData } = await supabase.from('reports').select('*').order('created_at', { ascending: false });
-    if (reportsData) {
-      setReports(reportsData.map((d: any) => ({ 
-        id: d.id, reporterId: d.reporter_id, targetType: d.target_type, targetId: d.target_id, 
-        roomId: d.room_id || null, reason: d.reason, status: d.status, createdAt: d.created_at 
-      })));
-    }
+    if (reportsData) setReports(reportsData.map((d: any) => ({ id: d.id, reporterId: d.reporter_id, targetType: d.target_type, targetId: d.target_id, roomId: d.room_id || null, reason: d.reason, status: d.status, createdAt: d.created_at })));
   };
 
-  const toggleMaintenance = async () => { 
-    const newStatus = !isMaintenance; 
-    await supabase.from('app_settings').update({ is_maintenance: newStatus }).eq('id', 1); 
-    setIsMaintenance(newStatus); 
-    alert(`メンテナンスモードを ${newStatus ? "ON" : "OFF"} にしました。`); 
-  };
-
-  const toggleTicketSystem = async () => { 
-    const newStatus = !isTicketSystemEnabled; 
-    await supabase.from('app_settings').update({ is_ticket_system_enabled: newStatus }).eq('id', 1); 
-    setIsTicketSystemEnabled(newStatus); 
-    alert(`チケットシステムを ${newStatus ? "ON" : "OFF"} にしました。`); 
-  };
-
-  const toggleAdminStatus = async (userId: string, currentStatus: boolean) => { 
-    const newStatus = !currentStatus; 
-    await supabase.from('profiles').update({ is_admin: newStatus }).eq('id', userId); 
-    alert(newStatus ? "管理者権限を付与しました。" : "管理者権限を剥奪しました。"); 
-    fetchAdminData(); 
-  };
-
-  const toggleTesterStatus = async (userId: string, currentStatus: boolean) => { 
-    const newStatus = !currentStatus; 
-    await supabase.from('profiles').update({ is_tester: newStatus }).eq('id', userId); 
-    alert(newStatus ? "テスター権限を付与しました。" : "テスター権限を剥奪しました。"); 
-    fetchAdminData(); 
-  };
-
-  const toggleGeminiFlashModel = async (newModel: '3.5-lite' | '3.6') => { 
-    const { error } = await supabase.from('app_settings').update({ gemini_flash_model: newModel }).eq('id', 1); 
-    if (error) { alert(`設定の保存に失敗しました。`); } 
-    setGeminiFlashModel(newModel); 
-    alert(`AIモデルを ${newModel} に変更しました。`); 
-  };
-
-  const resolveReport = async (reportId: string) => { 
-    await supabase.from('reports').update({ status: 'resolved' }).eq('id', reportId); 
-    fetchAdminData(); 
-  };
-
-  const markNotificationAsRead = async (notifId: string) => { 
-    await supabase.from('notifications').update({ is_read: true }).eq('id', notifId); 
-    setMyNotifications(myNotifications.map((n: any) => n.id === notifId ? { ...n, isRead: true } : n)); 
-  };
+  const toggleMaintenance = async () => { const newStatus = !isMaintenance; await supabase.from('app_settings').update({ is_maintenance: newStatus }).eq('id', 1); setIsMaintenance(newStatus); alert(`メンテナンスモードを ${newStatus ? "ON" : "OFF"} にしました。`); };
+  const toggleTicketSystem = async () => { const newStatus = !isTicketSystemEnabled; await supabase.from('app_settings').update({ is_ticket_system_enabled: newStatus }).eq('id', 1); setIsTicketSystemEnabled(newStatus); alert(`チケットシステムを ${newStatus ? "ON" : "OFF"} にしました。`); };
+  const toggleAdminStatus = async (userId: string, currentStatus: boolean) => { const newStatus = !currentStatus; await supabase.from('profiles').update({ is_admin: newStatus }).eq('id', userId); alert(newStatus ? "管理者権限を付与しました。" : "管理者権限を剥奪しました。"); fetchAdminData(); };
+  const toggleTesterStatus = async (userId: string, currentStatus: boolean) => { const newStatus = !currentStatus; await supabase.from('profiles').update({ is_tester: newStatus }).eq('id', userId); alert(newStatus ? "テスター権限を付与しました。" : "テスター権限を剥奪しました。"); fetchAdminData(); };
+  const toggleGeminiFlashModel = async (newModel: '3.5-lite' | '3.6') => { const { error } = await supabase.from('app_settings').update({ gemini_flash_model: newModel }).eq('id', 1); if (error) { alert(`設定の保存に失敗しました。`); } setGeminiFlashModel(newModel); alert(`AIモデルを ${newModel} に変更しました。`); };
+  const resolveReport = async (reportId: string) => { await supabase.from('reports').update({ status: 'resolved' }).eq('id', reportId); fetchAdminData(); };
+  const markNotificationAsRead = async (notifId: string) => { await supabase.from('notifications').update({ is_read: true }).eq('id', notifId); setMyNotifications(myNotifications.map((n: any) => n.id === notifId ? { ...n, isRead: true } : n)); };
   
   const grantPointsToAll = async (amount: number) => {
     if (!confirm(`全ユーザーに一律 ${amount} ptを付与しますか？`)) return;
@@ -902,37 +563,22 @@ export default function Home() {
       await supabase.from('profiles').update({ points: (user.points || 0) + amount }).eq('id', user.id);
     }
     alert(`全ユーザーに ${amount} ptを付与しました！`);
-    await fetchAdminData(); 
-    setIsLoading(false);
+    await fetchAdminData(); setIsLoading(false);
   };
-
   const executeCreateTester = async (testerEmail: string, testerPass: string) => {
     try {
       const { data, error } = await supabase.auth.signUp({ email: testerEmail, password: testerPass });
       if (error) throw error;
       if (data.user) {
-        await supabase.from('profiles').upsert({ 
-          id: data.user.id, 
-          handle_name: testerEmail.split("@")[0], 
-          avatar_url: DEFAULT_AVATAR, 
-          is_tester: true, 
-          is_admin: false, 
-          email: testerEmail 
-        });
-        alert("テスターアカウントを発行しました！\n再度ログインし直してください。"); 
-        await handleLogout();
+        await supabase.from('profiles').upsert({ id: data.user.id, handle_name: testerEmail.split("@")[0], avatar_url: DEFAULT_AVATAR, is_tester: true, is_admin: false, email: testerEmail });
+        alert("テスターアカウントを発行しました！\n再度ログインし直してください。"); await handleLogout();
       }
-    } catch (err: any) { 
-      alert("作成失敗: " + err.message); 
-    }
+    } catch (err: any) { alert("作成失敗: " + err.message); }
   };
 
   const exchangeTicketWithPoints = async (type: 'bronze'|'item'|'silver'|'gold'|'platinum'|'diamond', cost: number) => {
     if (!currentUser) return;
-    if ((currentUser.points || 0) < cost) { 
-      alert("ポイントが足りません！"); 
-      return; 
-    }
+    if ((currentUser.points || 0) < cost) { alert("ポイントが足りません！"); return; }
     if (!confirm(`${cost} ptを消費してチケットを交換しますか？`)) return;
 
     const updates: any = { points: currentUser.points! - cost };
@@ -944,14 +590,10 @@ export default function Home() {
     if (type === 'diamond') updates.tickets_diamond = (currentUser.ticketsDiamond || 0) + 1;
 
     const { error } = await supabase.from('profiles').update(updates).eq('id', currentUser.id);
-    if (error) { 
-      alert("交換に失敗しました: " + error.message); 
-      return; 
-    }
+    if (error) { alert("交換に失敗しました: " + error.message); return; }
 
     setCurrentUser({
-      ...currentUser, 
-      points: updates.points,
+      ...currentUser, points: updates.points,
       ticketsBronze: type === 'bronze' ? (currentUser.ticketsBronze || 0) + 1 : currentUser.ticketsBronze,
       ticketsItem: type === 'item' ? (currentUser.ticketsItem || 0) + 1 : currentUser.ticketsItem,
       ticketsSilver: type === 'silver' ? (currentUser.ticketsSilver || 0) + 1 : currentUser.ticketsSilver,
@@ -971,16 +613,11 @@ export default function Home() {
       const targetPrompt = await generateAITextWithPrompt(autoPromptReq, 'lite', 200, 0.7);
       const translationPrompt = `以下の日本語を画像生成AI用のカンマ区切りの英語プロンプトに変換してください。最後に「SFW, masterpiece, high quality${type === 'character' ? ', 1girl or 1boy, solo, upper body' : ''}」を含めること。\n\n描写：${targetPrompt}`;
       let englishPrompt = "";
-      try { 
-        englishPrompt = await generateAITextWithPrompt(translationPrompt, 'lite', 200, 0.3); 
-      } catch (err) { 
-        englishPrompt = `${targetPrompt}, SFW, masterpiece, high quality`; 
-      }
+      try { englishPrompt = await generateAITextWithPrompt(translationPrompt, 'lite', 200, 0.3); } catch (err) { englishPrompt = `${targetPrompt}, SFW, masterpiece, high quality`; }
       const base64data = await generateFreeImage(englishPrompt);
       return base64data;
     } catch (err: any) {
-      alert("画像生成に失敗しました。"); 
-      return null;
+      alert("画像生成に失敗しました。"); return null;
     } finally {
       setIsLoading(false);
     }
@@ -988,15 +625,12 @@ export default function Home() {
 
   const generateSceneImage = async (imageType: 'free' | 'premium') => {
     if (!activeRoom || !myScene || !currentUser || isRequestingRef.current) return;
-    isRequestingRef.current = true; 
-    setIsLoading(true);
+    isRequestingRef.current = true; setIsLoading(true);
     try {
       if (imageType === 'free') {
         if ((activeRoom.free_image_count || 0) >= 3) {
           alert("無料の情景生成は1セッションにつき3回までです。\nこれ以上はアイテムチケットをご利用ください。");
-          isRequestingRef.current = false; 
-          setIsLoading(false); 
-          return;
+          isRequestingRef.current = false; setIsLoading(false); return;
         }
         const newCount = (activeRoom.free_image_count || 0) + 1;
         await supabase.from('rooms').update({ free_image_count: newCount }).eq('id', activeRoom.id);
@@ -1004,12 +638,7 @@ export default function Home() {
       }
       if (imageType === 'premium') {
         if (isTicketSystemEnabled) {
-          if ((currentUser.ticketsItem || 0) < 1) { 
-            alert("アイテムチケットがありません。「購入ストア」から補充してください。"); 
-            isRequestingRef.current = false; 
-            setIsLoading(false); 
-            return; 
-          }
+          if ((currentUser.ticketsItem || 0) < 1) { alert("アイテムチケットがありません。「購入ストア」から補充してください。"); isRequestingRef.current = false; setIsLoading(false); return; }
           const { error } = await supabase.from('profiles').update({ tickets_item: (currentUser.ticketsItem || 0) - 1 }).eq('id', currentUser.id);
           if (!error) setCurrentUser(prev => prev ? { ...prev, ticketsItem: (prev.ticketsItem || 0) - 1 } : null);
         }
@@ -1020,39 +649,22 @@ export default function Home() {
       const targetPrompt = await generateAITextWithPrompt(autoPromptReq, 'lite', 400, 0.7);
       const translationPrompt = ["以下の日本語の情景描写を、画像生成AI用のカンマ区切りの英語プロンプトに変換してください。","【絶対条件】","・文章ではなく、英単語のカンマ区切りで出力してください。","・不適切な画像が生成されるのを防ぐため、必ず最後に「SFW, fully clothed, masterpiece, high quality」を含めてください。","","情景描写：",targetPrompt].join('\n');
       let englishPrompt = "";
-      try { 
-        englishPrompt = await generateAITextWithPrompt(translationPrompt, 'lite', 200, 0.3); 
-      } catch (err) { 
-        englishPrompt = `${targetPrompt}, SFW, fully clothed, masterpiece, high quality`; 
-      }
+      try { englishPrompt = await generateAITextWithPrompt(translationPrompt, 'lite', 200, 0.3); } catch (err) { englishPrompt = `${targetPrompt}, SFW, fully clothed, masterpiece, high quality`; }
       let base64data = "";
-      if (imageType === 'free') {
-        base64data = await generateFreeImage(englishPrompt);
-      } else {
-        base64data = await generatePremiumImage(englishPrompt);
-      }
+      if (imageType === 'free') base64data = await generateFreeImage(englishPrompt);
+      else base64data = await generatePremiumImage(englishPrompt);
       await pushMessage(activeRoom.id, { sender: "gm", text: `【ホストが情景画像を生成しました】\n「${targetPrompt}」`, type: "image", imageUrl: base64data, sceneId: myScene.id, channel: "story" });
-    } catch (err: any) { 
-      alert("画像の生成に失敗しました。\n少し時間をおいて再度お試しください。"); 
-    } finally { 
-      isRequestingRef.current = false; 
-      setIsLoading(false); 
-    }
+    } catch (err: any) { alert("画像の生成に失敗しました。\n少し時間をおいて再度お試しください。"); } finally { isRequestingRef.current = false; setIsLoading(false); }
   };
 
   const startSplitting = async () => {
     if (!activeRoom || isRequestingRef.current) return;
-    isRequestingRef.current = true; 
-    setIsLoading(true);
+    isRequestingRef.current = true; setIsLoading(true);
     try {
       await supabase.from('rooms').update({ status: 'splitting' }).eq('id', activeRoom.id);
       setActiveRoom({ ...activeRoom, status: 'splitting', scenes: [{ id: 'scene_main', name: 'メインルーム', memberIds: [] }] });
-      setProposedTeams([]); 
-      await generateSplitProposal();
-    } finally { 
-      isRequestingRef.current = false; 
-      setIsLoading(false); 
-    }
+      setProposedTeams([]); await generateSplitProposal();
+    } finally { isRequestingRef.current = false; setIsLoading(false); }
   };
 
   const generateSplitProposal = async () => {
@@ -1066,66 +678,41 @@ export default function Home() {
       const aiResponse = await generateAITextWithPrompt(prompt, 'lite', 800, 0.3);
       const jsonStr = aiResponse.replace(/```json/g, "").replace(/```/g, "").trim();
       const parsed = JSON.parse(jsonStr);
-      if (parsed && parsed.teams) {
-        setProposedTeams(parsed.teams.map((t: any) => ({ id: `team_${Date.now()}_${Math.random()}`, action: t.action, members: t.members, leader: t.members[0] || "" })));
-      } else {
-        setProposedTeams([{ id: `team_${Date.now()}`, action: "", members: [], leader: "" }]);
-      }
-    } catch (e) { 
-      setProposedTeams([{ id: `team_${Date.now()}`, action: "", members: [], leader: "" }]); 
-    } finally { 
-      setIsGeneratingSplit(false); 
-    }
+      if (parsed && parsed.teams) setProposedTeams(parsed.teams.map((t: any) => ({ id: `team_${Date.now()}_${Math.random()}`, action: t.action, members: t.members, leader: t.members[0] || "" })));
+      else setProposedTeams([{ id: `team_${Date.now()}`, action: "", members: [], leader: "" }]);
+    } catch (e) { setProposedTeams([{ id: `team_${Date.now()}`, action: "", members: [], leader: "" }]); } finally { setIsGeneratingSplit(false); }
   };
 
   const finishSplitting = async () => {
     if (!activeRoom || isRequestingRef.current) return;
     const validTeams = proposedTeams.filter((t: any) => t.action && t.members.length > 0);
     if (validTeams.length === 0) { alert("有効なチームがありません。"); return; }
-    for (const t of validTeams) { 
-      if (!t.members.includes(joinedCharacter?.id || "") && !t.leader) { 
-        alert("ホストが含まれないチームにはリーダーを指定してください。"); 
-        return; 
-      } 
-    }
-    isRequestingRef.current = true; 
-    setIsLoading(true);
+    for (const t of validTeams) { if (!t.members.includes(joinedCharacter?.id || "") && !t.leader) { alert("ホストが含まれないチームにはリーダーを指定してください。"); return; } }
+    isRequestingRef.current = true; setIsLoading(true);
     try {
       const newScenes: Scene[] = [{ id: 'scene_main', name: 'メインルーム', memberIds: [] }, ...validTeams.map((t: any) => ({ id: t.id, name: t.action, memberIds: t.members, leaderId: t.leader, isMerged: false }))];
       await supabase.from('rooms').update({ scenes: newScenes, status: 'playing' }).eq('id', activeRoom.id);
       setActiveRoom({ ...activeRoom, scenes: newScenes, status: 'playing' });
       await pushMessage(activeRoom.id, { sender: "system", text: `【システム】チーム分けが完了しました！各チームごとに独立して行動・相談を行ってください。`, type: "system", sceneId: "scene_main", channel: "system" });
-    } finally { 
-      isRequestingRef.current = false; 
-      setIsLoading(false); 
-    }
+    } finally { isRequestingRef.current = false; setIsLoading(false); }
   };
 
-  const cancelSplitting = async () => { 
-    if (!activeRoom) return; 
-    await supabase.from('rooms').update({ status: 'playing' }).eq('id', activeRoom.id); 
-    setActiveRoom({ ...activeRoom, status: 'playing' }); 
-  };
+  const cancelSplitting = async () => { if (!activeRoom) return; await supabase.from('rooms').update({ status: 'playing' }).eq('id', activeRoom.id); setActiveRoom({ ...activeRoom, status: 'playing' }); };
 
   const mergeTeam = async () => {
     if (!activeRoom || !myScene || myScene.id === 'scene_main' || isRequestingRef.current) return;
-    isRequestingRef.current = true; 
-    setIsLoading(true);
+    isRequestingRef.current = true; setIsLoading(true);
     try {
       const updatedScenes = activeRoom.scenes.map((s: any) => s.id === myScene.id ? { ...s, isMerged: true } : s);
       await supabase.from('rooms').update({ scenes: updatedScenes }).eq('id', activeRoom.id);
       setActiveRoom({ ...activeRoom, scenes: updatedScenes });
       await pushMessage(activeRoom.id, { sender: "system", text: `【システム】${myScene.name}チームはメインに合流するため待機します。全チームが合流するまでお待ちください。`, type: "system", sceneId: myScene.id, channel: "system" });
-    } finally { 
-      isRequestingRef.current = false; 
-      setIsLoading(false); 
-    }
+    } finally { isRequestingRef.current = false; setIsLoading(false); }
   };
 
   const executeMergeAll = async () => {
     if (!activeRoom || isRequestingRef.current) return;
-    isRequestingRef.current = true; 
-    setIsLoading(true);
+    isRequestingRef.current = true; setIsLoading(true);
     try {
       const allMemberIds = Object.keys(activeRoom.joined_users || {});
       const resetScenes: Scene[] = [{ id: 'scene_main', name: 'メインルーム', memberIds: allMemberIds }];
@@ -1134,10 +721,7 @@ export default function Home() {
       await pushMessage(activeRoom.id, { sender: "system", text: `【システム】全チームが合流しました！`, type: "system", sceneId: 'scene_main', channel: "system" });
       const extraUserContext = ["【システムコマンド】全チームの別行動が終了し、一箇所に合流しました。","これまでの各チームの報告を踏まえ、合流時の情景描写と今後の展開を提示してください。"].join('\n');
       await callAIGM(extraUserContext, "story");
-    } finally { 
-      isRequestingRef.current = false; 
-      setIsLoading(false); 
-    }
+    } finally { isRequestingRef.current = false; setIsLoading(false); }
   };
 
   const executeCreateRoom = async () => {
@@ -1182,49 +766,17 @@ export default function Home() {
     scenario.presetCharacters.forEach((c: any) => { initialInventories[c.id] = c.items || "特になし"; });
 
     const { data, error } = await supabase.from('rooms').insert({ 
-      scenario_id: scenario.id, 
-      host_name: currentUser.handleName, 
-      host_id: currentUser.id, 
-      status: "recruiting", 
-      scenes: initialScenes, 
-      privacy: privacy, 
-      host_message: message, 
-      joined_users: { [currentUser.id]: charId }, 
-      current_summary: "", 
-      difficulty: difficulty, 
-      rule: rule, 
-      is_paused: false, 
-      afk_users: [], 
-      is_trial: false, 
-      item_visibility: itemVisibility, 
-      inventories: initialInventories, 
-      current_chapter_index: 0, 
-      ai_model: aiModel, 
-      error_refunded: false, 
-      free_image_count: 0, 
-      is_lost: false, 
-      lost_turn_count: 0,
-      language: language || 'ja'
+      scenario_id: scenario.id, host_name: currentUser.handleName, host_id: currentUser.id, status: "recruiting", scenes: initialScenes, privacy: privacy, host_message: message, joined_users: { [currentUser.id]: charId }, current_summary: "", difficulty: difficulty, rule: rule, is_paused: false, afk_users: [], is_trial: false, item_visibility: itemVisibility, inventories: initialInventories, current_chapter_index: 0, ai_model: aiModel, error_refunded: false, free_image_count: 0, is_lost: false, lost_turn_count: 0, language: language || 'ja'
     }).select().single();
     
     if (error) { alert("データベースエラーが発生しました: " + error.message); return; }
     if (data) {
       const currentSc = scenarios.find((s: any) => s.id === scenario.id);
       if (currentSc) await supabase.from('scenarios').update({ play_count: (currentSc.playCount || 0) + 1 }).eq('id', scenario.id);
-      setRoomConfigModal(null); 
-      await fetchData();
-      
-      const newRoom: Room = { 
-        id: data.id, scenario_id: data.scenario_id, scenario: scenario, host_name: data.host_name, host_id: data.host_id, 
-        status: data.status, scenes: data.scenes, privacy: data.privacy, host_message: data.host_message, 
-        joined_users: data.joined_users, current_summary: "", difficulty: data.difficulty, rule: data.rule, 
-        is_paused: false, afk_users: [], is_trial: false, item_visibility: data.item_visibility, inventories: data.inventories, 
-        current_chapter_index: 0, ai_model: data.ai_model, error_refunded: false, free_image_count: 0, is_lost: false, lost_turn_count: 0, language: data.language 
-      };
+      setRoomConfigModal(null); await fetchData();
+      const newRoom: Room = { id: data.id, scenario_id: data.scenario_id, scenario: scenario, host_name: data.host_name, host_id: data.host_id, status: data.status, scenes: data.scenes, privacy: data.privacy, host_message: data.host_message, joined_users: data.joined_users, current_summary: "", difficulty: data.difficulty, rule: data.rule, is_paused: false, afk_users: [], is_trial: false, item_visibility: data.item_visibility, inventories: data.inventories, current_chapter_index: 0, ai_model: data.ai_model, error_refunded: false, free_image_count: 0, is_lost: false, lost_turn_count: 0, language: data.language };
       await supabase.from('ai_memory').delete().eq('room_id', newRoom.id);
-      setActiveRoom(newRoom); 
-      setJoinedCharacter(hostChar); 
-      setMessages([]); 
+      setActiveRoom(newRoom); setJoinedCharacter(hostChar); setMessages([]); 
       await pushMessage(newRoom.id, { sender: "system", text: `【入室完了】プレイヤー全員の準備が整うまでお待ちください。\n【案内】シークレット設定の場合、画面左上の「共有ID」をコピーして友人に伝えてください。`, type: "system", sceneId: newRoom.scenes?.[0]?.id, channel: "system" });
       setCurrentView("game");
     }
@@ -1252,19 +804,10 @@ export default function Home() {
       const currentSc = scenarios.find((s: any) => s.id === scenario.id);
       if (currentSc) await supabase.from('scenarios').update({ play_count: (currentSc.playCount || 0) + 1 }).eq('id', scenario.id);
       await fetchData();
-      const newRoom: Room = { 
-        id: data.id, scenario_id: data.scenario_id, scenario: scenario, host_name: data.host_name, host_id: data.host_id, 
-        status: data.status, scenes: data.scenes, privacy: data.privacy, host_message: data.host_message, joined_users: data.joined_users, 
-        current_summary: "", difficulty: data.difficulty, rule: data.rule, is_paused: false, afk_users: [], is_trial: true, 
-        item_visibility: "none", inventories: data.inventories, current_chapter_index: 0, ai_model: data.ai_model, error_refunded: false, 
-        free_image_count: 0, is_lost: false, lost_turn_count: 0, language: 'ja' 
-      };
+      const newRoom: Room = { id: data.id, scenario_id: data.scenario_id, scenario: scenario, host_name: data.host_name, host_id: data.host_id, status: data.status, scenes: data.scenes, privacy: data.privacy, host_message: data.host_message, joined_users: data.joined_users, current_summary: "", difficulty: data.difficulty, rule: data.rule, is_paused: false, afk_users: [], is_trial: true, item_visibility: "none", inventories: data.inventories, current_chapter_index: 0, ai_model: data.ai_model, error_refunded: false, free_image_count: 0, is_lost: false, lost_turn_count: 0, language: 'ja' };
       await supabase.from('ai_memory').delete().eq('room_id', newRoom.id);
-      setActiveRoom(newRoom); 
-      setJoinedCharacter(hostChar); 
-      setMessages([]); 
-      const aiChars = scenario.presetCharacters.filter((c: any) => c.id !== charId); 
-      setAiPlayersList(aiChars);
+      setActiveRoom(newRoom); setJoinedCharacter(hostChar); setMessages([]); 
+      const aiChars = scenario.presetCharacters.filter((c: any) => c.id !== charId); setAiPlayersList(aiChars);
       await pushMessage(newRoom.id, { sender: "system", text: `【お試しルーム作成完了】\n他のキャラクターはAIが担当します。\n右上の「▶お試し開始」ボタンを押してスタートしてください。`, type: "system", sceneId: newRoom.scenes?.[0]?.id, channel: "system" });
       setCurrentView("game");
     }
@@ -1287,21 +830,12 @@ export default function Home() {
       if (room.ai_model === 'claude') { requiredTicketKey = 'tickets_platinum'; currentTickets = currentUser.ticketsPlatinum || 0; costName = 'プラチナ'; }
       if (room.ai_model === 'opus') { requiredTicketKey = 'tickets_diamond'; currentTickets = currentUser.ticketsDiamond || 0; costName = 'ダイヤモンド'; }
 
-      if (currentTickets < 1) { 
-        alert(`入室するためのチケットが足りません！\n（${costName}チケットが1枚必要です）\nロビーの「チケット購入ストア」から入手してください。`); 
-        setShowTicketModal(true); 
-        return; 
-      }
+      if (currentTickets < 1) { alert(`入室するためのチケットが足りません！\n（${costName}チケットが1枚必要です）\nロビーの「チケット購入ストア」から入手してください。`); setShowTicketModal(true); return; }
       if (!confirm(`この部屋に入室するには ${costName}チケット を1枚消費します。よろしいですか？`)) return;
       const { error: tErr } = await supabase.from('profiles').update({ [requiredTicketKey]: currentTickets - 1 }).eq('id', currentUser.id);
       if (tErr) { alert("チケットの消費処理に失敗しました。"); return; }
       setCurrentUser(prev => prev ? { 
-        ...prev, 
-        ticketsBronze: room.ai_model === 'lite' ? (prev.ticketsBronze || 0) - 1 : prev.ticketsBronze, 
-        ticketsSilver: room.ai_model === 'flash' ? (prev.ticketsSilver || 0) - 1 : prev.ticketsSilver, 
-        ticketsGold: room.ai_model === 'pro' ? (prev.ticketsGold || 0) - 1 : prev.ticketsGold, 
-        ticketsPlatinum: room.ai_model === 'claude' ? (prev.ticketsPlatinum || 0) - 1 : prev.ticketsPlatinum, 
-        ticketsDiamond: room.ai_model === 'opus' ? (prev.ticketsDiamond || 0) - 1 : prev.ticketsDiamond
+        ...prev, ticketsBronze: room.ai_model === 'lite' ? (prev.ticketsBronze || 0) - 1 : prev.ticketsBronze, ticketsSilver: room.ai_model === 'flash' ? (prev.ticketsSilver || 0) - 1 : prev.ticketsSilver, ticketsGold: room.ai_model === 'pro' ? (prev.ticketsGold || 0) - 1 : prev.ticketsGold, ticketsPlatinum: room.ai_model === 'claude' ? (prev.ticketsPlatinum || 0) - 1 : prev.ticketsPlatinum, ticketsDiamond: room.ai_model === 'opus' ? (prev.ticketsDiamond || 0) - 1 : prev.ticketsDiamond
       } : null);
     }
 
@@ -1309,11 +843,7 @@ export default function Home() {
     const currentUsers = latestRoom?.joined_users || {};
     const currentInventories = latestRoom?.inventories || {};
 
-    if (Object.values(currentUsers).includes(charId)) { 
-      alert("申し訳ありません、そのキャラクターは先ほど他のプレイヤーに選択されました！"); 
-      await fetchData(); 
-      return; 
-    }
+    if (Object.values(currentUsers).includes(charId)) { alert("申し訳ありません、そのキャラクターは先ほど他のプレイヤーに選択されました！"); await fetchData(); return; }
 
     const char = room.scenario?.presetCharacters.find((c: any) => c.id === charId);
     if (!char) return;
@@ -1325,9 +855,7 @@ export default function Home() {
     if (error) { alert("入室エラー: " + error.message); return; }
 
     const updatedRoom = { ...room, joined_users: newUsers, inventories: newInventories };
-    setActiveRoom(updatedRoom); 
-    setJoinedCharacter(char); 
-    await loadChatLogs(room.id);
+    setActiveRoom(updatedRoom); setJoinedCharacter(char); await loadChatLogs(room.id);
     await pushMessage(room.id, { sender: "system", text: `【入室完了】${char.name}として参加しました！ホストの開始をお待ちください。`, type: "system", sceneId: room.scenes?.[0]?.id, channel: "system" });
     setCurrentView("game");
   };
@@ -1337,21 +865,16 @@ export default function Home() {
     const newSpectators = [...(room.spectator_ids || []), currentUser.id];
     await supabase.from('rooms').update({ spectator_ids: newSpectators }).eq('id', room.id);
     const currentSc = scenarios.find((s: any) => s.id === room.scenario_id);
-    if (currentSc) {
-      await supabase.from('scenarios').update({ view_count: (currentSc.viewCount || 0) + 1 }).eq('id', room.scenario_id);
-    }
+    if (currentSc) await supabase.from('scenarios').update({ view_count: (currentSc.viewCount || 0) + 1 }).eq('id', room.scenario_id);
 
-    setActiveRoom({ ...room, spectator_ids: newSpectators }); 
-    setJoinedCharacter(null); 
-    await loadChatLogs(room.id);
+    setActiveRoom({ ...room, spectator_ids: newSpectators }); setJoinedCharacter(null); await loadChatLogs(room.id);
     await pushMessage(room.id, { sender: "system", text: `【観戦モード】部屋に入室しました。チャットやダイスは使用できません。`, type: "system", sceneId: room.scenes?.[0]?.id, channel: "system" }, false);
     setCurrentView("game");
   };
 
   const startGame = async () => {
     if(!activeRoom || !activeRoom.scenario || !joinedCharacter || !myScene || isRequestingRef.current) return;
-    isRequestingRef.current = true; 
-    setIsLoading(true);
+    isRequestingRef.current = true; setIsLoading(true);
     try {
       let aiChars: Character[] = [];
       const takenIds = Object.values(activeRoom.joined_users || {});
@@ -1360,11 +883,8 @@ export default function Home() {
          if (emptyChars.length > 0 && !activeRoom.is_trial) alert("【お知らせ】ゴールド以上の部屋では、AIプレイヤーの参加はできません。");
       } else {
          if (emptyChars.length > 0) {
-           if (activeRoom.is_trial) {
-             aiChars = emptyChars; 
-           } else if (confirm(`参加していないキャラクターが ${emptyChars.length} 人います。\n彼らを「AIプレイヤー（相棒）」として参加させますか？`)) {
-             aiChars = emptyChars;
-           }
+           if (activeRoom.is_trial) aiChars = emptyChars; 
+           else if (confirm(`参加していないキャラクターが ${emptyChars.length} 人います。\n彼らを「AIプレイヤー（相棒）」として参加させますか？`)) aiChars = emptyChars;
          }
       }
       setAiPlayersList(aiChars);
@@ -1373,10 +893,7 @@ export default function Home() {
       await pushMessage(activeRoom.id, { sender: "system", text: `【システム】ゲームを開始しました。AI GMを呼び出しています...`, type: "system", sceneId: myScene.id, channel: "system" });
       const extraUserContext = `【システムコマンド】セッションが開始されました。\n以下の【設定されたプロローグ情報】に従い導入部分の情景描写を行ってください。\n\n【設定されたプロローグ情報】\n${activeRoom.scenario.prologue || "特になし"}\n\nまた、この導入部において、事態の把握や最初の試練として【必ずプレイヤー全員が最低1回はダイス判定を行わなければならない状況】を発生させてください。`;
       await callAIGM(extraUserContext, "story", true);
-    } finally { 
-      isRequestingRef.current = false; 
-      setIsLoading(false); 
-    }
+    } finally { isRequestingRef.current = false; setIsLoading(false); }
   };
 
   const endGame = async () => {
@@ -1394,10 +911,7 @@ export default function Home() {
     if (!joinedCharacter) { 
       const newSpectators = (activeRoom.spectator_ids || []).filter((id: string) => id !== currentUser.id);
       await supabase.from('rooms').update({ spectator_ids: newSpectators }).eq('id', activeRoom.id);
-      setCurrentView("lobby"); 
-      setActiveRoom(null); 
-      await fetchData(); 
-      return; 
+      setCurrentView("lobby"); setActiveRoom(null); await fetchData(); return; 
     }
 
     const isHost = activeRoom.host_id === currentUser.id;
@@ -1408,48 +922,30 @@ export default function Home() {
       const newUsers = { ...activeRoom.joined_users };
       delete newUsers[currentUser.id];
       await supabase.from('rooms').update({ joined_users: newUsers }).eq('id', activeRoom.id);
-      if (isHost && remainingPlayers === 0) {
-        await supabase.from('rooms').update({ status: 'finished' }).eq('id', activeRoom.id);
-      }
-      setCurrentView("lobby"); 
-      setActiveRoom(null); 
-      setJoinedCharacter(null); 
-      await fetchData(); 
-      return;
+      if (isHost && remainingPlayers === 0) await supabase.from('rooms').update({ status: 'finished' }).eq('id', activeRoom.id);
+      setCurrentView("lobby"); setActiveRoom(null); setJoinedCharacter(null); await fetchData(); return;
     }
 
     if (remainingPlayers === 0) {
       if (confirm("【警告】他に人間プレイヤーがいないため、退出すると部屋は完全に閉じられます。本当によろしいですか？")) {
         await supabase.from('rooms').update({ status: 'finished' }).eq('id', activeRoom.id);
-        setCurrentView("lobby"); 
-        setActiveRoom(null); 
-        setJoinedCharacter(null); 
-        setAiPlayersList([]); 
-        setMessages([]); 
-        await fetchData(); 
+        setCurrentView("lobby"); setActiveRoom(null); setJoinedCharacter(null); setAiPlayersList([]); setMessages([]); await fetchData(); 
       }
     } else {
       if (confirm("自分のキャラクターをAIに引き継がせて離脱します。よろしいですか？")) {
         const newUsers = { ...activeRoom.joined_users };
         delete newUsers[currentUser.id];
         await supabase.from('rooms').update({ joined_users: newUsers }).eq('id', activeRoom.id);
-        setCurrentView("lobby"); 
-        setActiveRoom(null); 
-        setJoinedCharacter(null); 
-        setAiPlayersList([]); 
-        setMessages([]); 
-        await fetchData(); 
+        setCurrentView("lobby"); setActiveRoom(null); setJoinedCharacter(null); setAiPlayersList([]); setMessages([]); await fetchData(); 
       }
     }
   };
 
   const handleSend = async () => {
-    if (!input.trim() || isRequestingRef.current || !activeRoom || !joinedCharacter || !myScene) return;
-    isRequestingRef.current = true; 
-    setIsLoading(true);
+    if (!input.trim() || isRequestingRef.current || !activeRoom || !joinedCharacter || !currentUser || !myScene) return;
+    isRequestingRef.current = true; setIsLoading(true);
     try {
-      const currentInput = input; 
-      setInput(""); 
+      const currentInput = input; setInput(""); 
       const isFinished = activeRoom.status === 'finished';
       const isRecruiting = activeRoom.status === 'recruiting';
 
@@ -1467,16 +963,12 @@ export default function Home() {
       else context = `【GMへの質問】PL: ${currentInput}`;
 
       await callAIGM(context, chatTab);
-    } finally { 
-      isRequestingRef.current = false; 
-      setIsLoading(false); 
-    }
+    } finally { isRequestingRef.current = false; setIsLoading(false); }
   };
 
   const rollDice = async (targetValue: number, label: string, is1d100: boolean = false) => {
     if(!myScene || !activeRoom || isRequestingRef.current || !joinedCharacter) return;
-    isRequestingRef.current = true; 
-    setIsLoading(true);
+    isRequestingRef.current = true; setIsLoading(true);
     try {
       let res = 0; let isSuccess = false; let msgText = "";
       const rule = activeRoom.rule || "coc_jp";
@@ -1525,10 +1017,7 @@ export default function Home() {
           
           await callAIGM(`【システム判定結果】${joinedCharacter.name}が${label}ロールを行いました。\n結果: ${msgText}\n${promptSuffix}`, chatTab, false, diceModel);
       }
-    } finally { 
-      isRequestingRef.current = false; 
-      setIsLoading(false); 
-    }
+    } finally { isRequestingRef.current = false; setIsLoading(false); }
   };
 
   const callAIGM = async (extraUserContext?: string, targetTab: ChatTab = "story", isStarting: boolean = false, forcedModel?: string) => {
@@ -1537,9 +1026,7 @@ export default function Home() {
     setIsLoading(true);
     
     try {
-      if (extraUserContext) {
-        await supabase.from('ai_memory').insert({ room_id: activeRoom.id, role: 'user', content: extraUserContext });
-      }
+      if (extraUserContext) await supabase.from('ai_memory').insert({ room_id: activeRoom.id, role: 'user', content: extraUserContext });
       const { data: memoryDataRaw } = await supabase.from('ai_memory').select('*').eq('room_id', activeRoom.id).order('created_at', { ascending: true });
       let currentMemory = memoryDataRaw || [];
       let currentSummary = activeRoom.current_summary || "";
@@ -1557,13 +1044,9 @@ export default function Home() {
           await supabase.from('rooms').update({ current_summary: currentSummary }).eq('id', activeRoom.id);
           setActiveRoom(prev => prev ? { ...prev, current_summary: currentSummary } : null);
           const idsToDelete = logsToCompress.map((m: any) => m.id);
-          if (idsToDelete.length > 0) {
-            await supabase.from('ai_memory').delete().in('id', idsToDelete);
-          }
+          if (idsToDelete.length > 0) await supabase.from('ai_memory').delete().in('id', idsToDelete);
           currentMemory = recentLogs;
-        } catch(e) { 
-          currentMemory = currentMemory.slice(-(contextLimit + 5)); 
-        }
+        } catch(e) { currentMemory = currentMemory.slice(-(contextLimit + 5)); }
       }
 
       let activeNpcListText = "";
@@ -1572,24 +1055,17 @@ export default function Home() {
             const recentLogsContext = currentMemory.slice(-5).map((m: any) => m.content).join('\n');
             const npcFilterPrompt = `以下の【全NPCリスト】から、直近のログと現在のあらすじに登場している、または今後すぐに関わりそうなNPCの情報だけを抜粋してそのまま出力してください。不要なNPCは省いてください。\n\n【全NPCリスト】\n${activeRoom.scenario.npcList}\n\n【あらすじとログ】\n${currentSummary}\n${recentLogsContext}`;
             activeNpcListText = await generateAITextWithPrompt(npcFilterPrompt, 'lite', 500, 0.2);
-         } catch(e) { 
-            activeNpcListText = activeRoom.scenario?.npcList; 
-         }
+         } catch(e) { activeNpcListText = activeRoom.scenario?.npcList; }
       }
 
       const history = currentMemory.map((m: any) => ({ role: m.role === 'assistant' ? 'model' : 'user', parts: [{ text: m.content }] }));
-      if (history.length === 0) {
-        history.push({ role: 'user', parts: [{ text: "セッションを開始してください。" }]});
-      }
+      if (history.length === 0) history.push({ role: 'user', parts: [{ text: "セッションを開始してください。" }]});
 
       const aiPlayersText = targetTab === 'gm' 
         ? "なし（GMへの質問のためAI相棒は登場・発言しません）" 
         : (aiPlayersList.length > 0 ? aiPlayersList.map((c: any) => `・${c.name} (${c.genderOrRace || "性別不詳"}) | HP:${c.hp} SAN:${c.san}% STR:${c.str} DEX:${c.dex} INT:${c.int} CON:${c.con}\n 設定: ${c.personality}`).join("\n\n") : "なし（ソロプレイ）");
 
-      const afkNames = (activeRoom.afk_users || []).map((uid: string) => { 
-        const cId = activeRoom.joined_users?.[uid]; 
-        return activeRoom.scenario?.presetCharacters.find((c: any) => c.id === cId)?.name; 
-      }).filter(Boolean).join(", ");
+      const afkNames = (activeRoom.afk_users || []).map((uid: string) => { const cId = activeRoom.joined_users?.[uid]; return activeRoom.scenario?.presetCharacters.find((c: any) => c.id === cId)?.name; }).filter(Boolean).join(", ");
       const afkInstruction = afkNames ? `\n【AFK（離席中）のプレイヤー】\n${afkNames}\n※このプレイヤーは現在離席中なので、行動を促したり意見を求めたりしないでください。` : "";
 
       const inventoryTextLines: string[] = [];
@@ -1607,9 +1083,7 @@ export default function Home() {
       try {
         const parsed = JSON.parse(activeRoom.scenario?.plot || "");
         if (Array.isArray(parsed)) chapters = parsed;
-      } catch(e) { 
-        chapters = [{ title: "本編", content: activeRoom.scenario?.plot || "" }]; 
-      }
+      } catch(e) { chapters = [{ title: "本編", content: activeRoom.scenario?.plot || "" }]; }
       
       const currentChapIndex = activeRoom.current_chapter_index || 0;
       const currentChapter = chapters[currentChapIndex] || chapters[chapters.length - 1];
@@ -1716,9 +1190,7 @@ export default function Home() {
       try {
         const jsonStr = aiTextRaw.replace(/```json/g, "").replace(/```/g, "").trim();
         parsedAI = JSON.parse(jsonStr);
-      } catch (e) { 
-        parsedAI.text = aiTextRaw; 
-      }
+      } catch (e) { parsedAI.text = aiTextRaw; }
 
       if (parsedAI.statusUpdates && Array.isArray(parsedAI.statusUpdates)) {
         let hpSanUpdated = false;
@@ -1729,10 +1201,7 @@ export default function Home() {
            setAiPlayersList(prev => {
              const newAi = [...prev];
              const idx = newAi.findIndex(p => p.name.replace(/\s+/g, '').includes(upd.name.replace(/\s+/g, '')));
-             if (idx !== -1) { 
-               newAi[idx] = { ...newAi[idx], hp: upd.hp, san: upd.san }; 
-               hpSanUpdated = true; 
-             }
+             if (idx !== -1) { newAi[idx] = { ...newAi[idx], hp: upd.hp, san: upd.san }; hpSanUpdated = true; }
              return newAi;
            });
         });
@@ -1744,10 +1213,7 @@ export default function Home() {
         parsedAI.inventoryUpdates.forEach((upd: any) => {
            if (upd.name && upd.items) {
              const char = activeRoom.scenario?.presetCharacters.find((c: any) => c.name.replace(/\s+/g, '').includes(upd.name.replace(/\s+/g, '')));
-             if (char) { 
-               newInventories[char.id] = upd.items; 
-               invUpdated = true; 
-             }
+             if (char) { newInventories[char.id] = upd.items; invUpdated = true; }
            }
         });
       }
@@ -1760,11 +1226,7 @@ export default function Home() {
       let isChapterCleared = parsedAI.chapterClear === true;
 
       const splitMatch = cleanAiText.match(/\[SPLIT_PROPOSAL:\s*(.+?)\]/);
-      if (splitMatch) { 
-        setProposedTeams([]); 
-        generateSplitProposal(); 
-        cleanAiText = cleanAiText.replace(/\[SPLIT_PROPOSAL:.*?\]/g, '').trim(); 
-      }
+      if (splitMatch) { setProposedTeams([]); generateSplitProposal(); cleanAiText = cleanAiText.replace(/\[SPLIT_PROPOSAL:.*?\]/g, '').trim(); }
       cleanAiText = cleanAiText.replace(/\[STATUS_UPDATE:.*?\]/g, '').replace(/\[INVENTORY_UPDATE:.*?\]/g, '').trim();
 
       if (activeRoom.is_trial && (cleanAiText.includes('本編でお楽しみください') || cleanAiText.includes('本編でお待ち')) && !cleanAiText.includes('[SCENARIO_END]')) {
@@ -1776,14 +1238,7 @@ export default function Home() {
 
       await supabase.from('ai_memory').insert({ room_id: activeRoom.id, role: 'assistant', content: cleanAiText });
       const msgSender = targetTab === "consult" ? "ai_player" : "gm";
-      await pushMessage(activeRoom.id, { 
-        sender: msgSender, 
-        text: cleanAiText, 
-        type: targetTab === "gm" ? "ooc" : "ic", 
-        sceneId: myScene?.id, 
-        charName: targetTab === "consult" ? "AI相棒" : "AI GM", 
-        channel: targetTab 
-      });
+      await pushMessage(activeRoom.id, { sender: msgSender, text: cleanAiText, type: targetTab === "gm" ? "ooc" : "ic", sceneId: myScene?.id, charName: targetTab === "consult" ? "AI相棒" : "AI GM", channel: targetTab });
 
       if (isChapterCleared) {
          if (activeRoom.is_trial) {
@@ -2063,6 +1518,20 @@ export default function Home() {
     );
   };
 
+  const executeAdReward = async () => {
+    if (!currentUser) return;
+    const today = new Date().toLocaleDateString('ja-JP');
+    const newCount = adViewInfo.date === today ? adViewInfo.count + 1 : 1;
+    const newPoints = (currentUser.points || 0) + 20;
+
+    await supabase.from('profiles').update({ points: newPoints, ad_view_count: newCount, last_ad_view_date: today }).eq('id', currentUser.id);
+    setCurrentUser(prev => prev ? { ...prev, points: newPoints } : null);
+    setAdViewInfo({ count: newCount, date: today });
+    
+    alert("動画視聴ボーナス！ 20pt を獲得しました！");
+    setAdModal({ isOpen: false, step: 0, scenario: null, room: null, type: 'trial' });
+  };
+
   return (
     <main className="h-screen w-full bg-slate-900 text-slate-100 flex flex-col font-sans overflow-hidden">
       
@@ -2074,7 +1543,7 @@ export default function Home() {
           executeExport={executeExport} 
           isExporting={isExporting} 
           allScenarios={scenarios} 
-          openRoomConfigModal={handleOpenRoomConfig} 
+          setRoomConfigModal={setRoomConfigModal} 
         />
       )}
 
@@ -2090,7 +1559,7 @@ export default function Home() {
           addFriend={addFriend} 
           activeRooms={rooms} 
           executeSpectateWithAd={(room: any) => setAdModal({ isOpen: true, step: 1, scenario: null, room: room, type: 'spectate' })} 
-          openRoomConfigModal={handleOpenRoomConfig} 
+          setRoomConfigModal={setRoomConfigModal} 
           openUserProfile={openUserProfile} 
           uploadAvatar={uploadAvatar} 
         />
@@ -2182,7 +1651,7 @@ export default function Home() {
           setCurrentView={setCurrentView} 
           createdScenarios={createdScenarios} 
           deleteScenario={deleteScenario} 
-          openRoomConfigModal={handleOpenRoomConfig} 
+          setRoomConfigModal={setRoomConfigModal} 
           fetchAdminData={fetchAdminData} 
           startTrialPlay={(scenario: any) => setAdModal({ isOpen: true, step: 1, scenario, room: null, type: 'trial' })} 
           availableScenarios={availableScenarios} 
@@ -2247,7 +1716,7 @@ export default function Home() {
           toggleAFK={toggleAFK} 
           triggerAutoAction={triggerAutoAction} 
           updateInventory={updateInventory} 
-          openRoomConfigModal={handleOpenRoomConfig} 
+          setRoomConfigModal={setRoomConfigModal} 
           aiPlayersList={aiPlayersList} 
           saveToArchive={saveToArchive} 
           kickUser={kickUser} 
@@ -2269,7 +1738,7 @@ export default function Home() {
           currentUser={currentUser} 
           addFriend={addFriend} 
           openUserProfile={openUserProfile} 
-          openRoomConfigModal={handleOpenRoomConfig} 
+          setRoomConfigModal={setRoomConfigModal} 
         />
       )}
 
