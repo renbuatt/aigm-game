@@ -66,17 +66,6 @@ export default function Home() {
   const [myNotifications, setMyNotifications] = useState<Notification[]>([]);
   const [showMailbox, setShowMailbox] = useState(false);
 
-  const [banTargetUser, setBanTargetUser] = useState<UserProfile | null>(null);
-  const [banReason, setBanReason] = useState("");
-  const [banAppeals, setBanAppeals] = useState<BanAppeal[]>([]);
-  const [appealText, setAppealText] = useState("");
-
-  const [userSearchQuery, setUserSearchQuery] = useState("");
-  const [scenarioSearchQuery, setScenarioSearchQuery] = useState("");
-
-  const [banTargetScenario, setBanTargetScenario] = useState<Scenario | null>(null);
-  const [scenarioBanReason, setScenarioBanReason] = useState("");
-
   const [reports, setReports] = useState<Report[]>([]);
   const [reportTarget, setReportTarget] = useState<any>(null);
   const [reportReason, setReportReason] = useState("");
@@ -126,7 +115,6 @@ export default function Home() {
 
   const handleOpenRoomConfig = (scenario: Scenario) => {
     setRoomConfigModal({ scenario, charId: "", privacy: "open", message: "", difficulty: "normal", rule: "coc_jp", itemVisibility: "none", aiModel: "lite" });
-    setCurrentView("lobby");
   };
 
   const openUserProfile = (userId: string) => { setTargetUserId(userId); setCurrentView("userProfile"); };
@@ -176,7 +164,7 @@ export default function Home() {
       await updateProfile({ avatarUrl: data.publicUrl });
       alert("アイコン画像を更新しました！");
     } catch (e: any) {
-      alert("アップロード失敗: " + e.message + "\n※Supabaseに 'avatars' というPublicバケットが作成されているか確認してください。");
+      alert("アップロード失敗: " + e.message);
     } finally {
       setIsLoading(false);
     }
@@ -294,7 +282,7 @@ export default function Home() {
 
     const profileData: UserProfile = { 
       id: data.id, handleName: data.handle_name, fullName: data.full_name, address: data.address, phone: data.phone, avatarUrl: data.avatar_url, bio: data.bio, discordId: data.discord_id, ratingSum: data.rating_sum || 0, ratingCount: data.rating_count || 0, isAdmin: data.is_admin || false, isTester: data.is_tester || false, isBanned: data.is_banned || false, 
-      isSuspended: data.is_suspended || false, // ★ 一時BAN情報の読み込み
+      isSuspended: data.is_suspended || false, 
       email: data.email, friendIds: data.friend_ids || [], blockedUserIds: data.blocked_user_ids || [],
       points: data.points || 0, ticketsNormal: data.tickets_normal || 0, ticketsBronze: data.tickets_bronze || 0, ticketsSilver: data.tickets_silver || 0, ticketsGold: data.tickets_gold || 0, ticketsPlatinum: data.tickets_platinum || 0, ticketsDiamond: data.tickets_diamond || 0, ticketsItem: data.tickets_item || 0, imageGenCredits: data.image_gen_credits || 0
     };
@@ -495,101 +483,88 @@ export default function Home() {
     else alert("エラーが発生しました: " + error.message);
   };
 
-  const executeCreateTester = async (testerEmail: string, testerPass: string) => {
-    try {
-      const { data, error } = await supabase.auth.signUp({ email: testerEmail, password: testerPass });
-      if (error) throw error;
-      if (data.user) {
-        const { error: upsertError } = await supabase.from('profiles').upsert({ id: data.user.id, handle_name: testerEmail.split("@")[0], avatar_url: DEFAULT_AVATAR, is_tester: true, is_admin: false, email: testerEmail });
-        if (upsertError) throw upsertError;
-        alert("テスターアカウントを発行しました！\n\n※認証の仕様上、管理者セッションが一度切断されます。お手数ですが、再度「管理者アカウント」でログインし直してください。");
-        await handleLogout();
-      }
-    } catch (err: any) { alert("テスターアカウントの作成に失敗しました: " + err.message); }
-  };
+  // =============== ★ 管理画面（AdminView）用 API関数 =============== //
 
   const fetchAdminData = async () => {
     const { data: usersData } = await supabase.from('profiles').select('*').order('created_at', { ascending: false });
-    // ★ 管理画面用データ取得時に is_suspended を追加
     if (usersData) setAllUsers(usersData.map((d: any) => ({ 
       id: d.id, handleName: d.handle_name, avatarUrl: d.avatar_url, bio: d.bio, discordId: d.discord_id, 
       ratingSum: d.rating_sum || 0, ratingCount: d.rating_count || 0, isAdmin: d.is_admin || false, 
       isTester: d.is_tester || false, isBanned: d.is_banned || false, isSuspended: d.is_suspended || false, 
       email: d.email, points: d.points 
     })));
-    const { data: appealsData } = await supabase.from('ban_appeals').select('*').order('created_at', { ascending: false });
-    if (appealsData) setBanAppeals(appealsData.map((d: any) => ({ id: d.id, userId: d.user_id, reason: d.reason, appealText: d.appeal_text, status: d.status, createdAt: d.created_at })));
     const { data: reportsData } = await supabase.from('reports').select('*').order('created_at', { ascending: false });
     if (reportsData) setReports(reportsData.map((d: any) => ({ id: d.id, reporterId: d.reporter_id, targetType: d.target_type, targetId: d.target_id, roomId: d.room_id || null, reason: d.reason, status: d.status, createdAt: d.created_at })));
   };
 
   const toggleMaintenance = async () => { const newStatus = !isMaintenance; await supabase.from('app_settings').update({ is_maintenance: newStatus }).eq('id', 1); setIsMaintenance(newStatus); alert(`メンテナンスモードを ${newStatus ? "ON" : "OFF"} にしました。`); };
   const toggleTicketSystem = async () => { const newStatus = !isTicketSystemEnabled; await supabase.from('app_settings').update({ is_ticket_system_enabled: newStatus }).eq('id', 1); setIsTicketSystemEnabled(newStatus); alert(`チケットシステムを ${newStatus ? "ON" : "OFF"} にしました。`); };
-  const toggleAdminStatus = async (userId: string, currentStatus: boolean) => { const newStatus = !currentStatus; await supabase.from('profiles').update({ is_admin: newStatus }).eq('id', userId); setAllUsers(allUsers.map((u: any) => u.id === userId ? { ...u, isAdmin: newStatus } : u)); alert(newStatus ? "管理者権限を付与しました。" : "管理者権限を剥奪しました。"); };
-  const toggleTesterStatus = async (userId: string, currentStatus: boolean) => { const newStatus = !currentStatus; await supabase.from('profiles').update({ is_tester: newStatus }).eq('id', userId); setAllUsers(allUsers.map((u: any) => u.id === userId ? { ...u, isTester: newStatus } : u)); alert(newStatus ? "テスター権限を付与しました。" : "テスター権限を剥奪しました。"); };
-  
-  const toggleGeminiFlashModel = async (newModel: '3.5-lite' | '3.6') => { 
-    const { error } = await supabase.from('app_settings').update({ gemini_flash_model: newModel }).eq('id', 1); 
-    if (error) { alert(`設定の保存に失敗しました。\nエラー詳細: ${error.message}`); }
-    setGeminiFlashModel(newModel); 
-    alert(`Gemini Flashの裏側モデルを ${newModel === '3.5-lite' ? '3.5 Flash Lite (軽量版)' : '3.6 Flash (通常版)'} に変更しました。`); 
-  };
-
-  const executeBan = async () => { if(!banTargetUser || !banReason) return; await supabase.from('profiles').update({ is_banned: true }).eq('id', banTargetUser.id); await supabase.from('ban_appeals').insert({ user_id: banTargetUser.id, reason: banReason, status: 'banned' }); alert("BANを実行しました。"); setBanTargetUser(null); setBanReason(""); fetchAdminData(); };
-  const unbanUser = async (userId: string) => { await supabase.from('profiles').update({ is_banned: false }).eq('id', userId); await supabase.from('ban_appeals').update({ status: 'resolved' }).eq('user_id', userId); alert("BANを解除しました。"); fetchAdminData(); };
-  
-  const executeScenarioBan = async (action: 'hard' | 'soft' | 'unban') => {
-    if (!banTargetScenario) return;
-    if (action === 'hard') {
-      if(!scenarioBanReason.trim()) { alert("削除の理由を入力してください。"); return; }
-      await supabase.from('rooms').delete().eq('scenario_id', banTargetScenario.id);
-      const { error } = await supabase.from('scenarios').delete().eq('id', banTargetScenario.id);
-      if (!error) {
-        if (banTargetScenario.authorId) await supabase.from('notifications').insert({ user_id: banTargetScenario.authorId, title: '【重要】シナリオ強制削除のお知らせ', message: `運営による巡回・通報の精査の結果、あなたが作成したシナリオ「${banTargetScenario.title}」は重大な利用規約違反と判断されたため、システムから完全に削除されました。\n\n【削除理由】\n${scenarioBanReason}` });
-        alert("シナリオを完全に削除し、警告メールを送信しました。");
-      } else alert("削除に失敗しました: " + error.message);
-    } else if (action === 'soft') {
-      if(!scenarioBanReason.trim()) { alert("非公開の理由を入力してください。"); return; }
-      const { error } = await supabase.from('scenarios').update({ is_banned: true }).eq('id', banTargetScenario.id);
-      if (!error) {
-        if (banTargetScenario.authorId) await supabase.from('notifications').insert({ user_id: banTargetScenario.authorId, title: '【重要】シナリオ一時非公開のお知らせ', message: `あなたが作成したシナリオ「${banTargetScenario.title}」について、利用規約に抵触する恐れがあるため、一時的に非公開措置といたしました。\n\n【非公開の理由】\n${scenarioBanReason}` });
-        alert("シナリオを一時非公開にし、警告メールを送信しました。");
-      } else alert("非公開処理に失敗しました: " + error.message);
-    } else if (action === 'unban') {
-      const { error } = await supabase.from('scenarios').update({ is_banned: false }).eq('id', banTargetScenario.id);
-      if (!error) {
-         if (banTargetScenario.authorId) await supabase.from('notifications').insert({ user_id: banTargetScenario.authorId, title: '【お知らせ】シナリオの非公開措置が解除されました', message: `シナリオ「${banTargetScenario.title}」の非公開措置が解除され、再びプレイ可能になりました。` });
-         alert("シナリオの非公開設定を解除しました。");
-      } else alert("解除に失敗しました: " + error.message);
-    }
-    setBanTargetScenario(null); setScenarioBanReason(""); await fetchData();
-  };
-
-  const unbanScenarioFromAppeal = async (reportId: string, scenarioId: string) => {
-    const { error } = await supabase.from('scenarios').update({ is_banned: false }).eq('id', scenarioId);
-    if (!error) {
-      await supabase.from('reports').update({ status: 'resolved' }).eq('id', reportId);
-      const s = scenarios.find((x: any) => x.id === scenarioId);
-      if(s && s.authorId) await supabase.from('notifications').insert({ user_id: s.authorId, title: '【お知らせ】シナリオの再審査が承認されました', message: `申請いただいたシナリオ「${s.title}」の非公開措置が解除されました。` });
-      alert("シナリオの非公開を解除し、作者に通知しました。"); await fetchAdminData(); await fetchData();
-    } else alert("エラーが発生しました: " + error.message);
-  };
-
+  const toggleGeminiFlashModel = async (newModel: '3.5-lite' | '3.6') => { const { error } = await supabase.from('app_settings').update({ gemini_flash_model: newModel }).eq('id', 1); if (error) { alert(`設定の保存に失敗しました。`); } setGeminiFlashModel(newModel); alert(`AIモデルを ${newModel} に変更しました。`); };
   const resolveReport = async (reportId: string) => { await supabase.from('reports').update({ status: 'resolved' }).eq('id', reportId); fetchAdminData(); };
-  const markNotificationAsRead = async (notifId: string) => { await supabase.from('notifications').update({ is_read: true }).eq('id', notifId); setMyNotifications(myNotifications.map((n: any) => n.id === notifId ? { ...n, isRead: true } : n)); };
-  
+  const toggleAdminStatus = async (userId: string, currentStatus: boolean) => { const newStatus = !currentStatus; await supabase.from('profiles').update({ is_admin: newStatus }).eq('id', userId); alert(newStatus ? "管理者権限を付与しました。" : "管理者権限を剥奪しました。"); fetchAdminData(); };
+  const toggleTesterStatus = async (userId: string, currentStatus: boolean) => { const newStatus = !currentStatus; await supabase.from('profiles').update({ is_tester: newStatus }).eq('id', userId); alert(newStatus ? "テスター権限を付与しました。" : "テスター権限を剥奪しました。"); fetchAdminData(); };
+
+  const adminExecuteBan = async (userId: string, reason: string) => {
+    await supabase.from('profiles').update({ is_banned: true }).eq('id', userId);
+    await supabase.from('ban_appeals').insert({ user_id: userId, reason: reason, status: 'banned' });
+    alert("BANを実行しました。"); await fetchAdminData();
+  };
+  const adminUnbanUser = async (userId: string) => {
+    await supabase.from('profiles').update({ is_banned: false }).eq('id', userId);
+    await supabase.from('ban_appeals').update({ status: 'resolved' }).eq('user_id', userId);
+    alert("BANを解除しました。"); await fetchAdminData();
+  };
+  const adminSuspendUser = async (userId: string) => {
+    await supabase.from('profiles').update({ is__suspended: true }).eq('id', userId);
+    alert("一時BAN（参加制限）を実行しました。"); await fetchAdminData();
+  };
+  const adminUnsuspendUser = async (userId: string) => {
+    await supabase.from('profiles').update({ is_suspended: false }).eq('id', userId);
+    alert("一時BAN（参加制限）を解除しました。"); await fetchAdminData();
+  };
+  const adminExecuteScenarioBan = async (scenarioId: string, reason: string) => {
+    const { error } = await supabase.from('scenarios').update({ is_banned: true }).eq('id', scenarioId);
+    if (!error) {
+      const s = scenarios.find((x: any) => x.id === scenarioId);
+      if (s?.authorId) await supabase.from('notifications').insert({ user_id: s.authorId, title: '【重要】シナリオ修正依頼（一時非公開）', message: `あなたが作成したシナリオ「${s.title}」について、運営から修正依頼があります。\n\n【理由・修正内容】\n${reason}` });
+      alert("シナリオを一時非公開にし、作者に修正依頼メールを送信しました。"); await fetchData(); await fetchAdminData();
+    }
+  };
+  const adminUnbanScenario = async (scenarioId: string) => {
+    await supabase.from('scenarios').update({ is_banned: false }).eq('id', scenarioId);
+    alert("シナリオの非公開を解除しました。"); await fetchData(); await fetchAdminData();
+  };
+  const adminDeleteScenario = async (scenarioId: string) => {
+    if(!confirm("本当にこのシナリオを強制削除しますか？\n関連する部屋も削除されます。")) return;
+    await supabase.from('rooms').delete().eq('scenario_id', scenarioId);
+    const { error } = await supabase.from('scenarios').delete().eq('id', scenarioId);
+    if(!error) { alert("シナリオを完全に削除しました。"); await fetchData(); await fetchAdminData(); }
+  };
+  const adminSendMailToUser = async (userId: string, body: string) => {
+    await supabase.from('notifications').insert({ user_id: userId, title: '✉️ 運営からのお知らせ', message: body });
+    alert("メールを送信しました！");
+  };
   const grantPointsToAll = async (amount: number) => {
     if (!confirm(`全ユーザーに一律 ${amount} ptを付与しますか？`)) return;
     setIsLoading(true);
-    let successCount = 0;
     for (const user of allUsers) {
-      const { error } = await supabase.from('profiles').update({ points: (user.points || 0) + amount }).eq('id', user.id);
-      if (!error) successCount++;
+      await supabase.from('profiles').update({ points: (user.points || 0) + amount }).eq('id', user.id);
     }
-    alert(`${successCount}人のユーザーに ${amount} ptを付与しました！`);
-    await fetchAdminData();
-    setIsLoading(false);
+    alert(`全ユーザーに ${amount} ptを付与しました！`);
+    await fetchAdminData(); setIsLoading(false);
   };
+  const executeCreateTester = async (testerEmail: string, testerPass: string) => {
+    try {
+      const { data, error } = await supabase.auth.signUp({ email: testerEmail, password: testerPass });
+      if (error) throw error;
+      if (data.user) {
+        await supabase.from('profiles').upsert({ id: data.user.id, handle_name: testerEmail.split("@")[0], avatar_url: DEFAULT_AVATAR, is_tester: true, is_admin: false, email: testerEmail });
+        alert("テスターアカウントを発行しました！\n再度ログインし直してください。"); await handleLogout();
+      }
+    } catch (err: any) { alert("作成失敗: " + err.message); }
+  };
+
+  // ================================================================= //
 
   const exchangeTicketWithPoints = async (type: 'bronze'|'item'|'silver'|'gold'|'platinum'|'diamond', cost: number) => {
     if (!currentUser) return;
@@ -824,7 +799,6 @@ export default function Home() {
   const executeJoinRoom = async (room: Room, charId: string) => {
     if (!currentUser || !room || !charId) return;
 
-    // ★ 追加：一時BANユーザーの入室ブロック
     if (currentUser.isSuspended) {
       alert("【一時参加制限】\nあなたのアカウントは現在セッションへの参加が制限されています。\n※ロビーの閲覧やチャットログの確認は可能です。");
       return;
@@ -1020,7 +994,7 @@ export default function Home() {
           if (chatTab === "gm") promptSuffix = "この結果を踏まえて、システム・ルールの裁定やヒントの提示を行ってください。";
           else if (chatTab === "consult") promptSuffix = "この結果を踏まえて、AI相棒としてリアクションを返してください。";
           
-          let diceModel = 'flash'; // ダイス判定用デフォルト
+          let diceModel = 'flash'; 
           if (['claude', 'opus', 'pro', 'flash'].includes(activeRoom.ai_model || '')) diceModel = 'flash';
           else diceModel = 'lite';
           
@@ -1489,6 +1463,136 @@ export default function Home() {
   const unreadCount = myNotifications.filter((n: any) => !n.isRead).length;
   const isChatDisabled = Boolean(isLoading || (isSplitMode && myScene && myScene.isMerged === true && chatTab !== 'consult'));
 
+  // =============== ★ 管理画面（AdminView）用 API関数 =============== //
+
+  const adminExecuteBan = async (userId: string, reason: string) => {
+    await supabase.from('profiles').update({ is_banned: true }).eq('id', userId);
+    await supabase.from('ban_appeals').insert({ user_id: userId, reason: reason, status: 'banned' });
+    alert("BANを実行しました。"); await fetchAdminData();
+  };
+  const adminUnbanUser = async (userId: string) => {
+    await supabase.from('profiles').update({ is_banned: false }).eq('id', userId);
+    await supabase.from('ban_appeals').update({ status: 'resolved' }).eq('user_id', userId);
+    alert("BANを解除しました。"); await fetchAdminData();
+  };
+  const adminSuspendUser = async (userId: string) => {
+    await supabase.from('profiles').update({ is_suspended: true }).eq('id', userId);
+    alert("一時BAN（参加制限）措置を実行しました。"); await fetchAdminData();
+  };
+  const adminUnsuspendUser = async (userId: string) => {
+    await supabase.from('profiles').update({ is_suspended: false }).eq('id', userId);
+    alert("一時BAN（参加制限）を解除しました。"); await fetchAdminData();
+  };
+  const adminExecuteScenarioBan = async (scenarioId: string, reason: string) => {
+    const { error } = await supabase.from('scenarios').update({ is_banned: true }).eq('id', scenarioId);
+    if (!error) {
+      const s = scenarios.find((x: any) => x.id === scenarioId);
+      if (s?.authorId) await supabase.from('notifications').insert({ user_id: s.authorId, title: '【重要】シナリオ修正依頼（一時非公開）', message: `あなたが作成したシナリオ「${s.title}」について、運営から修正依頼があります。\n\n【理由・修正内容】\n${reason}` });
+      alert("シナリオを一時非公開にし、作者に修正依頼メールを送信しました。"); await fetchData(); await fetchAdminData();
+    }
+  };
+  const adminUnbanScenario = async (scenarioId: string) => {
+    await supabase.from('scenarios').update({ is_banned: false }).eq('id', scenarioId);
+    alert("シナリオの非公開設定を解除しました。"); await fetchData(); await fetchAdminData();
+  };
+  const adminDeleteScenario = async (scenarioId: string) => {
+    if(!confirm("本当にこのシナリオを強制削除しますか？\n関連する部屋も削除されます。")) return;
+    await supabase.from('rooms').delete().eq('scenario_id', scenarioId);
+    const { error } = await supabase.from('scenarios').delete().eq('id', scenarioId);
+    if(!error) { alert("シナリオを完全に削除しました。"); await fetchData(); await fetchAdminData(); }
+  };
+  const adminSendMailToUser = async (userId: string, body: string) => {
+    await supabase.from('notifications').insert({ user_id: userId, title: '✉️ 運営からのお知らせ', message: body });
+    alert("メールを送信しました！");
+  };
+
+  const fetchAdminData = async () => {
+    const { data: usersData } = await supabase.from('profiles').select('*').order('created_at', { ascending: false });
+    if (usersData) setAllUsers(usersData.map((d: any) => ({ 
+      id: d.id, handleName: d.handle_name, avatarUrl: d.avatar_url, bio: d.bio, discordId: d.discord_id, 
+      ratingSum: d.rating_sum || 0, ratingCount: d.rating_count || 0, isAdmin: d.is_admin || false, 
+      isTester: d.is_tester || false, isBanned: d.is_banned || false, isSuspended: d.is_suspended || false, 
+      email: d.email, points: d.points 
+    })));
+    const { data: reportsData } = await supabase.from('reports').select('*').order('created_at', { ascending: false });
+    if (reportsData) setReports(reportsData.map((d: any) => ({ id: d.id, reporterId: d.reporter_id, targetType: d.target_type, targetId: d.target_id, roomId: d.room_id || null, reason: d.reason, status: d.status, createdAt: d.created_at })));
+  };
+
+  const toggleMaintenance = async () => { const newStatus = !isMaintenance; await supabase.from('app_settings').update({ is_maintenance: newStatus }).eq('id', 1); setIsMaintenance(newStatus); alert(`メンテナンスモードを ${newStatus ? "ON" : "OFF"} にしました。`); };
+  const toggleTicketSystem = async () => { const newStatus = !isTicketSystemEnabled; await supabase.from('app_settings').update({ is_ticket_system_enabled: newStatus }).eq('id', 1); setIsTicketSystemEnabled(newStatus); alert(`チケットシステムを ${newStatus ? "ON" : "OFF"} にしました。`); };
+  const toggleAdminStatus = async (userId: string, currentStatus: boolean) => { const newStatus = !currentStatus; await supabase.from('profiles').update({ is_admin: newStatus }).eq('id', userId); alert(newStatus ? "管理者権限を付与しました。" : "管理者権限を剥奪しました。"); fetchAdminData(); };
+  const toggleTesterStatus = async (userId: string, currentStatus: boolean) => { const newStatus = !currentStatus; await supabase.from('profiles').update({ is_tester: newStatus }).eq('id', userId); alert(newStatus ? "テスター権限を付与しました。" : "テスター権限を剥奪しました。"); fetchAdminData(); };
+  const toggleGeminiFlashModel = async (newModel: '3.5-lite' | '3.6') => { const { error } = await supabase.from('app_settings').update({ gemini_flash_model: newModel }).eq('id', 1); if (error) { alert(`設定の保存に失敗しました。`); } setGeminiFlashModel(newModel); alert(`AIモデルを ${newModel} に変更しました。`); };
+  const resolveReport = async (reportId: string) => { await supabase.from('reports').update({ status: 'resolved' }).eq('id', reportId); fetchAdminData(); };
+  const markNotificationAsRead = async (notifId: string) => { await supabase.from('notifications').update({ is_read: true }).eq('id', notifId); setMyNotifications(myNotifications.map((n: any) => n.id === notifId ? { ...n, isRead: true } : n)); };
+  
+  const grantPointsToAll = async (amount: number) => {
+    if (!confirm(`全ユーザーに一律 ${amount} ptを付与しますか？`)) return;
+    setIsLoading(true);
+    for (const user of allUsers) {
+      await supabase.from('profiles').update({ points: (user.points || 0) + amount }).eq('id', user.id);
+    }
+    alert(`全ユーザーに ${amount} ptを付与しました！`);
+    await fetchAdminData(); setIsLoading(false);
+  };
+  const executeCreateTester = async (testerEmail: string, testerPass: string) => {
+    try {
+      const { data, error } = await supabase.auth.signUp({ email: testerEmail, password: testerPass });
+      if (error) throw error;
+      if (data.user) {
+        await supabase.from('profiles').upsert({ id: data.user.id, handle_name: testerEmail.split("@")[0], avatar_url: DEFAULT_AVATAR, is_tester: true, is_admin: false, email: testerEmail });
+        alert("テスターアカウントを発行しました！\n再度ログインし直してください。"); await handleLogout();
+      }
+    } catch (err: any) { alert("作成失敗: " + err.message); }
+  };
+
+  const exchangeTicketWithPoints = async (type: 'bronze'|'item'|'silver'|'gold'|'platinum'|'diamond', cost: number) => {
+    if (!currentUser) return;
+    if ((currentUser.points || 0) < cost) { alert("ポイントが足りません！"); return; }
+    if (!confirm(`${cost} ptを消費してチケットを交換しますか？`)) return;
+
+    const updates: any = { points: currentUser.points! - cost };
+    if (type === 'bronze') updates.tickets_bronze = (currentUser.ticketsBronze || 0) + 1;
+    if (type === 'item') updates.tickets_item = (currentUser.ticketsItem || 0) + 1;
+    if (type === 'silver') updates.tickets_silver = (currentUser.ticketsSilver || 0) + 1;
+    if (type === 'gold') updates.tickets_gold = (currentUser.ticketsGold || 0) + 1;
+    if (type === 'platinum') updates.tickets_platinum = (currentUser.ticketsPlatinum || 0) + 1;
+    if (type === 'diamond') updates.tickets_diamond = (currentUser.ticketsDiamond || 0) + 1;
+
+    const { error } = await supabase.from('profiles').update(updates).eq('id', currentUser.id);
+    if (error) { alert("交換に失敗しました: " + error.message); return; }
+
+    setCurrentUser({
+      ...currentUser, points: updates.points,
+      ticketsBronze: type === 'bronze' ? (currentUser.ticketsBronze || 0) + 1 : currentUser.ticketsBronze,
+      ticketsItem: type === 'item' ? (currentUser.ticketsItem || 0) + 1 : currentUser.ticketsItem,
+      ticketsSilver: type === 'silver' ? (currentUser.ticketsSilver || 0) + 1 : currentUser.ticketsSilver,
+      ticketsGold: type === 'gold' ? (currentUser.ticketsGold || 0) + 1 : currentUser.ticketsGold,
+      ticketsPlatinum: type === 'platinum' ? (currentUser.ticketsPlatinum || 0) + 1 : currentUser.ticketsPlatinum,
+      ticketsDiamond: type === 'diamond' ? (currentUser.ticketsDiamond || 0) + 1 : currentUser.ticketsDiamond,
+    });
+    alert("チケットを交換しました！");
+  };
+
+  const generatePackageImage = async (baseText: string, type: 'scenario' | 'character') => {
+    setIsLoading(true);
+    try {
+      const autoPromptReq = type === 'scenario' 
+        ? `以下のシナリオプロットから、パッケージとなる情景を1文の日本語で抽出してください。\n\n${baseText}`
+        : `以下のキャラクター設定から、その人物の容姿（バストアップ）を1文の日本語で描写してください。\n\n${baseText}`;
+      const targetPrompt = await generateAITextWithPrompt(autoPromptReq, 'lite', 200, 0.7);
+      const translationPrompt = `以下の日本語を画像生成AI用のカンマ区切りの英語プロンプトに変換してください。最後に「SFW, masterpiece, high quality${type === 'character' ? ', 1girl or 1boy, solo, upper body' : ''}」を含めること。\n\n描写：${targetPrompt}`;
+      let englishPrompt = "";
+      try { englishPrompt = await generateAITextWithPrompt(translationPrompt, 'lite', 200, 0.3); } catch (err) { englishPrompt = `${targetPrompt}, SFW, masterpiece, high quality`; }
+      const base64data = await generateFreeImage(englishPrompt);
+      return base64data;
+    } catch (err: any) {
+      alert("画像生成に失敗しました。"); return null;
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
   return (
     <main className="h-screen w-full bg-slate-900 text-slate-100 flex flex-col font-sans overflow-hidden">
       
@@ -1506,7 +1610,18 @@ export default function Home() {
 
       {currentView === "admin" && currentUser?.isAdmin && (
         <AdminView
-          isMaintenance={isMaintenance} toggleMaintenance={toggleMaintenance} isTicketSystemEnabled={isTicketSystemEnabled} toggleTicketSystem={toggleTicketSystem} geminiFlashModel={geminiFlashModel} toggleGeminiFlashModel={toggleGeminiFlashModel} reports={reports} allUsers={allUsers} scenarios={scenarios} resolveReport={resolveReport} setBanTargetUser={setBanTargetUser} setBanReason={setBanReason} setBanTargetScenario={setBanTargetScenario} setScenarioBanReason={setScenarioBanReason} unbanScenarioFromAppeal={unbanScenarioFromAppeal} userSearchQuery={userSearchQuery} setUserSearchQuery={setUserSearchQuery} toggleAdminStatus={toggleAdminStatus} toggleTesterStatus={toggleTesterStatus} unbanUser={unbanUser} scenarioSearchQuery={scenarioSearchQuery} setScenarioSearchQuery={setScenarioSearchQuery} setCurrentView={setCurrentView} executeCreateTester={executeCreateTester} openUserActionModal={(user: any) => setAdminActionUser(user)} grantPointsToAll={grantPointsToAll}
+          isMaintenance={isMaintenance} toggleMaintenance={toggleMaintenance} 
+          isTicketSystemEnabled={isTicketSystemEnabled} toggleTicketSystem={toggleTicketSystem} 
+          geminiFlashModel={geminiFlashModel} toggleGeminiFlashModel={toggleGeminiFlashModel} 
+          reports={reports} resolveReport={resolveReport} 
+          allUsers={allUsers} scenarios={scenarios} 
+          toggleAdminStatus={toggleAdminStatus} toggleTesterStatus={toggleTesterStatus} 
+          adminExecuteBan={adminExecuteBan} adminUnbanUser={adminUnbanUser} 
+          adminSuspendUser={adminSuspendUser} adminUnsuspendUser={adminUnsuspendUser} 
+          adminExecuteScenarioBan={adminExecuteScenarioBan} adminUnbanScenario={adminUnbanScenario} 
+          adminDeleteScenario={adminDeleteScenario} setCurrentView={setCurrentView} 
+          executeCreateTester={executeCreateTester} grantPointsToAll={grantPointsToAll} 
+          adminSendMailToUser={adminSendMailToUser}
         />
       )}
 
@@ -1545,9 +1660,9 @@ export default function Home() {
         <EvaluationView activeRoom={activeRoom} messages={messages} ratingScenario={ratingScenario} setRatingScenario={setRatingScenario} ratingGM={ratingGM} setRatingGM={setRatingGM} submitEvaluation={submitEvaluation} exportToPDF={exportToPDF} isExporting={isExporting} saveToArchive={saveToArchive} currentUser={currentUser} addFriend={addFriend} openUserProfile={openUserProfile} openRoomConfigModal={handleOpenRoomConfig} />
       )}
 
-      {/* ★ 動画広告モーダルのz-indexを100に変更して最前面へ */}
+      {/* ★ 動画広告モーダルのz-indexを120に変更して最前面へ */}
       {adModal.isOpen && (
-        <div className="fixed inset-0 bg-black/90 z-[100] flex items-center justify-center p-4">
+        <div className="fixed inset-0 bg-black/90 z-[120] flex items-center justify-center p-4">
           <div className="bg-slate-800 border border-pink-500/50 rounded-xl p-8 w-full max-w-sm shadow-2xl text-center space-y-6">
             <h3 className="text-xl font-bold text-pink-400">📺 広告を視聴して{adModal.type === 'trial' ? "プレイ" : adModal.type === 'points' ? "ポイント獲得" : "観戦"}</h3>
             <div className="h-32 bg-slate-900 border border-slate-700 flex items-center justify-center rounded">
@@ -1596,7 +1711,7 @@ export default function Home() {
       )}
 
       {showTicketModal && (
-        <div className="fixed inset-0 bg-black/80 z-[90] flex items-center justify-center p-4">
+        <div className="fixed inset-0 bg-black/80 z-[110] flex items-center justify-center p-4">
           <div className="bg-slate-800 border border-slate-700 rounded-xl p-6 w-full max-w-4xl shadow-2xl">
             <div className="flex justify-between items-center mb-4 border-b border-slate-700 pb-3">
               <h3 className="text-xl font-bold text-emerald-400">🎟️ チケット購入・交換ストア</h3>
@@ -1624,8 +1739,6 @@ export default function Home() {
             </div>
 
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 max-h-[50vh] overflow-y-auto pr-2 custom-scrollbar">
-               
-               {/* ブロンズ */}
                <div className="bg-stone-800/50 border border-stone-600 p-4 rounded-xl flex flex-col justify-between">
                   <div>
                     <div className="flex justify-between items-center mb-2">
@@ -1643,7 +1756,6 @@ export default function Home() {
                   </div>
                </div>
                
-               {/* シルバー */}
                <div className="bg-slate-700/30 border border-slate-600 p-4 rounded-xl flex flex-col justify-between">
                   <div>
                     <div className="flex justify-between items-center mb-2">
@@ -1661,7 +1773,6 @@ export default function Home() {
                   </div>
                </div>
                
-               {/* ゴールド (ポイント交換削除) */}
                <div className="bg-amber-900/10 border border-amber-700/50 p-4 rounded-xl flex flex-col justify-between">
                   <div>
                     <div className="flex justify-between items-center mb-2">
@@ -1678,7 +1789,6 @@ export default function Home() {
                   </div>
                </div>
                
-               {/* プラチナ (ポイント交換削除) */}
                <div className="bg-indigo-900/10 border border-indigo-700/50 p-4 rounded-xl flex flex-col justify-between">
                   <div>
                     <div className="flex justify-between items-center mb-2">
@@ -1695,7 +1805,6 @@ export default function Home() {
                   </div>
                </div>
                
-               {/* ダイヤモンド (ポイント交換削除) */}
                <div className="bg-gradient-to-br from-fuchsia-900/40 to-rose-900/20 border-2 border-fuchsia-500/50 p-4 rounded-xl flex flex-col justify-between relative overflow-hidden lg:col-span-2">
                   <div className="absolute top-0 right-0 bg-fuchsia-600 text-white text-[8px] font-bold px-4 py-1 rotate-45 translate-x-3 translate-y-2 shadow-lg">最高級</div>
                   <div>
@@ -1713,7 +1822,6 @@ export default function Home() {
                   </div>
                </div>
                
-               {/* アイテム */}
                <div className="bg-slate-700/30 border border-slate-600 p-4 rounded-xl flex flex-col justify-between">
                   <div>
                     <div className="flex justify-between items-center mb-2">
@@ -1736,8 +1844,9 @@ export default function Home() {
         </div>
       )}
 
+      {/* ★ 部屋作成モーダルのz-indexを100に変更 */}
       {roomConfigModal && (
-        <div className="fixed inset-0 bg-black/80 z-[95] flex items-center justify-center p-4">
+        <div className="fixed inset-0 bg-black/80 z-[100] flex items-center justify-center p-4">
           <div className="bg-slate-800 border border-emerald-700/50 rounded-xl p-6 w-full max-w-lg shadow-2xl">
             <h3 className="text-xl font-bold text-emerald-400 mb-4">🚪 部屋の作成: {roomConfigModal.scenario?.title}</h3>
             <div className="space-y-4 mb-6">
