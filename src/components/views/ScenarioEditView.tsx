@@ -10,11 +10,12 @@ type Props = {
   setCurrentView: (view: any) => void;
   allScenarios: Scenario[];
   generatePackageImage: (baseText: string, type: 'scenario' | 'character') => Promise<string | null>;
+  isLoading: boolean; // ★ 追加：保存中のローディング状態
 };
 
 export default function ScenarioEditView({
   editingScenario, setEditingScenario, editingCharIndex, setEditingCharIndex,
-  saveScenario, setCurrentView, allScenarios, generatePackageImage
+  saveScenario, setCurrentView, allScenarios, generatePackageImage, isLoading
 }: Props) {
   
   const handleCharChange = (field: keyof Character, value: any) => {
@@ -26,14 +27,12 @@ export default function ScenarioEditView({
 
   const editingChar = editingCharIndex !== null ? editingScenario.presetCharacters[editingCharIndex] : null;
 
-  // ★ 章立て（チャプター）のJSONパース＆初期化
   const getChapters = (): {title: string, content: string}[] => {
     if (!editingScenario.plot) return [{ title: "第1章: 導入", content: "" }];
     try {
       const parsed = JSON.parse(editingScenario.plot);
       if (Array.isArray(parsed) && parsed.length > 0) return parsed;
     } catch (e) {
-      // JSONじゃない古いテキストデータが入っていた場合は、1つの章として扱う
       return [{ title: "本編", content: editingScenario.plot }];
     }
     return [{ title: "第1章: 導入", content: "" }];
@@ -70,14 +69,15 @@ export default function ScenarioEditView({
           <p className="text-xs text-slate-400">新しい物語とキャラクターを設定します。</p>
         </div>
         <div className="flex gap-2">
-          <button onClick={() => { setEditingScenario(null); setCurrentView("lobby"); }} className="bg-slate-700 hover:bg-slate-600 px-4 py-2 rounded text-sm font-bold shadow transition-colors">キャンセル</button>
-          <button onClick={saveScenario} disabled={!editingScenario.title} className="bg-emerald-600 hover:bg-emerald-500 disabled:bg-slate-700 px-4 py-2 rounded text-sm font-bold shadow transition-colors">保存する</button>
+          <button onClick={() => { setEditingScenario(null); setCurrentView("lobby"); }} disabled={isLoading} className="bg-slate-700 hover:bg-slate-600 px-4 py-2 rounded text-sm font-bold shadow transition-colors disabled:opacity-50">キャンセル</button>
+          <button onClick={saveScenario} disabled={!editingScenario.title || isLoading} className="bg-emerald-600 hover:bg-emerald-500 disabled:bg-slate-700 px-4 py-2 rounded text-sm font-bold shadow transition-colors w-40 flex justify-center">
+            {isLoading ? "⏳ 保存＆翻訳中..." : "保存する"}
+          </button>
         </div>
       </header>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 pb-20">
         
-        {/* 左側：シナリオ本体の設定 */}
         <div className="space-y-6">
           <div className="bg-slate-800 border border-slate-700 rounded-xl p-6 shadow-lg">
             <h2 className="text-lg font-bold text-white mb-4 border-b border-slate-700 pb-2">📖 基本情報</h2>
@@ -122,6 +122,26 @@ export default function ScenarioEditView({
           </div>
 
           <div className="bg-slate-800 border border-slate-700 rounded-xl p-6 shadow-lg">
+            <h2 className="text-lg font-bold text-blue-400 mb-4 border-b border-slate-700 pb-2">🌍 多言語対応 (グローバル展開)</h2>
+            <div className="space-y-4">
+              <p className="text-xs text-slate-400">
+                海外のプレイヤーがロビーでシナリオ内容を読めるように、<strong className="text-emerald-400">保存時に自動でタイトル・あらすじ・キャラクター設定が英語・中国語に翻訳されます。</strong><br/>
+                <span className="text-[10px] text-slate-500">（※AI GM用の裏側プロットは翻訳不要です。日本語のままAIが理解して外国語でセッションを回します）</span>
+              </p>
+              <div className="flex items-center gap-4 bg-slate-900 p-3 rounded border border-slate-700">
+                <div className="flex-1">
+                  <p className="text-sm font-bold text-white">翻訳ステータス</p>
+                  <p className="text-xs mt-1">
+                    {editingScenario.translationEn && Object.keys(editingScenario.translationEn).length > 0
+                      ? <span className="text-emerald-400 font-bold">✅ 英語・中国語の翻訳データあり</span>
+                      : <span className="text-slate-500 font-bold">未翻訳（保存時に実行されます）</span>}
+                  </p>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div className="bg-slate-800 border border-slate-700 rounded-xl p-6 shadow-lg">
             <h2 className="text-lg font-bold text-white mb-4 border-b border-slate-700 pb-2">🗺️ 世界観とプロット <span className="text-xs text-red-400 font-normal">※AI（GM）専用</span></h2>
             <div className="space-y-4">
               <div>
@@ -129,7 +149,6 @@ export default function ScenarioEditView({
                 <textarea value={editingScenario.setting} onChange={e=>setEditingScenario({...editingScenario, setting: e.target.value})} rows={3} className="w-full bg-slate-900 border border-slate-700 rounded p-2 text-sm text-white resize-none" placeholder="時代背景や舞台となる場所の説明..." />
               </div>
               
-              {/* ★ 新しい章立てUI */}
               <div>
                 <div className="flex justify-between items-center mb-2">
                   <label className="text-xs text-slate-400 block">プロット・真相（章立て） <span className="text-red-400">*</span></label>
