@@ -107,6 +107,18 @@ export default function Home() {
   const isSplitMode = activeRoom ? (activeRoom.scenes?.length > 1) : false;
   const isScenarioEnded = messages.some((m: any) => m.text.includes('[SCENARIO_END]')) || activeRoom?.status === 'finished';
 
+  // ★ 不足・不整合だった変数と関数を補完
+  const unreadCount = myNotifications.filter((n: any) => !n.isRead).length;
+  const isChatDisabled = Boolean(isLoading || (isSplitMode && myScene && myScene.isMerged === true && chatTab !== 'consult'));
+
+  const deleteScenario = async (id: string) => {
+    if (!confirm("本当にこのシナリオを削除しますか？\n関連する部屋も削除されます。")) return;
+    await supabase.from('rooms').delete().eq('scenario_id', id);
+    const { error } = await supabase.from('scenarios').delete().eq('id', id);
+    if (error) alert("削除に失敗しました: " + error.message);
+    else { alert("シナリオを削除しました。"); await fetchData(); }
+  };
+
   const handleOpenRoomConfig = (scenario: Scenario) => {
     setRoomConfigModal({ scenario, charId: "", privacy: "open", message: "", difficulty: "normal", rule: "coc_jp", itemVisibility: "none", aiModel: "lite", language: "ja" });
   };
@@ -184,33 +196,6 @@ export default function Home() {
       return () => { supabase.removeChannel(chatChannel); supabase.removeChannel(roomChannel); };
     }
   }, [currentView, activeRoom?.id]);
-
-  useEffect(() => { chatTabRef.current = chatTab; }, [chatTab]);
-
-  useEffect(() => {
-    if (messages.length > prevMessagesLength.current) {
-      const newMsgs = messages.slice(prevMessagesLength.current);
-      setUnreadIndicators(prev => {
-        const next = { ...prev };
-        let changed = false;
-        newMsgs.forEach((m: any) => {
-          const isMySceneMsg = !m.sceneId || m.sceneId === 'scene_main' || m.sceneId === myScene?.id;
-          if (isMySceneMsg && m.channel && m.channel !== "system" && m.channel !== chatTabRef.current) {
-            next[m.channel as keyof typeof next] = true; changed = true;
-          }
-        });
-        return changed ? next : prev;
-      });
-    }
-    prevMessagesLength.current = messages.length;
-  }, [messages, myScene?.id]);
-
-  useEffect(() => {
-    if (activeRoom && isSplitMode && currentUser?.id === activeRoom.host_id && activeRoom.status === 'playing') {
-      const nonMainScenes = activeRoom.scenes.filter((s: any) => s.id !== 'scene_main');
-      if (nonMainScenes.length > 0 && nonMainScenes.every((s: any) => s.isMerged)) executeMergeAll();
-    }
-  }, [activeRoom?.scenes, activeRoom?.status, activeRoom?.host_id, currentUser?.id, isSplitMode]);
 
   const fetchData = async () => {
     const { data: scData } = await supabase.from('scenarios').select('*').order('id', { ascending: false });
@@ -690,8 +675,35 @@ export default function Home() {
 
   const executeExport = async (title: string, msgs: Message[], type: 'chat'|'summary'|'novel', opt?: any) => {
     if (type === 'novel' && !opt?.aiModelConfirmed) { setNovelSettingsModal({ title, sourceMessages: msgs, type, options: { ...opt, tone: 'light' }, aiModel: 'flash' }); return; }
-    alert("エクスポートを開始します...");
-    // 略: 別ウィンドウへの書き込み処理 (文字数削減のため割愛)
+    
+    const printWindow = window.open('', '_blank');
+    if (!printWindow) { alert("ポップアップがブロックされました。"); return; }
+    printWindow.document.write('<div style="padding: 20px; font-family: sans-serif; color: #333;">生成中...しばらくお待ちください。</div>');
+
+    const targetMessages = msgs.filter((m: any) => m.channel !== 'gm');
+    let contentHtml = `<style>body{font-family:sans-serif;color:#333;margin:0;padding:0;background:#f9f9f9;}.page{background:#fff;max-width:800px;margin:20px auto;padding:60px;box-shadow:0 0 10px rgba(0,0,0,0.1);border-radius:8px;}.page-break{page-break-before:always;margin-top:40px;padding-top:40px;border-top:2px dashed #ccc;}</style>`;
+    const coverHtml = `<div style="text-align:center;min-height:80vh;display:flex;flex-direction:column;justify-content:center;">${opt?.scenarioImage ? `<img src="${opt.scenarioImage}" style="max-width:80%;max-height:50vh;border-radius:8px;margin-bottom:30px;"/>` : ''}<h1>${title}</h1></div>`;
+
+    if (type === 'chat') {
+      const chatHtml = targetMessages.map((m: any) => {
+        const text = m.text.replace(/\[SPLIT_PROPOSAL:.*?\]/, '').replace('[SCENARIO_END]', '').trim();
+        if (!text) return "";
+        return `<div style="margin-bottom:12px;border-bottom:1px dashed #eee;padding-bottom:8px;"><strong>${m.charName||m.sender}</strong><br><span style="white-space:pre-wrap;">${text}</span></div>`;
+      }).join('');
+      contentHtml += `<div class="page">${coverHtml}<div class="page-break">${chatHtml}</div></div>`;
+    } else {
+      setIsExporting(true);
+      const logTextForAI = targetMessages.map((m: any) => `${m.charName || m.sender}: ${m.text.replace(/\[SPLIT_PROPOSAL:.*?\]/, '').replace('[SCENARIO_END]', '').trim()}`).join('\n');
+      const prompt = getNovelPrompt(opt?.aiModel || 'flash', "第三者視点で情景描写を豊富に肉付けすること。", '各キャラクター', opt?.tone || 'light');
+      try {
+        const generatedText = await generateAITextWithPrompt(prompt + "\n\n【チャットログ】\n" + logTextForAI, opt?.aiModel || 'flash', 3000, 0.8);
+        contentHtml += `<div class="page">${coverHtml}<div class="page-break"><h2 style="text-align:center;">本編</h2><div style="white-space:pre-wrap;line-height:1.9;">${generatedText}</div></div></div>`;
+      } catch(e: any) { alert("生成エラー: " + e.message); printWindow.close(); setIsExporting(false); return; }
+      setIsExporting(false);
+    }
+    printWindow.document.open();
+    printWindow.document.write(`<!DOCTYPE html><html><head><meta charset="utf-8"><title>${title}</title></head><body>${contentHtml}<script>setTimeout(()=>{if('${type}'==='chat'){window.print();window.close();}},500);</script></body></html>`);
+    printWindow.document.close();
   };
 
   const handleStartNovel = async () => {
@@ -702,8 +714,8 @@ export default function Home() {
     setNovelSettingsModal(null);
   };
 
-  const exportToPDF = async (type: 'chat'|'novel', vp: 'third'|'first'='third') => {
-    if (!activeRoom) return; await executeExport(activeRoom.scenario?.title || "", messages, type, { viewPoint: vp, myCharacterName: joinedCharacter?.name });
+  const exportToPDF = async (type: 'chat' | 'summary' | 'novel', viewPoint: 'third' | 'first' = 'third') => {
+    if (!activeRoom) return; await executeExport(activeRoom.scenario?.title || "", messages, type, { viewPoint, myCharacterName: joinedCharacter?.name });
   };
 
   const executeAdReward = async () => {
