@@ -22,6 +22,12 @@ import GameView from "../components/views/GameView";
 import UserProfileView from "../components/views/UserProfileView";
 import LibraryView from "../components/views/LibraryView";
 
+// ★ 分割したモーダル群をインポート
+import TicketStoreModal from "../components/modals/TicketStoreModal";
+import RoomConfigModal from "../components/modals/RoomConfigModal";
+import NovelSettingsModal from "../components/modals/NovelSettingsModal";
+import AdVideoModal from "../components/modals/AdVideoModal";
+
 const NO_IMAGE_SCENARIO = "https://images.unsplash.com/photo-1614729939124-03290b5609ce?auto=format&fit=crop&w=400&q=80";
 const DEFAULT_AVATAR = "https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&w=150&q=80";
 
@@ -115,6 +121,14 @@ export default function Home() {
 
   const unreadCount = myNotifications.filter((n: any) => !n.isRead).length;
   const isChatDisabled = Boolean(isLoading || (isSplitMode && myScene && myScene.isMerged === true && chatTab !== 'consult'));
+
+  const deleteScenario = async (id: string) => {
+    if (!confirm("本当にこのシナリオを削除しますか？\n（※関連する部屋も削除されます）")) return;
+    await supabase.from('rooms').delete().eq('scenario_id', id);
+    const { error } = await supabase.from('scenarios').delete().eq('id', id);
+    if (error) alert("削除に失敗しました: " + error.message);
+    else { alert("シナリオを削除しました。"); await fetchData(); }
+  };
 
   const handleOpenRoomConfig = (scenario: Scenario) => {
     setRoomConfigModal({ scenario, charId: "", privacy: "open", message: "", difficulty: "normal", rule: "coc_jp", itemVisibility: "none", aiModel: "lite", language: "ja" });
@@ -432,14 +446,6 @@ export default function Home() {
     } finally { isRequestingRef.current = false; setIsLoading(false); }
   };
 
-  const deleteScenario = async (id: string) => {
-    if (!confirm("本当にこのシナリオを削除しますか？\n（※関連する部屋も削除されます）")) return;
-    await supabase.from('rooms').delete().eq('scenario_id', id);
-    const { error } = await supabase.from('scenarios').delete().eq('id', id);
-    if (error) alert("削除に失敗しました: " + error.message);
-    else { alert("シナリオを削除しました。"); await fetchData(); }
-  };
-
   const saveScenario = async () => {
     if (!editingScenario || !currentUser) return;
     setIsLoading(true);
@@ -529,7 +535,7 @@ export default function Home() {
     await supabase.from('scenarios').update({ is_banned: false }).eq('id', scenarioId);
     alert("シナリオの非公開設定を解除しました。"); await fetchData(); await fetchAdminData();
   };
-  const adminDeleteScenario = async (scenarioId: string) => {
+const adminDeleteScenario = async (scenarioId: string) => {
     if(!confirm("本当にこのシナリオを強制削除しますか？\n関連する部屋も削除されます。")) return;
     await supabase.from('rooms').delete().eq('scenario_id', scenarioId);
     const { error } = await supabase.from('scenarios').delete().eq('id', scenarioId);
@@ -941,7 +947,10 @@ export default function Home() {
     if (!joinedCharacter) { 
       const newSpectators = (activeRoom.spectator_ids || []).filter((id: string) => id !== currentUser.id);
       await supabase.from('rooms').update({ spectator_ids: newSpectators }).eq('id', activeRoom.id);
-      setCurrentView("lobby"); setActiveRoom(null); await fetchData(); return; 
+      setCurrentView("lobby"); 
+      setActiveRoom(null); 
+      await fetchData(); 
+      return; 
     }
 
     const isHost = activeRoom.host_id === currentUser.id;
@@ -955,27 +964,42 @@ export default function Home() {
       if (isHost && remainingPlayers === 0) {
         await supabase.from('rooms').update({ status: 'finished' }).eq('id', activeRoom.id);
       }
-      setCurrentView("lobby"); setActiveRoom(null); setJoinedCharacter(null); await fetchData(); return;
+      setCurrentView("lobby"); 
+      setActiveRoom(null); 
+      setJoinedCharacter(null); 
+      await fetchData(); 
+      return;
     }
 
     if (remainingPlayers === 0) {
       if (confirm("【警告】他に人間プレイヤーがいないため、退出すると部屋は完全に閉じられます。本当によろしいですか？")) {
         await supabase.from('rooms').update({ status: 'finished' }).eq('id', activeRoom.id);
-        setCurrentView("lobby"); setActiveRoom(null); setJoinedCharacter(null); setAiPlayersList([]); setMessages([]); await fetchData(); 
+        setCurrentView("lobby"); 
+        setActiveRoom(null); 
+        setJoinedCharacter(null); 
+        setAiPlayersList([]); 
+        setMessages([]); 
+        await fetchData(); 
       }
     } else {
       if (confirm("自分のキャラクターをAIに引き継がせて離脱します。よろしいですか？")) {
         const newUsers = { ...activeRoom.joined_users };
         delete newUsers[currentUser.id];
         await supabase.from('rooms').update({ joined_users: newUsers }).eq('id', activeRoom.id);
-        setCurrentView("lobby"); setActiveRoom(null); setJoinedCharacter(null); setAiPlayersList([]); setMessages([]); await fetchData(); 
+        setCurrentView("lobby"); 
+        setActiveRoom(null); 
+        setJoinedCharacter(null); 
+        setAiPlayersList([]); 
+        setMessages([]); 
+        await fetchData(); 
       }
     }
   };
 
   const handleSend = async () => {
-    if (!input.trim() || isRequestingRef.current || !activeRoom || !joinedCharacter || !currentUser || !myScene) return;
-    isRequestingRef.current = true; setIsLoading(true);
+    if (!input.trim() || isRequestingRef.current || !activeRoom || !joinedCharacter || !myScene) return;
+    isRequestingRef.current = true; 
+    setIsLoading(true);
     try {
       const currentInput = input; 
       setInput(""); 
@@ -1004,7 +1028,8 @@ export default function Home() {
 
   const rollDice = async (targetValue: number, label: string, is1d100: boolean = false) => {
     if(!myScene || !activeRoom || isRequestingRef.current || !joinedCharacter) return;
-    isRequestingRef.current = true; setIsLoading(true);
+    isRequestingRef.current = true; 
+    setIsLoading(true);
     try {
       let res = 0; let isSuccess = false; let msgText = "";
       const rule = activeRoom.rule || "coc_jp";
