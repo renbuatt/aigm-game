@@ -15,9 +15,14 @@ export default function RoomConfigModal({
 
   return (
     <div className="fixed inset-0 bg-black/80 z-[100] flex items-center justify-center p-4">
-      <div className="bg-slate-800 border border-emerald-700/50 rounded-xl p-6 w-full max-w-lg shadow-2xl">
-        <h3 className="text-xl font-bold text-emerald-400 mb-4">🚪 部屋の作成: {config.scenario?.title}</h3>
-        <div className="space-y-4 mb-6">
+      {/* 修正1: flex-col と max-h-[90vh] を追加して、縦に並べつつ高さを画面の90%に制限 */}
+      <div className="bg-slate-800 border border-emerald-700/50 rounded-xl p-6 w-full max-w-lg shadow-2xl flex flex-col max-h-[90vh]">
+        
+        {/* 修正2: タイトルが潰れないように shrink-0 を追加 */}
+        <h3 className="text-xl font-bold text-emerald-400 mb-4 shrink-0">🚪 部屋の作成: {config.scenario?.title}</h3>
+        
+        {/* 修正3: フォーム部分に overflow-y-auto と flex-1 を追加して、ここだけスクロールさせる */}
+        <div className="space-y-4 mb-4 overflow-y-auto pr-2 flex-1 custom-scrollbar">
           
           <div>
             <label className="text-xs text-slate-400 block mb-1">使用するキャラクター <span className="text-red-400">*</span></label>
@@ -63,7 +68,6 @@ export default function RoomConfigModal({
             </select>
           </div>
           
-          {/* 多言語対応の言語設定プルダウン */}
           <div>
             <label className="text-xs text-slate-400 block mb-1">セッション進行言語（Language）</label>
             <select 
@@ -130,17 +134,18 @@ export default function RoomConfigModal({
           </div>
         </div>
 
-        <div className="flex gap-4">
+        {/* 修正4: ボタンエリアが潰れないように shrink-0 を追加し、上に少し余白(pt-2)を設定 */}
+        <div className="flex gap-4 shrink-0 pt-2 border-t border-slate-700">
           <button 
             onClick={closeModal} 
-            className="flex-1 bg-slate-700 hover:bg-slate-600 py-3 rounded text-sm font-bold"
+            className="flex-1 bg-slate-700 hover:bg-slate-600 py-3 rounded text-sm font-bold transition-colors"
           >
             キャンセル
           </button>
           <button 
             onClick={executeCreateRoom} 
             disabled={!config.charId} 
-            className="flex-1 bg-emerald-600 hover:bg-emerald-500 disabled:bg-slate-600 py-3 rounded text-sm font-bold shadow-lg shadow-emerald-900/50"
+            className="flex-1 bg-emerald-600 hover:bg-emerald-500 disabled:bg-slate-600 py-3 rounded text-sm font-bold shadow-lg shadow-emerald-900/50 transition-colors"
           >
             作成して入室
           </button>
