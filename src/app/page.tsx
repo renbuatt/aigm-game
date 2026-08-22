@@ -27,11 +27,83 @@ import RoomConfigModal from "../components/modals/RoomConfigModal";
 import NovelSettingsModal from "../components/modals/NovelSettingsModal";
 import AdVideoModal from "../components/modals/AdVideoModal";
 
-// ★ カスタムフック
 import { useAdmin } from "../hooks/useAdmin";
 import { useAuth } from "../hooks/useAuth";
 import { useScenario } from "../hooks/useScenario";
 import { useExport } from "../hooks/useExport";
+
+// ★ 追加：システムメッセージの多言語化辞書
+const getSysT = (lang: string) => {
+  const dict = {
+    ja: {
+      roomCreated: "【入室完了】プレイヤー全員の準備が整うまでお待ちください。\n【案内】シークレット設定の場合、画面左上の「共有ID」をコピーして友人に伝えてください。",
+      trialCreated: "【お試しルーム作成完了】\n他のキャラクターはAIが担当します。\n右上の「▶お試し開始」ボタンを押してスタートしてください。",
+      joined: (name: string) => `【入室完了】${name}として参加しました！ホストの開始をお待ちください。`,
+      spectating: "【観戦モード】部屋に入室しました。チャットやダイスは使用できません。",
+      gameStarted: "【システム】ゲームを開始しました。AI GMを呼び出しています...",
+      sessionEnded: "【システム】セッションが完了しました！\nこれより「感想戦モード」になります。",
+      splitDone: "【システム】チーム分けが完了しました！各チームごとに独立して行動・相談を行ってください。",
+      mergeWait: (name: string) => `【システム】${name}チームはメインに合流するため待機します。全チームが合流するまでお待ちください。`,
+      mergeAll: "【システム】全チームが合流しました！",
+      paused: "【システム】セッションを中断（セーブ）しました。再開するまでAI GMは停止し、タイマーは進みません。",
+      resumed: "【システム】セッションを再開しました！",
+      afkOff: (name: string) => `【システム】${name}が復帰しました。`,
+      afkOn: (name: string) => `【システム】${name}が離席（AFK）しました。`,
+      kicked: (name: string) => `【システム】一定時間応答がなかったため、ホストによって ${name} が追放されました。残りの役割はAIが引き継ぎます。`,
+      errorRefund: (tName: string) => `【システムエラー】AIが混雑、または応答に失敗しました。\nお詫びとして参加者全員に消費した「${tName}」を1枚自動返還しました。`,
+      errorBusy: "【システムエラー】AIが混雑しています。時間を置いて再度お試しください。",
+      generatedImg: (prompt: string) => `【ホストが情景画像を生成しました】\n「${prompt}」`,
+      chapterClear: (title: string, nextTitle: string) => `【システム】チャプター「${title}」をクリアしました！\n物語は次章「${nextTitle}」へ進行します...`,
+      allClear: "【システム】全シナリオをクリアしました！お疲れ様でした。\nこれより「感想戦モード」になります。",
+      trialEnd: "【お試しプレイはここまでです！続きはチケットを消費して本編の部屋を作成してお楽しみください】\n\n[SCENARIO_END]"
+    },
+    en: {
+      roomCreated: "[System] Room created. Please wait for all players to be ready.\n[Info] If this is a secret room, share the ID with your friends.",
+      trialCreated: "[Trial Room Created]\nAI will control the other characters.\nPress '▶ Start Game' to begin.",
+      joined: (name: string) => `[Joined] Joined as ${name}! Waiting for host to start.`,
+      spectating: "[Spectator Mode] Joined room. Chat and dice are disabled.",
+      gameStarted: "[System] Game started. Summoning AI GM...",
+      sessionEnded: "[System] Session complete!\nTransitioning to post-match chat.",
+      splitDone: "[System] Teams divided! Please act and discuss within your teams.",
+      mergeWait: (name: string) => `[System] Team ${name} is waiting to merge. Please wait for all teams.`,
+      mergeAll: "[System] All teams have merged!",
+      paused: "[System] Session paused. AI GM and timers are stopped.",
+      resumed: "[System] Session resumed!",
+      afkOff: (name: string) => `[System] ${name} has returned.`,
+      afkOn: (name: string) => `[System] ${name} is now AFK.`,
+      kicked: (name: string) => `[System] ${name} was kicked for inactivity. AI will take over.`,
+      errorRefund: (tName: string) => `[System Error] AI is busy or failed.\nRefunded 1 ${tName} to all participants.`,
+      errorBusy: "[System Error] AI is busy. Please try again later.",
+      generatedImg: (prompt: string) => `[Host generated a scene image]\n"${prompt}"`,
+      chapterClear: (title: string, nextTitle: string) => `[System] Chapter "${title}" cleared!\nMoving to next chapter: "${nextTitle}"...`,
+      allClear: "[System] All scenarios cleared! Great job.\nTransitioning to post-match chat.",
+      trialEnd: "[Trial play ends here! Please create a full room with tickets to continue the story.]\n\n[SCENARIO_END]"
+    },
+    zh: {
+      roomCreated: "【加入成功】请等待所有玩家准备就绪。\n【提示】如果是私密房间，请复制“共享ID”发送给好友。",
+      trialCreated: "【试玩房间已创建】\n其他角色将由AI扮演。\n请点击右上角的“▶ 开始游戏”开始。",
+      joined: (name: string) => `【加入成功】已作为 ${name} 加入！请等待房主开始。`,
+      spectating: "【观战模式】已加入房间。无法使用聊天和骰子。",
+      gameStarted: "【系统】游戏开始。正在召唤 AI GM...",
+      sessionEnded: "【系统】跑团结束！\n即将进入赛后复盘模式。",
+      splitDone: "【系统】分组完成！请在各自的队伍中独立行动和讨论。",
+      mergeWait: (name: string) => `【系统】${name} 组正在等待汇合。请等待所有队伍到齐。`,
+      mergeAll: "【系统】所有队伍已汇合！",
+      paused: "【系统】游戏已暂停。AI GM 已停止。",
+      resumed: "【系统】游戏已恢复！",
+      afkOff: (name: string) => `【系统】${name} 已返回。`,
+      afkOn: (name: string) => `【系统】${name} 处于离开 (AFK) 状态。`,
+      kicked: (name: string) => `【系统】由于长时间无响应，${name} 已被踢出。其角色将由AI接管。`,
+      errorRefund: (tName: string) => `【系统错误】AI 繁忙或响应失败。\n作为补偿，已向所有参与者退还 1 张【${tName}】。`,
+      errorBusy: "【系统错误】AI 当前繁忙，请稍后再试。",
+      generatedImg: (prompt: string) => `【房主生成了场景图片】\n“${prompt}”`,
+      chapterClear: (title: string, nextTitle: string) => `【系统】章节“${title}”已通关！\n故事将进入下一章：“${nextTitle}”...`,
+      allClear: "【系统】全剧本通关！辛苦了。\n即将进入赛后复盘模式。",
+      trialEnd: "【试玩到此结束！请使用门票创建完整房间以继续体验。】\n\n[SCENARIO_END]"
+    }
+  };
+  return dict[lang as "ja" | "en" | "zh"] || dict.ja;
+};
 
 export default function Home() {
   const [currentView, setCurrentView] = useState<ViewState>("login");
@@ -39,7 +111,6 @@ export default function Home() {
   const [password, setPassword] = useState("");
   const [authLoading, setAuthLoading] = useState(false);
 
-  // ★ 多言語対応用のステートを追加
   const [appLanguage, setAppLanguage] = useState<"ja" | "en" | "zh">("ja");
 
   const [currentUser, setCurrentUser] = useState<UserProfile | null>(null);
@@ -257,16 +328,8 @@ export default function Home() {
     if (myBlockedIds.includes(hostId)) return null;
     if (joinedUserIds.some((id: string) => myBlockedIds.includes(id))) return null;
     if (blockedMeIds.includes(hostId)) return null;
-    
-    let displayScenario = { ...room.scenario };
-    let langBadge = "🇯🇵 ";
-    
-    if (room.language === 'en') langBadge = "🇺🇸 EN | ";
-    else if (room.language === 'zh') langBadge = "🇨🇳 ZH | ";
-
-    displayScenario.title = `${langBadge}${displayScenario.title}`;
     const isWarning = joinedUserIds.some((id: string) => blockedMeIds.includes(id));
-    return { ...room, scenario: displayScenario, isWarning };
+    return { ...room, isWarning };
   }).filter(Boolean) as Room[];
 
   const defaultScene: Scene = { id: "scene_main", name: "メインルーム", memberIds: [] };
@@ -391,7 +454,8 @@ export default function Home() {
     const newStatus = !activeRoom.is_paused;
     await supabase.from('rooms').update({ is_paused: newStatus }).eq('id', activeRoom.id);
     setActiveRoom({ ...activeRoom, is_paused: newStatus });
-    await pushMessage(activeRoom.id, { sender: "system", text: newStatus ? "【システム】セッションを中断（セーブ）しました。再開するまでAI GMは停止し、タイマーは進みません。" : "【システム】セッションを再開しました！", type: "system", channel: "system" });
+    const sys = getSysT(activeRoom.language || 'ja');
+    await pushMessage(activeRoom.id, { sender: "system", text: newStatus ? sys.paused : sys.resumed, type: "system", channel: "system" });
   };
 
   const toggleAFK = async (userId: string, forceRemove: boolean = false) => {
@@ -403,8 +467,9 @@ export default function Home() {
     await supabase.from('rooms').update({ afk_users: newAfk }).eq('id', activeRoom.id);
     setActiveRoom({ ...activeRoom, afk_users: newAfk });
     const cId = activeRoom.joined_users?.[userId];
-    const charName = activeRoom.scenario?.presetCharacters.find((c: any) => c.id === cId)?.name || "プレイヤー";
-    const msg = forceRemove ? `【システム】${charName}が復帰しました。` : (newAfk.includes(userId) ? `【システム】${charName}が離席（AFK）しました。` : `【システム】${charName}が復帰しました。`);
+    const charName = activeRoom.scenario?.presetCharacters.find((c: any) => c.id === cId)?.name || "Player";
+    const sys = getSysT(activeRoom.language || 'ja');
+    const msg = forceRemove ? sys.afkOff(charName) : (newAfk.includes(userId) ? sys.afkOn(charName) : sys.afkOff(charName));
     await pushMessage(activeRoom.id, { sender: "system", text: msg, type: "system", channel: "system" }, false); 
   };
 
@@ -417,8 +482,9 @@ export default function Home() {
     let newAfk = [...(activeRoom.afk_users || [])].filter((id: string) => id !== uid);
     await supabase.from('rooms').update({ joined_users: newUsers, afk_users: newAfk }).eq('id', activeRoom.id);
     setActiveRoom({ ...activeRoom, joined_users: newUsers, afk_users: newAfk });
-    const charName = activeRoom.scenario?.presetCharacters.find((c: any) => c.id === charId)?.name || "プレイヤー";
-    await pushMessage(activeRoom.id, { sender: "system", text: `【システム】一定時間応答がなかったため、ホストによって ${charName} が追放されました。残りの役割はAIが引き継ぎます。`, type: "system", channel: "system" }, true);
+    const charName = activeRoom.scenario?.presetCharacters.find((c: any) => c.id === charId)?.name || "Player";
+    const sys = getSysT(activeRoom.language || 'ja');
+    await pushMessage(activeRoom.id, { sender: "system", text: sys.kicked(charName), type: "system", channel: "system" }, true);
   };
 
   const triggerAutoAction = async () => {
@@ -460,7 +526,8 @@ export default function Home() {
       let base64data = "";
       if (imageType === 'free') base64data = await generateFreeImage(englishPrompt);
       else base64data = await generatePremiumImage(englishPrompt);
-      await pushMessage(activeRoom.id, { sender: "gm", text: `【ホストが情景画像を生成しました】\n「${targetPrompt}」`, type: "image", imageUrl: base64data, sceneId: myScene.id, channel: "story" });
+      const sys = getSysT(activeRoom.language || 'ja');
+      await pushMessage(activeRoom.id, { sender: "gm", text: sys.generatedImg(targetPrompt), type: "image", imageUrl: base64data, sceneId: myScene.id, channel: "story" });
     } catch (err: any) { alert("画像の生成に失敗しました。\n少し時間をおいて再度お試しください。"); } finally { isRequestingRef.current = false; setIsLoading(false); }
   };
 
@@ -483,7 +550,7 @@ export default function Home() {
       const chars = activeRoom.scenario?.presetCharacters.filter((c: any) => Object.values(activeRoom.joined_users || {}).includes(c.id)).map((c: any) => `{"id": "${c.id}", "name": "${c.name}"}`).join(", ") || "";
       const prompt = ["あなたはTRPGのシステムAIです。以下の「現在参加しているキャラクター」と「直近のチャットログ」を分析し、物語の展開上、最も自然な【チーム分け（2つ以上のグループへの分割）の構成案】を作成してください。","【参加キャラクター】",chars,"","【直近のログ】",recentLogs,"","【出力形式（絶対遵守）】","必ず以下のJSONフォーマットのみを出力してください。余計な文章やマークダウン記号は一切含めないでください。",'{"teams": [{"action": "目的A", "members": ["キャラID1"]}, {"action": "目的B", "members": ["キャラID3"]}]}'].join('\n');
       const aiResponse = await generateAITextWithPrompt(prompt, 'lite', 800, 0.3);
-      const jsonStr = aiResponse.replace(/`{3}json/g, "").replace(/`{3}/g, "").trim();
+      const jsonStr = aiResponse.replace(/`{3}json/gi, "").replace(/`{3}/g, "").trim();
       const parsed = JSON.parse(jsonStr);
       if (parsed && parsed.teams) setProposedTeams(parsed.teams.map((t: any) => ({ id: `team_${Date.now()}_${Math.random()}`, action: t.action, members: t.members, leader: t.members[0] || "" })));
       else setProposedTeams([{ id: `team_${Date.now()}`, action: "", members: [], leader: "" }]);
@@ -500,7 +567,8 @@ export default function Home() {
       const newScenes: Scene[] = [{ id: 'scene_main', name: 'メインルーム', memberIds: [] }, ...validTeams.map((t: any) => ({ id: t.id, name: t.action, memberIds: t.members, leaderId: t.leader, isMerged: false }))];
       await supabase.from('rooms').update({ scenes: newScenes, status: 'playing' }).eq('id', activeRoom.id);
       setActiveRoom({ ...activeRoom, scenes: newScenes, status: 'playing' });
-      await pushMessage(activeRoom.id, { sender: "system", text: `【システム】チーム分けが完了しました！各チームごとに独立して行動・相談を行ってください。`, type: "system", sceneId: "scene_main", channel: "system" });
+      const sys = getSysT(activeRoom.language || 'ja');
+      await pushMessage(activeRoom.id, { sender: "system", text: sys.splitDone, type: "system", sceneId: "scene_main", channel: "system" });
     } finally { isRequestingRef.current = false; setIsLoading(false); }
   };
 
@@ -513,7 +581,8 @@ export default function Home() {
       const updatedScenes = activeRoom.scenes.map((s: any) => s.id === myScene.id ? { ...s, isMerged: true } : s);
       await supabase.from('rooms').update({ scenes: updatedScenes }).eq('id', activeRoom.id);
       setActiveRoom({ ...activeRoom, scenes: updatedScenes });
-      await pushMessage(activeRoom.id, { sender: "system", text: `【システム】${myScene.name}チームはメインに合流するため待機します。全チームが合流するまでお待ちください。`, type: "system", sceneId: myScene.id, channel: "system" });
+      const sys = getSysT(activeRoom.language || 'ja');
+      await pushMessage(activeRoom.id, { sender: "system", text: sys.mergeWait(myScene.name), type: "system", sceneId: myScene.id, channel: "system" });
     } finally { isRequestingRef.current = false; setIsLoading(false); }
   };
 
@@ -525,7 +594,8 @@ export default function Home() {
       const resetScenes: Scene[] = [{ id: 'scene_main', name: 'メインルーム', memberIds: allMemberIds }];
       await supabase.from('rooms').update({ scenes: resetScenes }).eq('id', activeRoom.id);
       setActiveRoom({ ...activeRoom, scenes: resetScenes });
-      await pushMessage(activeRoom.id, { sender: "system", text: `【システム】全チームが合流しました！`, type: "system", sceneId: 'scene_main', channel: "system" });
+      const sys = getSysT(activeRoom.language || 'ja');
+      await pushMessage(activeRoom.id, { sender: "system", text: sys.mergeAll, type: "system", sceneId: 'scene_main', channel: "system" });
       const extraUserContext = ["【システムコマンド】全チームの別行動が終了し、一箇所に合流しました。","これまでの各チームの報告を踏まえ、合流時の情景描写と今後の展開を提示してください。"].join('\n');
       await callAIGM(extraUserContext, "story");
     } finally { isRequestingRef.current = false; setIsLoading(false); }
@@ -572,7 +642,8 @@ export default function Home() {
       const newRoom: Room = { id: data.id, scenario_id: data.scenario_id, scenario: scenario, host_name: data.host_name, host_id: data.host_id, status: data.status, scenes: data.scenes, privacy: data.privacy, host_message: data.host_message, joined_users: data.joined_users, current_summary: "", difficulty: data.difficulty, rule: data.rule, is_paused: false, afk_users: [], is_trial: false, item_visibility: data.item_visibility, inventories: data.inventories, current_chapter_index: 0, ai_model: data.ai_model, error_refunded: false, free_image_count: 0, is_lost: false, lost_turn_count: 0, language: data.language };
       await supabase.from('ai_memory').delete().eq('room_id', newRoom.id);
       setActiveRoom(newRoom); setJoinedCharacter(hostChar); setMessages([]); 
-      await pushMessage(newRoom.id, { sender: "system", text: `【入室完了】プレイヤー全員の準備が整うまでお待ちください。\n【案内】シークレット設定の場合、画面左上の「共有ID」をコピーして友人に伝えてください。`, type: "system", sceneId: newRoom.scenes?.[0]?.id, channel: "system" });
+      const sys = getSysT(language || 'ja');
+      await pushMessage(newRoom.id, { sender: "system", text: sys.roomCreated, type: "system", sceneId: newRoom.scenes?.[0]?.id, channel: "system" });
       setCurrentView("game");
     }
   };
@@ -617,7 +688,8 @@ export default function Home() {
       await supabase.from('ai_memory').delete().eq('room_id', newRoom.id);
       setActiveRoom(newRoom); setJoinedCharacter(hostChar); setMessages([]); 
       const aiChars = scenario.presetCharacters.filter((c: any) => c.id !== charId); setAiPlayersList(aiChars);
-      await pushMessage(newRoom.id, { sender: "system", text: `【お試しルーム作成完了】\n他のキャラクターはAIが担当します。\n右上の「▶お試し開始」ボタンを押してスタートしてください。`, type: "system", sceneId: newRoom.scenes?.[0]?.id, channel: "system" });
+      const sys = getSysT(selectedLang);
+      await pushMessage(newRoom.id, { sender: "system", text: sys.trialCreated, type: "system", sceneId: newRoom.scenes?.[0]?.id, channel: "system" });
       setCurrentView("game");
     }
   };
@@ -643,7 +715,7 @@ export default function Home() {
         alert(`入室するためのチケットが足りません！\n（${costName}チケットが1枚必要です）\nロビーの「チケット購入ストア」から入手してください。`); 
         setShowTicketModal(true); return; 
       }
-      if (!confirm(`この部屋はセッション開始時に ${costName}チケット が必要です。入室しますか？\n（※チケットはゲーム開始時に消費されます）`)) return;
+      if (!confirm(`この部屋はセッション開始時に ${costName}チケット が必要です。入室しますか？\n（※チケットはゲーム開始時に消费されます）`)) return;
     }
 
     const { data: latestRoom } = await supabase.from('rooms').select('joined_users, inventories').eq('id', room.id).single();
@@ -665,7 +737,8 @@ export default function Home() {
 
     const updatedRoom = { ...room, joined_users: newUsers, inventories: newInventories };
     setActiveRoom(updatedRoom); setJoinedCharacter(char); await loadChatLogs(room.id);
-    await pushMessage(room.id, { sender: "system", text: `【入室完了】${char.name}として参加しました！ホストの開始をお待ちください。`, type: "system", sceneId: room.scenes?.[0]?.id, channel: "system" });
+    const sys = getSysT(room.language || 'ja');
+    await pushMessage(room.id, { sender: "system", text: sys.joined(char.name), type: "system", sceneId: room.scenes?.[0]?.id, channel: "system" });
     setCurrentView("game");
   };
 
@@ -679,7 +752,8 @@ export default function Home() {
     }
 
     setActiveRoom({ ...room, spectator_ids: newSpectators }); setJoinedCharacter(null); await loadChatLogs(room.id);
-    await pushMessage(room.id, { sender: "system", text: `【観戦モード】部屋に入室しました。チャットやダイスは使用できません。`, type: "system", sceneId: room.scenes?.[0]?.id, channel: "system" }, false);
+    const sys = getSysT(room.language || 'ja');
+    await pushMessage(room.id, { sender: "system", text: sys.spectating, type: "system", sceneId: room.scenes?.[0]?.id, channel: "system" }, false);
     setCurrentView("game");
   };
 
@@ -733,7 +807,8 @@ export default function Home() {
       setAiPlayersList(aiChars);
       await supabase.from('rooms').update({ status: 'playing', is_paused: false }).eq('id', activeRoom.id);
       setActiveRoom({ ...activeRoom, status: 'playing', is_paused: false });
-      await pushMessage(activeRoom.id, { sender: "system", text: `【システム】ゲームを開始しました。AI GMを呼び出しています...`, type: "system", sceneId: myScene.id, channel: "system" });
+      const sys = getSysT(activeRoom.language || 'ja');
+      await pushMessage(activeRoom.id, { sender: "system", text: sys.gameStarted, type: "system", sceneId: myScene.id, channel: "system" });
       const extraUserContext = `【システムコマンド】セッションが開始されました。\n以下の【設定されたプロローグ情報】に従い導入部分の情景描写を行ってください。\n\n【設定されたプロローグ情報】\n${activeRoom.scenario.prologue || "特になし"}\n\nまた、この導入部において、事態の把握や最初の試練として【必ずプレイヤー全員が最低1回はダイス判定を行わなければならない状況】を発生させてください。`;
       await callAIGM(extraUserContext, "story", true);
     } finally { 
@@ -747,7 +822,8 @@ export default function Home() {
     if (currentUser?.id === activeRoom.host_id || activeRoom.is_trial) {
       await supabase.from('rooms').update({ status: 'finished' }).eq('id', activeRoom.id);
       setActiveRoom({...activeRoom, status: 'finished'});
-      await pushMessage(activeRoom.id, { sender: "system", text: `【システム】セッションが完了しました！\nこれより「感想戦モード」になります。`, type: "system", sceneId: myScene?.id, channel: "system" });
+      const sys = getSysT(activeRoom.language || 'ja');
+      await pushMessage(activeRoom.id, { sender: "system", text: sys.sessionEnded, type: "system", sceneId: myScene?.id, channel: "system" });
     }
   };
 
@@ -1148,26 +1224,27 @@ export default function Home() {
         channel: targetTab 
       });
 
+      const sys = getSysT(activeRoom.language || 'ja');
       if (isChapterCleared) {
          if (activeRoom.is_trial) {
-           const endText = '【お試しプレイはここまでです！続きはチケットを消費して本編の部屋を作成してお楽しみください】\n\n[SCENARIO_END]';
-           await supabase.from('ai_memory').insert({ room_id: activeRoom.id, role: 'assistant', content: endText });
-           await pushMessage(activeRoom.id, { sender: "system", text: endText, type: "system", sceneId: myScene?.id, channel: "system" }, false);
+           await supabase.from('ai_memory').insert({ room_id: activeRoom.id, role: 'assistant', content: sys.trialEnd });
+           await pushMessage(activeRoom.id, { sender: "system", text: sys.trialEnd, type: "system", sceneId: myScene?.id, channel: "system" }, false);
            await supabase.from('rooms').update({ status: 'finished' }).eq('id', activeRoom.id);
            setActiveRoom(prev => prev ? { ...prev, status: 'finished' } : null);
          } else if (!isLastChapter) {
            const nextIndex = currentChapIndex + 1;
            await supabase.from('rooms').update({ current_chapter_index: nextIndex }).eq('id', activeRoom.id);
            setActiveRoom(prev => prev ? { ...prev, current_chapter_index: nextIndex } : null);
-           await pushMessage(activeRoom.id, { sender: "system", text: `【システム】チャプター「${currentChapter.title}」をクリアしました！\n物語は次章「${chapters[nextIndex].title}」へ進行します...`, type: "system", sceneId: myScene?.id, channel: "system" }, false);
+           await pushMessage(activeRoom.id, { sender: "system", text: sys.chapterClear(currentChapter.title, chapters[nextIndex].title), type: "system", sceneId: myScene?.id, channel: "system" }, false);
            await supabase.from('ai_memory').insert({ room_id: activeRoom.id, role: 'user', content: `【システム情報：第${nextIndex+1}章（${chapters[nextIndex].title}）に突入しました。これまでの状況を踏まえ、次の展開を描写してください】` });
          } else {
            await supabase.from('rooms').update({ status: 'finished' }).eq('id', activeRoom.id);
            setActiveRoom(prev => prev ? { ...prev, status: 'finished' } : null);
-           await pushMessage(activeRoom.id, { sender: "system", text: `【システム】全シナリオをクリアしました！お疲れ様でした。\nこれより「感想戦モード」になります。`, type: "system", sceneId: myScene?.id, channel: "system" }, false);
+           await pushMessage(activeRoom.id, { sender: "system", text: sys.allClear, type: "system", sceneId: myScene?.id, channel: "system" }, false);
          }
       }
     } catch (err: any) { 
+      const sys = getSysT(activeRoom.language || 'ja');
       if (!activeRoom.error_refunded) {
         const model = activeRoom.ai_model || 'lite';
         let ticketKey = 'tickets_bronze';
@@ -1199,9 +1276,9 @@ export default function Home() {
            setCurrentUser(prev => prev ? { ...prev, [ticketKey]: ((prev as any)[ticketKey] || 0) + 1 } : null);
         }
 
-        await pushMessage(activeRoom.id, { sender: "system", text: `【システムエラー】AIが混雑、または応答に失敗しました。\nお詫びとして参加者全員に消費した「${ticketName}」を1枚自動返還しました。`, type: "system", sceneId: myScene?.id, channel: "system" }, false);
+        await pushMessage(activeRoom.id, { sender: "system", text: sys.errorRefund(ticketName), type: "system", sceneId: myScene?.id, channel: "system" }, false);
       } else {
-        await pushMessage(activeRoom.id, { sender: "system", text: `【システムエラー】AIが混雑しています。時間を置いて再度お試しください。`, type: "system", sceneId: myScene?.id, channel: "system" }, false);
+        await pushMessage(activeRoom.id, { sender: "system", text: sys.errorBusy, type: "system", sceneId: myScene?.id, channel: "system" }, false);
       }
       
       if (currentUser) {
@@ -1252,6 +1329,7 @@ export default function Home() {
           isExporting={isExporting} 
           allScenarios={scenarios} 
           openRoomConfigModal={handleOpenRoomConfig} 
+          appLanguage={appLanguage}
         />
       )}
 
@@ -1270,6 +1348,7 @@ export default function Home() {
           openRoomConfigModal={handleOpenRoomConfig} 
           openUserProfile={openUserProfile} 
           uploadAvatar={uploadAvatar} 
+          appLanguage={appLanguage}
         />
       )}
 
@@ -1290,6 +1369,7 @@ export default function Home() {
           adminGrantItem={adminGrantItem}
           adminSendMailToAll={adminSendMailToAll}
           grantItemToAll={grantItemToAll}
+          appLanguage={appLanguage}
         />
       )}
 
@@ -1425,6 +1505,7 @@ export default function Home() {
           aiPlayersList={aiPlayersList} 
           saveToArchive={saveToArchive} 
           kickUser={kickUser} 
+          appLanguage={appLanguage} // ★追加：GameViewに言語を渡す
         />
       )}
       
@@ -1444,6 +1525,7 @@ export default function Home() {
           addFriend={addFriend} 
           openUserProfile={openUserProfile} 
           openRoomConfigModal={handleOpenRoomConfig} 
+          appLanguage={appLanguage}
         />
       )}
 
