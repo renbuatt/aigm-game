@@ -1309,7 +1309,7 @@ export default function Home() {
           setCurrentView={setCurrentView} 
           createdScenarios={createdScenarios} 
           deleteScenario={deleteScenario} 
-          openRoomConfigModal={handleOpenRoomConfig} 
+          setRoomConfigModal={setRoomConfigModal}
           fetchAdminData={fetchAdminData} 
           startTrialPlay={(scenario: any) => setAdModal({ isOpen: true, step: 1, scenario, room: null, type: 'trial' })} 
           availableScenarios={availableScenarios} 
