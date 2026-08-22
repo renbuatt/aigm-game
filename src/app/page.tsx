@@ -196,8 +196,8 @@ export default function Home() {
     toggleAdminStatus, toggleTesterStatus, toggleGeminiFlashModel, resolveReport,
     adminExecuteBan, adminUnbanUser, adminSuspendUser, adminUnsuspendUser,
     adminExecuteScenarioBan, adminUnbanScenario, adminDeleteScenario,
-    executeCreateTester, adminSendMailToUser, 
-    adminGrantItem, adminSendMailToAll, grantItemToAll
+    executeCreateTester, adminSendMailToUser,
+    adminGrantItem, adminSendMailToAll, grantItemToAll 
   } = useAdmin({
     scenarios, fetchData, isMaintenance, setIsMaintenance,
     isTicketSystemEnabled, setIsTicketSystemEnabled, setGeminiFlashModel,
@@ -454,7 +454,7 @@ export default function Home() {
       const chars = activeRoom.scenario?.presetCharacters.filter((c: any) => Object.values(activeRoom.joined_users || {}).includes(c.id)).map((c: any) => `{"id": "${c.id}", "name": "${c.name}"}`).join(", ") || "";
       const prompt = ["あなたはTRPGのシステムAIです。以下の「現在参加しているキャラクター」と「直近のチャットログ」を分析し、物語の展開上、最も自然な【チーム分け（2つ以上のグループへの分割）の構成案】を作成してください。","【参加キャラクター】",chars,"","【直近のログ】",recentLogs,"","【出力形式（絶対遵守）】","必ず以下のJSONフォーマットのみを出力してください。余計な文章やマークダウン記号は一切含めないでください。",'{"teams": [{"action": "目的A", "members": ["キャラID1"]}, {"action": "目的B", "members": ["キャラID3"]}]}'].join('\n');
       const aiResponse = await generateAITextWithPrompt(prompt, 'lite', 800, 0.3);
-      const jsonStr = aiResponse.replace(/`{3}json/g, "").replace(/`{3}/g, "").trim();
+      const jsonStr = aiResponse.replace(/`{3}json/gi, "").replace(/`{3}/g, "").trim();
       const parsed = JSON.parse(jsonStr);
       if (parsed && parsed.teams) setProposedTeams(parsed.teams.map((t: any) => ({ id: `team_${Date.now()}_${Math.random()}`, action: t.action, members: t.members, leader: t.members[0] || "" })));
       else setProposedTeams([{ id: `team_${Date.now()}`, action: "", members: [], leader: "" }]);
@@ -1141,16 +1141,14 @@ export default function Home() {
         if (model === 'claude') { ticketKey = 'tickets_platinum'; ticketName = 'プラチナチケット'; }
         if (model === 'opus') { ticketKey = 'tickets_diamond'; ticketName = 'ダイヤモンドチケット'; }
 
-        // 二重返還を防ぐために部屋を「返還済み」にマーク
         await supabase.from('rooms').update({ error_refunded: true }).eq('id', activeRoom.id);
         setActiveRoom(prev => prev ? { ...prev, error_refunded: true } : null);
 
-        // ★追加：部屋に参加している「全員」に対して一律でチケットを返還する
         const joinedUserIds = Object.keys(activeRoom.joined_users || {});
         for (const uid of joinedUserIds) {
           const { data: userData } = await supabase.from('profiles').select(ticketKey).eq('id', uid).single();
           if (userData) {
-            const currentAmount = userData[ticketKey] || 0;
+            const currentAmount = (userData as any)[ticketKey] || 0;
             await supabase.from('profiles').update({ [ticketKey]: currentAmount + 1 }).eq('id', uid);
             await supabase.from('notifications').insert({ 
               user_id: uid, 
@@ -1160,7 +1158,6 @@ export default function Home() {
           }
         }
         
-        // 自分の画面（ステート）も更新して表示を反映させる
         if (currentUser && joinedUserIds.includes(currentUser.id)) {
            setCurrentUser(prev => prev ? { ...prev, [ticketKey]: ((prev as any)[ticketKey] || 0) + 1 } : null);
         }

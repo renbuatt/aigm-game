@@ -47,11 +47,13 @@ export function useScenario({
       let translationEn = editingScenario.translationEn || {};
       let translationZh = editingScenario.translationZh || {};
       
-      // ★修正：あらすじ(description)が空でもスキップしないように変更
       if (editingScenario.title) {
         try {
           const desc = editingScenario.description || "（あらすじ未設定）";
+          const npcList = editingScenario.npcList || "（NPC未設定）";
           const charsData = (editingScenario.presetCharacters || []).map((c: any) => ({ name: c.name, job: c.job, personality: c.personality }));
+          
+          // ★プロンプト強化: npcListとcharactersの要素(設定や紹介)を明示的に翻訳対象に含める
           const promptBase = `You are a professional translator. Translate the following TRPG scenario into [TARGET_LANG].
 CRITICAL INSTRUCTIONS:
 1. Output ONLY a valid JSON object. Do not include markdown like \`\`\`json.
@@ -59,10 +61,11 @@ CRITICAL INSTRUCTIONS:
 3. Escape all newlines within strings as \\n.
 
 Format strictly as:
-{"title": "...", "description": "...", "characters": [{"name": "...", "job": "...", "personality": "..."}]}
+{"title": "...", "description": "...", "npcList": "...", "characters": [{"name": "...", "job": "...", "personality": "..."}]}
 
 Title: ${editingScenario.title}
 Description: ${desc}
+NPC List: ${npcList}
 Characters: ${JSON.stringify(charsData)}`;
 
           const [resEnRaw, resZhRaw] = await Promise.all([
