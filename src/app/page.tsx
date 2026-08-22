@@ -39,6 +39,9 @@ export default function Home() {
   const [password, setPassword] = useState("");
   const [authLoading, setAuthLoading] = useState(false);
 
+  // ★ 多言語対応用のステートを追加
+  const [appLanguage, setAppLanguage] = useState<"ja" | "en" | "zh">("ja");
+
   const [currentUser, setCurrentUser] = useState<UserProfile | null>(null);
   const [targetUserId, setTargetUserId] = useState<string>(""); 
   const [blockedMeIds, setBlockedMeIds] = useState<string[]>([]); 
@@ -1304,6 +1307,8 @@ export default function Home() {
           handleGoogleAuth={handleGoogleAuth} 
           setCurrentView={setCurrentView} 
           isMaintenance={isMaintenance} 
+          appLanguage={appLanguage} 
+          setAppLanguage={setAppLanguage}
         />
       )}
       
@@ -1318,6 +1323,8 @@ export default function Home() {
           handleGoogleAuth={handleGoogleAuth} 
           setCurrentView={setCurrentView} 
           isMaintenance={isMaintenance} 
+          appLanguage={appLanguage} 
+          setAppLanguage={setAppLanguage}
         />
       )}
       
@@ -1357,6 +1364,7 @@ export default function Home() {
           playArchives={playArchives} 
           setShowTicketModal={setShowTicketModal} 
           exchangeTicketWithPoints={exchangeTicketWithPoints} 
+          appLanguage={appLanguage}
         />
       )}
       
