@@ -1,8 +1,7 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { supabase } from "../lib/supabase";
 import { UserProfile, Report, Scenario } from "../types";
 
-// page.tsx から移動してきた定数
 const DEFAULT_AVATAR = "https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&w=150&q=80";
 
 type UseAdminProps = {
@@ -28,9 +27,25 @@ export function useAdmin({
   handleLogout,
   setIsLoading
 }: UseAdminProps) {
-  // 管理画面専用のステート（page.tsxからお引越し）
   const [allUsers, setAllUsers] = useState<UserProfile[]>([]);
   const [reports, setReports] = useState<Report[]>([]);
+
+  const fetchAdminData = async () => {
+    const { data: usersData } = await supabase.from('profiles').select('*').order('created_at', { ascending: false });
+    if (usersData) setAllUsers(usersData.map((d: any) => ({ 
+      id: d.id, handleName: d.handle_name, avatarUrl: d.avatar_url, bio: d.bio, discordId: d.discord_id, 
+      ratingSum: d.rating_sum || 0, ratingCount: d.rating_count || 0, isAdmin: d.is_admin || false, 
+      isTester: d.is_tester || false, isBanned: d.is_banned || false, isSuspended: d.is_suspended || false, 
+      email: d.email, points: d.points 
+    })));
+    const { data: reportsData } = await supabase.from('reports').select('*').order('created_at', { ascending: false });
+    if (reportsData) setReports(reportsData.map((d: any) => ({ id: d.id, reporterId: d.reporter_id, targetType: d.target_type, targetId: d.target_id, roomId: d.room_id || null, reason: d.reason, status: d.status, createdAt: d.created_at })));
+  };
+
+  // ★ 修正箇所：フックが呼び出されたタイミングで自動的にデータを取得する
+  useEffect(() => {
+    fetchAdminData();
+  }, []);
 
   const adminExecuteBan = async (userId: string, reason: string) => {
     await supabase.from('profiles').update({ is_banned: true }).eq('id', userId);
@@ -78,18 +93,6 @@ export function useAdmin({
   const adminSendMailToUser = async (userId: string, body: string) => {
     await supabase.from('notifications').insert({ user_id: userId, title: '✉️ 運営からのお知らせ', message: body });
     alert("メールを送信しました！");
-  };
-
-  const fetchAdminData = async () => {
-    const { data: usersData } = await supabase.from('profiles').select('*').order('created_at', { ascending: false });
-    if (usersData) setAllUsers(usersData.map((d: any) => ({ 
-      id: d.id, handleName: d.handle_name, avatarUrl: d.avatar_url, bio: d.bio, discordId: d.discord_id, 
-      ratingSum: d.rating_sum || 0, ratingCount: d.rating_count || 0, isAdmin: d.is_admin || false, 
-      isTester: d.is_tester || false, isBanned: d.is_banned || false, isSuspended: d.is_suspended || false, 
-      email: d.email, points: d.points 
-    })));
-    const { data: reportsData } = await supabase.from('reports').select('*').order('created_at', { ascending: false });
-    if (reportsData) setReports(reportsData.map((d: any) => ({ id: d.id, reporterId: d.reporter_id, targetType: d.target_type, targetId: d.target_id, roomId: d.room_id || null, reason: d.reason, status: d.status, createdAt: d.created_at })));
   };
 
   const toggleMaintenance = async () => { const newStatus = !isMaintenance; await supabase.from('app_settings').update({ is_maintenance: newStatus }).eq('id', 1); setIsMaintenance(newStatus); alert(`メンテナンスモードを ${newStatus ? "ON" : "OFF"} にしました。`); };

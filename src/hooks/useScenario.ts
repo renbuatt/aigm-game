@@ -5,7 +5,7 @@ import { UserProfile, Room, Scenario } from "../types";
 type UseScenarioProps = {
   currentUser: UserProfile | null;
   activeRoom: Room | null;
-  setActiveRoom: React.Dispatch<React.SetStateAction<Room | null>>; // ⭕️ 直しました
+  setActiveRoom: React.Dispatch<React.SetStateAction<Room | null>>; // ⭕️ ここを修正
   setJoinedCharacter: React.Dispatch<React.SetStateAction<any>>;
   editingScenario: Scenario | null;
   ratingScenario: number;
@@ -15,7 +15,7 @@ type UseScenarioProps = {
   reportReason: string;
   setReportReason: React.Dispatch<React.SetStateAction<string>>;
   scenarioAppealTarget: Scenario | null;
-  setScenarioAppealTarget: React.Dispatch<React.SetStateAction<Scenario | null>>; // ⭕️ 直しました
+  setScenarioAppealTarget: React.Dispatch<React.SetStateAction<Scenario | null>>; // ⭕️ ここも修正
   scenarioAppealText: string;
   setScenarioAppealText: React.Dispatch<React.SetStateAction<string>>;
   setIsLoading: React.Dispatch<React.SetStateAction<boolean>>;
