@@ -22,12 +22,6 @@ import GameView from "../components/views/GameView";
 import UserProfileView from "../components/views/UserProfileView";
 import LibraryView from "../components/views/LibraryView";
 
-// ★ 分割したモーダル群をインポート
-import TicketStoreModal from "../components/modals/TicketStoreModal";
-import RoomConfigModal from "../components/modals/RoomConfigModal";
-import NovelSettingsModal from "../components/modals/NovelSettingsModal";
-import AdVideoModal from "../components/modals/AdVideoModal";
-
 const NO_IMAGE_SCENARIO = "https://images.unsplash.com/photo-1614729939124-03290b5609ce?auto=format&fit=crop&w=400&q=80";
 const DEFAULT_AVATAR = "https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&w=150&q=80";
 
