@@ -86,7 +86,6 @@ export function useAdmin({
     alert("メールを送信しました！");
   };
 
-  // ★ 追加：全ユーザーへ一斉メール送信
   const adminSendMailToAll = async (title: string, body: string) => {
     if (!confirm(`全 ${allUsers.length} 人のユーザーに一斉メールを送信します。よろしいですか？`)) return;
     setIsLoading(true);
@@ -113,13 +112,6 @@ export function useAdmin({
   const toggleGeminiFlashModel = async (newModel: '3.5-lite' | '3.6') => { const { error } = await supabase.from('app_settings').update({ gemini_flash_model: newModel }).eq('id', 1); if (error) { alert(`設定の保存に失敗しました。`); } setGeminiFlashModel(newModel); alert(`AIモデルを ${newModel} に変更しました。`); };
   const resolveReport = async (reportId: string) => { await supabase.from('reports').update({ status: 'resolved' }).eq('id', reportId); fetchAdminData(); };
   
-  const grantPointsToAll = async (amount: number) => {
-    if (!confirm(`全ユーザーに一律 ${amount} ptを付与しますか？`)) return;
-    setIsLoading(true);
-    for (const user of allUsers) { await supabase.from('profiles').update({ points: (user.points || 0) + amount }).eq('id', user.id); }
-    alert(`全ユーザーに ${amount} ptを付与しました！`); await fetchAdminData(); setIsLoading(false);
-  };
-
   const executeCreateTester = async (testerEmail: string, testerPass: string) => {
     try {
       const { data, error } = await supabase.auth.signUp({ email: testerEmail, password: testerPass });
@@ -145,7 +137,37 @@ export function useAdmin({
     else { alert(`ユーザーに ${amount} 個付与しました。`); await fetchAdminData(); }
   };
 
+  // ★ 追加：全員にチケットやポイントを配布する機能
+  const grantItemToAll = async (itemType: string, amount: number) => {
+    const dbKeyMap: Record<string, string> = {
+      points: 'points', ticketsBronze: 'tickets_bronze', ticketsSilver: 'tickets_silver', ticketsGold: 'tickets_gold', ticketsPlatinum: 'tickets_platinum', ticketsDiamond: 'tickets_diamond', ticketsItem: 'tickets_item'
+    };
+    const itemNameMap: Record<string, string> = {
+      points: 'ポイント', ticketsBronze: 'ブロンズチケット', ticketsSilver: 'シルバーチケット', ticketsGold: 'ゴールドチケット', ticketsPlatinum: 'プラチナチケット', ticketsDiamond: 'ダイヤチケット', ticketsItem: 'アイテムチケット'
+    };
+    
+    const dbKey = dbKeyMap[itemType];
+    const itemName = itemNameMap[itemType];
+    if (!dbKey) return;
+
+    if (!confirm(`本当に全ユーザー（${allUsers.length}人）に「${itemName}」を一律 ${amount} 個付与しますか？`)) return;
+    
+    setIsLoading(true);
+    try {
+      for (const user of allUsers) {
+        const currentVal = (user as any)[itemType] || 0;
+        await supabase.from('profiles').update({ [dbKey]: currentVal + amount }).eq('id', user.id);
+      }
+      alert(`全ユーザーに ${amount} 個の「${itemName}」を付与しました！`);
+      await fetchAdminData(); 
+    } catch(err: any) {
+      alert("付与処理中にエラーが発生しました: " + err.message);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
   return {
-    allUsers, reports, fetchAdminData, adminExecuteBan, adminUnbanUser, adminSuspendUser, adminUnsuspendUser, adminExecuteScenarioBan, adminUnbanScenario, adminDeleteScenario, adminSendMailToUser, adminSendMailToAll, toggleMaintenance, toggleTicketSystem, toggleAdminStatus, toggleTesterStatus, toggleGeminiFlashModel, resolveReport, grantPointsToAll, executeCreateTester, adminGrantItem
+    allUsers, reports, fetchAdminData, adminExecuteBan, adminUnbanUser, adminSuspendUser, adminUnsuspendUser, adminExecuteScenarioBan, adminUnbanScenario, adminDeleteScenario, adminSendMailToUser, adminSendMailToAll, toggleMaintenance, toggleTicketSystem, toggleAdminStatus, toggleTesterStatus, toggleGeminiFlashModel, resolveReport, executeCreateTester, adminGrantItem, grantItemToAll
   };
 }

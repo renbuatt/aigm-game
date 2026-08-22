@@ -18,10 +18,10 @@ type AdminViewProps = {
   adminDeleteScenario: (id: string) => void;
   setCurrentView: (view: any) => void;
   executeCreateTester: (email: string, pass: string) => void;
-  grantPointsToAll: (amount: number) => void;
+  grantItemToAll: (type: string, amount: number) => void; // ★修正
   adminSendMailToUser: (id: string, body: string) => void;
   adminGrantItem?: (id: string, type: string, amount: number) => void;
-  adminSendMailToAll: (title: string, body: string) => void; // ★追加
+  adminSendMailToAll: (title: string, body: string) => void;
 };
 
 export default function AdminView(props: AdminViewProps) {
@@ -57,7 +57,12 @@ export default function AdminView(props: AdminViewProps) {
 const SystemTab = (props: AdminViewProps) => {
   const [testerEmail, setTesterEmail] = useState("");
   const [testerPass, setTesterPass] = useState("");
-  const [pointAmount, setPointAmount] = useState(100);
+
+  const [grantTypeAll, setGrantTypeAll] = useState("points");
+  const [grantAmountAll, setGrantAmountAll] = useState(100);
+
+  const [massMailTitle, setMassMailTitle] = useState("✉️ 運営からのお知らせ");
+  const [massMailBody, setMassMailBody] = useState("");
 
   return (
     <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
@@ -88,32 +93,59 @@ const SystemTab = (props: AdminViewProps) => {
           </div>
         </div>
 
+        {/* ★ チケット・ポイントの一括配布パネル */}
         <div className="bg-slate-800 p-6 rounded-xl border border-yellow-700/50">
-           <h3 className="font-bold text-yellow-400 mb-2">💰 全員にポイントを配布（お詫び等）</h3>
-           <div className="text-xs text-slate-400 mb-4">※登録されている全ユーザーに対して一律でポイントを加算します。</div>
-           <div className="flex gap-2">
-             <input type="number" value={pointAmount} onChange={e=>setPointAmount(Number(e.target.value))} className="w-24 bg-slate-900 border border-slate-700 rounded px-3 py-2 text-white" />
-             <button onClick={()=>props.grantPointsToAll(pointAmount)} className="flex-1 bg-yellow-600 hover:bg-yellow-500 text-slate-900 rounded font-bold">全ユーザーに付与する</button>
+           <h3 className="font-bold text-yellow-400 mb-2">🎁 全員にアイテム・ポイントを配布（お詫び等）</h3>
+           <div className="text-xs text-slate-400 mb-4">※登録されている全ユーザーに対して一律で付与します。</div>
+           <div className="flex gap-2 mb-2">
+             <select value={grantTypeAll} onChange={e=>setGrantTypeAll(e.target.value)} className="bg-slate-900 border border-slate-700 rounded px-2 py-2 text-sm text-white flex-1">
+               <option value="points">💰 ポイント</option>
+               <option value="ticketsBronze">🟤 ブロンズチケット</option>
+               <option value="ticketsSilver">⚪ シルバーチケット</option>
+               <option value="ticketsGold">🟡 ゴールドチケット</option>
+               <option value="ticketsPlatinum">🟣 プラチナチケット</option>
+               <option value="ticketsDiamond">💎 ダイヤチケット</option>
+               <option value="ticketsItem">💼 アイテムチケット</option>
+             </select>
+             <input type="number" value={grantAmountAll} onChange={e=>setGrantAmountAll(Number(e.target.value))} className="w-20 bg-slate-900 border border-slate-700 rounded px-2 py-2 text-sm text-white" />
            </div>
+           <button onClick={()=>props.grantItemToAll(grantTypeAll, grantAmountAll)} className="w-full bg-yellow-600 hover:bg-yellow-500 text-slate-900 rounded font-bold py-2 mt-2">
+             全ユーザーに付与する
+           </button>
         </div>
       </div>
 
-      <div className="bg-slate-800 p-6 rounded-xl border border-slate-700 h-fit">
-         <h3 className="font-bold text-emerald-400 text-lg mb-4">🧪 テスターアカウント発行</h3>
-         <div className="text-xs text-slate-400 mb-6">メンテナンス中もログインでき、チケット消費を無視できる専用アカウントを作成します。</div>
-         <div className="space-y-4">
-           <div>
-             <label className="block text-xs text-slate-400 mb-1">メールアドレス</label>
-             <input type="email" value={testerEmail} onChange={e=>setTesterEmail(e.target.value)} className="w-full bg-slate-900 border border-slate-700 rounded px-3 py-2 text-white" />
+      <div className="space-y-6 h-fit">
+        {/* ★ 一斉メール送信パネル */}
+        <div className="bg-slate-800 p-6 rounded-xl border border-indigo-700/50">
+           <h3 className="font-bold text-indigo-400 mb-2">📢 全ユーザーへ一斉メール送信</h3>
+           <div className="text-xs text-slate-400 mb-4">全 {props.allUsers.length} 人のユーザーに同時にお知らせメールを送信します。</div>
+           <div className="space-y-3">
+              <input type="text" value={massMailTitle} onChange={e=>setMassMailTitle(e.target.value)} className="w-full bg-slate-900 border border-slate-700 rounded p-2 text-sm text-white" placeholder="件名" />
+              <textarea value={massMailBody} onChange={e=>setMassMailBody(e.target.value)} className="w-full h-24 bg-slate-900 border border-slate-700 rounded p-2 text-sm text-white" placeholder="本文メッセージ..."></textarea>
+              <button onClick={()=>{ props.adminSendMailToAll(massMailTitle, massMailBody); setMassMailBody(""); }} className="w-full bg-indigo-600 hover:bg-indigo-500 py-3 rounded font-bold shadow-lg mt-2">
+                一斉送信を実行
+              </button>
            </div>
-           <div>
-             <label className="block text-xs text-slate-400 mb-1">パスワード（6文字以上）</label>
-             <input type="password" value={testerPass} onChange={e=>setTesterPass(e.target.value)} className="w-full bg-slate-900 border border-slate-700 rounded px-3 py-2 text-white" />
+        </div>
+
+        <div className="bg-slate-800 p-6 rounded-xl border border-slate-700">
+           <h3 className="font-bold text-emerald-400 text-lg mb-4">🧪 テスターアカウント発行</h3>
+           <div className="text-xs text-slate-400 mb-6">メンテナンス中もログインでき、チケット消費を無視できる専用アカウントを作成します。</div>
+           <div className="space-y-4">
+             <div>
+               <label className="block text-xs text-slate-400 mb-1">メールアドレス</label>
+               <input type="email" value={testerEmail} onChange={e=>setTesterEmail(e.target.value)} className="w-full bg-slate-900 border border-slate-700 rounded px-3 py-2 text-white" />
+             </div>
+             <div>
+               <label className="block text-xs text-slate-400 mb-1">パスワード（6文字以上）</label>
+               <input type="password" value={testerPass} onChange={e=>setTesterPass(e.target.value)} className="w-full bg-slate-900 border border-slate-700 rounded px-3 py-2 text-white" />
+             </div>
+             <button onClick={()=>{ if(!testerEmail || !testerPass) return; props.executeCreateTester(testerEmail, testerPass); }} className="w-full bg-emerald-600 hover:bg-emerald-500 py-3 rounded font-bold mt-4">
+               発行する（※自動的にログアウトされます）
+             </button>
            </div>
-           <button onClick={()=>{ if(!testerEmail || !testerPass) return; props.executeCreateTester(testerEmail, testerPass); }} className="w-full bg-emerald-600 hover:bg-emerald-500 py-3 rounded font-bold mt-4">
-             発行する（※自動的にログアウトされます）
-           </button>
-         </div>
+        </div>
       </div>
     </div>
   );
@@ -127,18 +159,9 @@ const UsersTab = (props: AdminViewProps) => {
   const [grantType, setGrantType] = useState("points");
   const [grantAmount, setGrantAmount] = useState(1);
 
-  // ★ 一斉メール用ステート
-  const [massMailModal, setMassMailModal] = useState(false);
-  const [massMailTitle, setMassMailTitle] = useState("✉️ 運営からのお知らせ");
-  const [massMailBody, setMassMailBody] = useState("");
-
   return (
     <div className="space-y-4">
-      <div className="flex justify-between items-center mb-4">
-        <div className="text-sm text-slate-400">全 {props.allUsers.length} ユーザー登録</div>
-        <button onClick={() => setMassMailModal(true)} className="bg-indigo-600 hover:bg-indigo-500 text-sm px-5 py-2 rounded font-bold shadow">📢 一斉メール送信</button>
-      </div>
-
+      <div className="text-sm text-slate-400 mb-4">全 {props.allUsers.length} ユーザー登録</div>
       {props.allUsers.map(u => (
          <div key={u.id} className="p-5 bg-slate-800 rounded-xl border border-slate-700 flex flex-col xl:flex-row justify-between items-start xl:items-center gap-4 hover:border-slate-600 transition-colors">
             <div>
@@ -197,30 +220,6 @@ const UsersTab = (props: AdminViewProps) => {
         </div>
       )}
 
-      {/* ★ 一斉メールモーダル */}
-      {massMailModal && (
-        <div className="fixed inset-0 bg-black/80 z-[100] flex justify-center items-center p-4">
-           <div className="bg-slate-800 p-6 rounded-xl w-full max-w-md border border-slate-700">
-              <h3 className="font-bold mb-4 text-indigo-400">📢 一斉メール送信</h3>
-              <div className="text-xs text-slate-400 mb-4">全 {props.allUsers.length} 人のユーザーに同時送信します。</div>
-              <div className="space-y-4 mb-4">
-                <div>
-                  <label className="text-xs text-slate-400 block mb-1">件名 (タイトル)</label>
-                  <input type="text" value={massMailTitle} onChange={e=>setMassMailTitle(e.target.value)} className="w-full bg-slate-900 border border-slate-700 rounded p-2 text-sm text-white" />
-                </div>
-                <div>
-                  <label className="text-xs text-slate-400 block mb-1">本文</label>
-                  <textarea value={massMailBody} onChange={e=>setMassMailBody(e.target.value)} className="w-full h-32 bg-slate-900 border border-slate-700 rounded p-3 text-sm text-white" placeholder="メッセージを入力..."></textarea>
-                </div>
-              </div>
-              <div className="flex gap-3">
-                 <button onClick={()=>{setMassMailModal(false); setMassMailBody("");}} className="flex-1 bg-slate-700 py-3 rounded font-bold">キャンセル</button>
-                 <button onClick={()=>{ props.adminSendMailToAll(massMailTitle, massMailBody); setMassMailModal(false); setMassMailBody(""); }} className="flex-1 bg-indigo-600 hover:bg-indigo-500 py-3 rounded font-bold shadow-lg">全ユーザーに送信</button>
-              </div>
-           </div>
-        </div>
-      )}
-
       {/* 個別付与モーダル */}
       {grantModal && (
         <div className="fixed inset-0 bg-black/80 z-[100] flex justify-center items-center p-4">
@@ -264,7 +263,6 @@ const ScenariosTab = (props: AdminViewProps) => {
         {props.scenarios.map(s => (
            <div key={s.id} className="p-5 bg-slate-800 rounded-xl border border-slate-700 flex flex-col md:flex-row justify-between items-start md:items-center gap-4 hover:border-slate-600 transition-colors">
               <div>
-                {/* ★シナリオ名をリンク風に変更 */}
                 <div 
                   className="font-bold text-lg text-blue-400 hover:text-blue-300 cursor-pointer underline transition-colors" 
                   onClick={() => setViewScenario(s)} 
@@ -290,7 +288,7 @@ const ScenariosTab = (props: AdminViewProps) => {
            </div>
         ))}
 
-        {/* ★シナリオ閲覧モーダル（読み取り専用） */}
+        {/* シナリオ閲覧モーダル（読み取り専用） */}
         {viewScenario && (
           <div className="fixed inset-0 bg-black/80 z-[100] flex justify-center items-center p-4">
              <div className="bg-slate-800 p-6 rounded-xl w-full max-w-3xl border border-slate-700 max-h-[90vh] flex flex-col">
