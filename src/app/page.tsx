@@ -196,8 +196,8 @@ export default function Home() {
     toggleAdminStatus, toggleTesterStatus, toggleGeminiFlashModel, resolveReport,
     adminExecuteBan, adminUnbanUser, adminSuspendUser, adminUnsuspendUser,
     adminExecuteScenarioBan, adminUnbanScenario, adminDeleteScenario,
-    executeCreateTester, adminSendMailToUser,
-    adminGrantItem, adminSendMailToAll, grantItemToAll // ★古い grantPointsToAll を削除し修正済み
+    executeCreateTester, adminSendMailToUser, 
+    adminGrantItem, adminSendMailToAll, grantItemToAll
   } = useAdmin({
     scenarios, fetchData, isMaintenance, setIsMaintenance,
     isTicketSystemEnabled, setIsTicketSystemEnabled, setGeminiFlashModel,
@@ -1141,23 +1141,31 @@ export default function Home() {
         if (model === 'claude') { ticketKey = 'tickets_platinum'; ticketName = 'プラチナチケット'; }
         if (model === 'opus') { ticketKey = 'tickets_diamond'; ticketName = 'ダイヤモンドチケット'; }
 
+        // 二重返還を防ぐために部屋を「返還済み」にマーク
         await supabase.from('rooms').update({ error_refunded: true }).eq('id', activeRoom.id);
         setActiveRoom(prev => prev ? { ...prev, error_refunded: true } : null);
 
-        if (currentUser) {
-          const currentAmount = (currentUser as any)[ticketKey] || 0;
-          const newAmount = currentAmount + 1;
-          await supabase.from('profiles').update({ [ticketKey]: newAmount }).eq('id', currentUser.id);
-          setCurrentUser(prev => prev ? { ...prev, [ticketKey]: newAmount } : null);
-
-          await supabase.from('notifications').insert({ 
-            user_id: currentUser.id, 
-            title: '【重要】システムエラーに伴うチケット返還のお知らせ', 
-            message: `プレイ中のセッション「${activeRoom.scenario?.title || '名称未設定'}」にてAIの応答エラーが発生したため、消費した「${ticketName}」を1枚返還いたしました。\nご不便をおかけして誠に申し訳ありません。` 
-          });
+        // ★追加：部屋に参加している「全員」に対して一律でチケットを返還する
+        const joinedUserIds = Object.keys(activeRoom.joined_users || {});
+        for (const uid of joinedUserIds) {
+          const { data: userData } = await supabase.from('profiles').select(ticketKey).eq('id', uid).single();
+          if (userData) {
+            const currentAmount = userData[ticketKey] || 0;
+            await supabase.from('profiles').update({ [ticketKey]: currentAmount + 1 }).eq('id', uid);
+            await supabase.from('notifications').insert({ 
+              user_id: uid, 
+              title: '【重要】システムエラーに伴うチケット返還のお知らせ', 
+              message: `プレイ中のセッション「${activeRoom.scenario?.title || '名称未設定'}」にてAIの応答エラーが発生したため、消費した「${ticketName}」を1枚返還いたしました。\nご不便をおかけして誠に申し訳ありません。` 
+            });
+          }
+        }
+        
+        // 自分の画面（ステート）も更新して表示を反映させる
+        if (currentUser && joinedUserIds.includes(currentUser.id)) {
+           setCurrentUser(prev => prev ? { ...prev, [ticketKey]: ((prev as any)[ticketKey] || 0) + 1 } : null);
         }
 
-        await pushMessage(activeRoom.id, { sender: "system", text: `【システムエラー】AIが混雑、または応答に失敗しました。\nお詫びとして消費した「${ticketName}」を1枚自動返還しました。`, type: "system", sceneId: myScene?.id, channel: "system" }, false);
+        await pushMessage(activeRoom.id, { sender: "system", text: `【システムエラー】AIが混雑、または応答に失敗しました。\nお詫びとして参加者全員に消費した「${ticketName}」を1枚自動返還しました。`, type: "system", sceneId: myScene?.id, channel: "system" }, false);
       } else {
         await pushMessage(activeRoom.id, { sender: "system", text: `【システムエラー】AIが混雑しています。時間を置いて再度お試しください。`, type: "system", sceneId: myScene?.id, channel: "system" }, false);
       }

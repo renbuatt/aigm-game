@@ -47,9 +47,11 @@ export function useScenario({
       let translationEn = editingScenario.translationEn || {};
       let translationZh = editingScenario.translationZh || {};
       
-      if (editingScenario.title && editingScenario.description) {
+      // ★修正：あらすじ(description)が空でもスキップしないように変更
+      if (editingScenario.title) {
         try {
-          const charsData = editingScenario.presetCharacters.map((c: any) => ({ name: c.name, job: c.job, personality: c.personality }));
+          const desc = editingScenario.description || "（あらすじ未設定）";
+          const charsData = (editingScenario.presetCharacters || []).map((c: any) => ({ name: c.name, job: c.job, personality: c.personality }));
           const promptBase = `You are a professional translator. Translate the following TRPG scenario into [TARGET_LANG].
 CRITICAL INSTRUCTIONS:
 1. Output ONLY a valid JSON object. Do not include markdown like \`\`\`json.
@@ -60,7 +62,7 @@ Format strictly as:
 {"title": "...", "description": "...", "characters": [{"name": "...", "job": "...", "personality": "..."}]}
 
 Title: ${editingScenario.title}
-Description: ${editingScenario.description}
+Description: ${desc}
 Characters: ${JSON.stringify(charsData)}`;
 
           const [resEnRaw, resZhRaw] = await Promise.all([
@@ -69,7 +71,7 @@ Characters: ${JSON.stringify(charsData)}`;
           ]);
 
           const parseAIResponse = (rawText: string) => {
-            const cleanText = rawText.replace(/```json/gi, "").replace(/```/g, "").trim();
+            const cleanText = rawText.replace(/`{3}json/gi, "").replace(/`{3}/g, "").trim();
             const match = cleanText.match(/\{[\s\S]*\}/);
             if (match) return JSON.parse(match[0]);
             return JSON.parse(cleanText);
