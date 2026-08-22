@@ -44,7 +44,7 @@ export function useScenario({
     if (!editingScenario || !currentUser) return;
     setIsLoading(true);
     try {
-      // 既存の翻訳データがあれば引き継ぐ
+      // 既存の翻訳データがあれば一旦引き継ぐ
       let translationEn = editingScenario.translationEn || {};
       let translationZh = editingScenario.translationZh || {};
       
@@ -52,34 +52,40 @@ export function useScenario({
         try {
           const charsData = editingScenario.presetCharacters.map((c: any) => ({ name: c.name, job: c.job, personality: c.personality }));
           const promptBase = `You are a professional translator. Translate the following TRPG scenario into [TARGET_LANG].
-CRITICAL INSTRUCTION: Output ONLY a valid JSON object. Do NOT wrap it in markdown block. Do NOT add any conversational text.
-Structure:
+CRITICAL INSTRUCTIONS:
+1. Output ONLY a valid JSON object. Do not include markdown like \`\`\`json.
+2. Do not include any conversational text (e.g., "Here is the translation:").
+3. Escape all newlines within strings as \\n.
+
+Format strictly as:
 {"title": "...", "description": "...", "characters": [{"name": "...", "job": "...", "personality": "..."}]}
 
 Title: ${editingScenario.title}
 Description: ${editingScenario.description}
 Characters: ${JSON.stringify(charsData)}`;
 
-          // API制限（429エラー）を避けるため、同時に投げずに順番（直列）に実行する
-          try {
-            const resEnRaw = await generateAITextWithPrompt(promptBase.replace('[TARGET_LANG]', 'English'), 'flash', 2000, 0.2);
-            // 正規表現で { から } までを強制的に抽出（AIの余計な文章を無視）
-            const matchEn = resEnRaw.match(/\{[\s\S]*\}/);
-            if (matchEn) translationEn = JSON.parse(matchEn[0]);
-          } catch (err) {
-            console.error("英語翻訳エラー:", err);
-          }
+          // 英語と中国語を「同時（Promise.all）」に処理する（モデルはflashで固定）
+          const [resEnRaw, resZhRaw] = await Promise.all([
+            generateAITextWithPrompt(promptBase.replace('[TARGET_LANG]', 'English'), 'flash', 2000, 0.2),
+            generateAITextWithPrompt(promptBase.replace('[TARGET_LANG]', 'Simplified Chinese'), 'flash', 2000, 0.2)
+          ]);
 
-          try {
-            const resZhRaw = await generateAITextWithPrompt(promptBase.replace('[TARGET_LANG]', 'Simplified Chinese'), 'flash', 2000, 0.2);
-            const matchZh = resZhRaw.match(/\{[\s\S]*\}/);
-            if (matchZh) translationZh = JSON.parse(matchZh[0]);
-          } catch (err) {
-            console.error("中国語翻訳エラー:", err);
-          }
+          // AIの出力から「純粋なJSON部分だけ」を無理やり抽出する強力な関数
+          const parseAIResponse = (rawText: string) => {
+            const cleanText = rawText.replace(/```json/gi, "").replace(/```/g, "").trim();
+            const match = cleanText.match(/\{[\s\S]*\}/); // { から } までを抽出
+            if (match) {
+              return JSON.parse(match[0]);
+            }
+            return JSON.parse(cleanText);
+          };
+
+          try { translationEn = parseAIResponse(resEnRaw); } catch(e) { console.error("英語翻訳のパースに失敗しました", e); }
+          try { translationZh = parseAIResponse(resZhRaw); } catch(e) { console.error("中国語翻訳のパースに失敗しました", e); }
 
         } catch (e) { 
-          console.error("翻訳全体のエラー:", e);
+          console.error("翻訳APIエラー:", e);
+          alert("AI翻訳の処理中に一部エラーが発生しましたが、シナリオ本体の保存は継続します。");
         }
       }
 
@@ -90,13 +96,14 @@ Characters: ${JSON.stringify(charsData)}`;
         translation_en: translationEn, translation_zh: translationZh
       };
       
+      // 保存処理（IDが 's' 始まり＝新規作成、それ以外＝既存の更新）
       if (editingScenario.id && !editingScenario.id.startsWith('s')) {
         await supabase.from('scenarios').update(dbData).eq('id', editingScenario.id);
       } else {
         await supabase.from('scenarios').insert(dbData);
       }
       
-      alert("シナリオを保存（多言語翻訳チェック完了）しました！"); 
+      alert("シナリオを保存し、グローバル翻訳を完了しました！"); 
       await fetchData(); 
       setCurrentView("lobby");
     } catch (err: any) { 
