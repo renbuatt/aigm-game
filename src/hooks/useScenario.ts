@@ -5,7 +5,7 @@ import { UserProfile, Room, Scenario } from "../types";
 type UseScenarioProps = {
   currentUser: UserProfile | null;
   activeRoom: Room | null;
-  setActiveRoom: React.Dispatch<React.SetStateAction<Room | null>>; // ⭕️ ここを修正
+  setActiveRoom: React.Dispatch<React.SetStateAction<Room | null>>;
   setJoinedCharacter: React.Dispatch<React.SetStateAction<any>>;
   editingScenario: Scenario | null;
   ratingScenario: number;
@@ -15,7 +15,7 @@ type UseScenarioProps = {
   reportReason: string;
   setReportReason: React.Dispatch<React.SetStateAction<string>>;
   scenarioAppealTarget: Scenario | null;
-  setScenarioAppealTarget: React.Dispatch<React.SetStateAction<Scenario | null>>; // ⭕️ ここも修正
+  setScenarioAppealTarget: React.Dispatch<React.SetStateAction<Scenario | null>>;
   scenarioAppealText: string;
   setScenarioAppealText: React.Dispatch<React.SetStateAction<string>>;
   setIsLoading: React.Dispatch<React.SetStateAction<boolean>>;
@@ -44,7 +44,6 @@ export function useScenario({
     if (!editingScenario || !currentUser) return;
     setIsLoading(true);
     try {
-      // 既存の翻訳データがあれば一旦引き継ぐ
       let translationEn = editingScenario.translationEn || {};
       let translationZh = editingScenario.translationZh || {};
       
@@ -64,28 +63,33 @@ Title: ${editingScenario.title}
 Description: ${editingScenario.description}
 Characters: ${JSON.stringify(charsData)}`;
 
-          // 英語と中国語を「同時（Promise.all）」に処理する
           const [resEnRaw, resZhRaw] = await Promise.all([
             generateAITextWithPrompt(promptBase.replace('[TARGET_LANG]', 'English'), 'flash', 2000, 0.2),
             generateAITextWithPrompt(promptBase.replace('[TARGET_LANG]', 'Simplified Chinese'), 'flash', 2000, 0.2)
           ]);
 
-          // AIの出力から「純粋なJSON部分だけ」を無理やり抽出する関数
           const parseAIResponse = (rawText: string) => {
             const cleanText = rawText.replace(/```json/gi, "").replace(/```/g, "").trim();
-            const match = cleanText.match(/\{[\s\S]*\}/); // { から } までを抽出
-            if (match) {
-              return JSON.parse(match[0]);
-            }
+            const match = cleanText.match(/\{[\s\S]*\}/);
+            if (match) return JSON.parse(match[0]);
             return JSON.parse(cleanText);
           };
 
-          try { translationEn = parseAIResponse(resEnRaw); } catch(e) { console.error("英語翻訳のパースに失敗しました", e); }
-          try { translationZh = parseAIResponse(resZhRaw); } catch(e) { console.error("中国語翻訳のパースに失敗しました", e); }
+          try { translationEn = parseAIResponse(resEnRaw); } catch(e) { console.error("英語翻訳パース失敗", e); throw e; }
+          try { translationZh = parseAIResponse(resZhRaw); } catch(e) { console.error("中国語翻訳パース失敗", e); throw e; }
 
-        } catch (e) { 
+        } catch (e: any) { 
           console.error("翻訳APIエラー:", e);
-          alert("AI翻訳の処理中に一部エラーが発生しましたが、シナリオ本体の保存は継続します。");
+          if (currentUser) {
+             await supabase.from('reports').insert({
+                reporter_id: currentUser.id,
+                target_type: 'system_error',
+                target_id: editingScenario.id || 'new_scenario',
+                reason: `【自動記録：翻訳エラー】\n対象シナリオ: ${editingScenario.title}\nエラー内容: ${e.message}`,
+                status: 'pending'
+             });
+          }
+          alert("AI翻訳の処理中にエラーが発生しました（管理画面のエラーログに記録されました）。シナリオ本体の保存は継続します。");
         }
       }
 
@@ -96,7 +100,6 @@ Characters: ${JSON.stringify(charsData)}`;
         translation_en: translationEn, translation_zh: translationZh
       };
       
-      // 保存処理（IDが 's' 始まり＝新規作成、それ以外＝既存の更新）
       if (editingScenario.id && !editingScenario.id.startsWith('s')) {
         await supabase.from('scenarios').update(dbData).eq('id', editingScenario.id);
       } else {
@@ -159,12 +162,5 @@ Characters: ${JSON.stringify(charsData)}`;
     }
   };
 
-  return {
-    deleteScenario,
-    saveScenario,
-    submitEvaluation,
-    submitUserReport,
-    submitScenarioAppeal,
-    generatePackageImage
-  };
+  return { deleteScenario, saveScenario, submitEvaluation, submitUserReport, submitScenarioAppeal, generatePackageImage };
 }

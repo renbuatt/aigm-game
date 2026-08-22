@@ -17,15 +17,9 @@ type UseAdminProps = {
 };
 
 export function useAdmin({
-  scenarios,
-  fetchData,
-  isMaintenance,
-  setIsMaintenance,
-  isTicketSystemEnabled,
-  setIsTicketSystemEnabled,
-  setGeminiFlashModel,
-  handleLogout,
-  setIsLoading
+  scenarios, fetchData, isMaintenance, setIsMaintenance,
+  isTicketSystemEnabled, setIsTicketSystemEnabled, setGeminiFlashModel,
+  handleLogout, setIsLoading
 }: UseAdminProps) {
   const [allUsers, setAllUsers] = useState<UserProfile[]>([]);
   const [reports, setReports] = useState<Report[]>([]);
@@ -36,16 +30,13 @@ export function useAdmin({
       id: d.id, handleName: d.handle_name, avatarUrl: d.avatar_url, bio: d.bio, discordId: d.discord_id, 
       ratingSum: d.rating_sum || 0, ratingCount: d.rating_count || 0, isAdmin: d.is_admin || false, 
       isTester: d.is_tester || false, isBanned: d.is_banned || false, isSuspended: d.is_suspended || false, 
-      email: d.email, points: d.points 
+      email: d.email, points: d.points, ticketsBronze: d.tickets_bronze, ticketsSilver: d.tickets_silver, ticketsGold: d.tickets_gold, ticketsPlatinum: d.tickets_platinum, ticketsDiamond: d.tickets_diamond, ticketsItem: d.tickets_item 
     })));
     const { data: reportsData } = await supabase.from('reports').select('*').order('created_at', { ascending: false });
     if (reportsData) setReports(reportsData.map((d: any) => ({ id: d.id, reporterId: d.reporter_id, targetType: d.target_type, targetId: d.target_id, roomId: d.room_id || null, reason: d.reason, status: d.status, createdAt: d.created_at })));
   };
 
-  // ★ 修正箇所：フックが呼び出されたタイミングで自動的にデータを取得する
-  useEffect(() => {
-    fetchAdminData();
-  }, []);
+  useEffect(() => { fetchAdminData(); }, []);
 
   const adminExecuteBan = async (userId: string, reason: string) => {
     await supabase.from('profiles').update({ is_banned: true }).eq('id', userId);
@@ -105,11 +96,8 @@ export function useAdmin({
   const grantPointsToAll = async (amount: number) => {
     if (!confirm(`全ユーザーに一律 ${amount} ptを付与しますか？`)) return;
     setIsLoading(true);
-    for (const user of allUsers) {
-      await supabase.from('profiles').update({ points: (user.points || 0) + amount }).eq('id', user.id);
-    }
-    alert(`全ユーザーに ${amount} ptを付与しました！`);
-    await fetchAdminData(); setIsLoading(false);
+    for (const user of allUsers) { await supabase.from('profiles').update({ points: (user.points || 0) + amount }).eq('id', user.id); }
+    alert(`全ユーザーに ${amount} ptを付与しました！`); await fetchAdminData(); setIsLoading(false);
   };
 
   const executeCreateTester = async (testerEmail: string, testerPass: string) => {
@@ -123,25 +111,22 @@ export function useAdmin({
     } catch (err: any) { alert("作成失敗: " + err.message); }
   };
 
+  // ★ 追加：個別アイテム付与機能
+  const adminGrantItem = async (userId: string, itemType: string, amount: number) => {
+    const user = allUsers.find(u => u.id === userId);
+    if (!user) return;
+    const dbKeyMap: Record<string, string> = {
+      points: 'points', ticketsBronze: 'tickets_bronze', ticketsSilver: 'tickets_silver', ticketsGold: 'tickets_gold', ticketsPlatinum: 'tickets_platinum', ticketsDiamond: 'tickets_diamond', ticketsItem: 'tickets_item'
+    };
+    const dbKey = dbKeyMap[itemType];
+    if (!dbKey) return;
+    const currentVal = (user as any)[itemType] || 0;
+    const { error } = await supabase.from('profiles').update({ [dbKey]: currentVal + amount }).eq('id', userId);
+    if (error) alert("付与に失敗しました: " + error.message);
+    else { alert(`ユーザーに ${amount} 個付与しました。`); await fetchAdminData(); }
+  };
+
   return {
-    allUsers,
-    reports,
-    fetchAdminData,
-    adminExecuteBan,
-    adminUnbanUser,
-    adminSuspendUser,
-    adminUnsuspendUser,
-    adminExecuteScenarioBan,
-    adminUnbanScenario,
-    adminDeleteScenario,
-    adminSendMailToUser,
-    toggleMaintenance,
-    toggleTicketSystem,
-    toggleAdminStatus,
-    toggleTesterStatus,
-    toggleGeminiFlashModel,
-    resolveReport,
-    grantPointsToAll,
-    executeCreateTester
+    allUsers, reports, fetchAdminData, adminExecuteBan, adminUnbanUser, adminSuspendUser, adminUnsuspendUser, adminExecuteScenarioBan, adminUnbanScenario, adminDeleteScenario, adminSendMailToUser, toggleMaintenance, toggleTicketSystem, toggleAdminStatus, toggleTesterStatus, toggleGeminiFlashModel, resolveReport, grantPointsToAll, executeCreateTester, adminGrantItem
   };
 }
