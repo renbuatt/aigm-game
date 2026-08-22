@@ -5,7 +5,7 @@ import { UserProfile, Room, Scenario } from "../types";
 type UseScenarioProps = {
   currentUser: UserProfile | null;
   activeRoom: Room | null;
-  setActiveRoom: React.Dispatch<React.SetStateAction<Room null |>>;
+  setActiveRoom: React.Dispatch<React.SetStateAction<Room | null>>; // ⭕️ 直しました
   setJoinedCharacter: React.Dispatch<React.SetStateAction<any>>;
   editingScenario: Scenario | null;
   ratingScenario: number;
@@ -15,7 +15,7 @@ type UseScenarioProps = {
   reportReason: string;
   setReportReason: React.Dispatch<React.SetStateAction<string>>;
   scenarioAppealTarget: Scenario | null;
-  setScenarioAppealTarget: React.Dispatch<React.SetStateAction<Scenario null |>>;
+  setScenarioAppealTarget: React.Dispatch<React.SetStateAction<Scenario | null>>; // ⭕️ 直しました
   scenarioAppealText: string;
   setScenarioAppealText: React.Dispatch<React.SetStateAction<string>>;
   setIsLoading: React.Dispatch<React.SetStateAction<boolean>>;
@@ -64,13 +64,13 @@ Title: ${editingScenario.title}
 Description: ${editingScenario.description}
 Characters: ${JSON.stringify(charsData)}`;
 
-          // 英語と中国語を「同時（Promise.all）」に処理する（モデルはflashで固定）
+          // 英語と中国語を「同時（Promise.all）」に処理する
           const [resEnRaw, resZhRaw] = await Promise.all([
             generateAITextWithPrompt(promptBase.replace('[TARGET_LANG]', 'English'), 'flash', 2000, 0.2),
             generateAITextWithPrompt(promptBase.replace('[TARGET_LANG]', 'Simplified Chinese'), 'flash', 2000, 0.2)
           ]);
 
-          // AIの出力から「純粋なJSON部分だけ」を無理やり抽出する強力な関数
+          // AIの出力から「純粋なJSON部分だけ」を無理やり抽出する関数
           const parseAIResponse = (rawText: string) => {
             const cleanText = rawText.replace(/```json/gi, "").replace(/```/g, "").trim();
             const match = cleanText.match(/\{[\s\S]*\}/); // { から } までを抽出
