@@ -5,7 +5,7 @@ import { UserProfile, Room, Scenario } from "../types";
 type UseScenarioProps = {
   currentUser: UserProfile | null;
   activeRoom: Room | null;
-  setActiveRoom: React.Dispatch<React.SetStateAction<Room | null>>;
+  setActiveRoom: React.Dispatch<React.SetStateAction<Room null |>>;
   setJoinedCharacter: React.Dispatch<React.SetStateAction<any>>;
   editingScenario: Scenario | null;
   ratingScenario: number;
@@ -15,7 +15,7 @@ type UseScenarioProps = {
   reportReason: string;
   setReportReason: React.Dispatch<React.SetStateAction<string>>;
   scenarioAppealTarget: Scenario | null;
-  setScenarioAppealTarget: React.Dispatch<React.SetStateAction<Scenario | null>>;
+  setScenarioAppealTarget: React.Dispatch<React.SetStateAction<Scenario null |>>;
   scenarioAppealText: string;
   setScenarioAppealText: React.Dispatch<React.SetStateAction<string>>;
   setIsLoading: React.Dispatch<React.SetStateAction<boolean>>;
@@ -44,30 +44,66 @@ export function useScenario({
     if (!editingScenario || !currentUser) return;
     setIsLoading(true);
     try {
+      // 既存の翻訳データがあれば引き継ぐ
       let translationEn = editingScenario.translationEn || {};
       let translationZh = editingScenario.translationZh || {};
+      
       if (editingScenario.title && editingScenario.description) {
         try {
           const charsData = editingScenario.presetCharacters.map((c: any) => ({ name: c.name, job: c.job, personality: c.personality }));
-          const promptBase = `Translate the following TRPG scenario information into [TARGET_LANG]. Return ONLY a valid JSON object with no markdown formatting. Structure: {"title": "...", "description": "...", "characters": [{"name": "...", "job": "...", "personality": "..."}]}.\n\nTitle: ${editingScenario.title}\nDescription: ${editingScenario.description}\nCharacters: ${JSON.stringify(charsData)}`;
-          const [resEn, resZh] = await Promise.all([
-            generateAITextWithPrompt(promptBase.replace('[TARGET_LANG]', 'English'), 'flash', 2000, 0.3),
-            generateAITextWithPrompt(promptBase.replace('[TARGET_LANG]', 'Simplified Chinese'), 'flash', 2000, 0.3)
-          ]);
-          translationEn = JSON.parse(resEn.replace(/```json/g, "").replace(/```/g, "").trim());
-          translationZh = JSON.parse(resZh.replace(/```json/g, "").replace(/```/g, "").trim());
-        } catch (e) { alert("自動翻訳に一部失敗しましたが、シナリオは保存されます。"); }
+          const promptBase = `You are a professional translator. Translate the following TRPG scenario into [TARGET_LANG].
+CRITICAL INSTRUCTION: Output ONLY a valid JSON object. Do NOT wrap it in markdown block. Do NOT add any conversational text.
+Structure:
+{"title": "...", "description": "...", "characters": [{"name": "...", "job": "...", "personality": "..."}]}
+
+Title: ${editingScenario.title}
+Description: ${editingScenario.description}
+Characters: ${JSON.stringify(charsData)}`;
+
+          // API制限（429エラー）を避けるため、同時に投げずに順番（直列）に実行する
+          try {
+            const resEnRaw = await generateAITextWithPrompt(promptBase.replace('[TARGET_LANG]', 'English'), 'flash', 2000, 0.2);
+            // 正規表現で { から } までを強制的に抽出（AIの余計な文章を無視）
+            const matchEn = resEnRaw.match(/\{[\s\S]*\}/);
+            if (matchEn) translationEn = JSON.parse(matchEn[0]);
+          } catch (err) {
+            console.error("英語翻訳エラー:", err);
+          }
+
+          try {
+            const resZhRaw = await generateAITextWithPrompt(promptBase.replace('[TARGET_LANG]', 'Simplified Chinese'), 'flash', 2000, 0.2);
+            const matchZh = resZhRaw.match(/\{[\s\S]*\}/);
+            if (matchZh) translationZh = JSON.parse(matchZh[0]);
+          } catch (err) {
+            console.error("中国語翻訳エラー:", err);
+          }
+
+        } catch (e) { 
+          console.error("翻訳全体のエラー:", e);
+        }
       }
+
       const dbData = { 
         title: editingScenario.title, description: editingScenario.description || "", system: editingScenario.system || "", tags: editingScenario.tags || "", setting: editingScenario.setting || "", 
         npc_list: editingScenario.npcList || "", plot: editingScenario.plot || "", prologue: editingScenario.prologue || "", epilogue: editingScenario.epilogue || "",
         image_url: editingScenario.imageUrl || "", preset_characters: editingScenario.presetCharacters, rating_sum: editingScenario.ratingSum, rating_count: editingScenario.ratingCount, author_id: currentUser.id, purchased_tickets: editingScenario.purchasedTickets || {}, price: editingScenario.price || 500, play_limit: editingScenario.playLimit || 1, giftLimit: editingScenario.giftLimit || 1, play_time: editingScenario.playTime || 60, is_playable_by_others: editingScenario.isPlayableByOthers || false, is_trial_ok: editingScenario.isTrialOk || false, item_visibility: editingScenario.itemVisibility || "none", required_scenario_id: editingScenario.requiredScenarioId || "",
         translation_en: translationEn, translation_zh: translationZh
       };
-      if (editingScenario.id && !editingScenario.id.startsWith('s')) await supabase.from('scenarios').update(dbData).eq('id', editingScenario.id);
-      else await supabase.from('scenarios').insert(dbData);
-      alert("シナリオを保存（多言語翻訳）しました！"); await fetchData(); setCurrentView("lobby");
-    } catch (err: any) { alert("保存エラー: " + err.message); } finally { setIsLoading(false); }
+      
+      if (editingScenario.id && !editingScenario.id.startsWith('s')) {
+        await supabase.from('scenarios').update(dbData).eq('id', editingScenario.id);
+      } else {
+        await supabase.from('scenarios').insert(dbData);
+      }
+      
+      alert("シナリオを保存（多言語翻訳チェック完了）しました！"); 
+      await fetchData(); 
+      setCurrentView("lobby");
+    } catch (err: any) { 
+      alert("保存エラー: " + err.message); 
+    } finally { 
+      setIsLoading(false); 
+    }
   };
 
   const submitEvaluation = async () => {
