@@ -181,7 +181,6 @@ export default function Home() {
     else { setCurrentView("maintenance"); }
   };
 
-  // ★ フックの呼び出し
   const {
     handleEmailAuth, handleEmailSignUp, handleProfileSetup, handleGoogleAuth, handleLogout,
     openUserProfile, addFriend, blockUser, unblockUser, updateProfile, uploadAvatar
@@ -197,7 +196,7 @@ export default function Home() {
     adminExecuteBan, adminUnbanUser, adminSuspendUser, adminUnsuspendUser,
     adminExecuteScenarioBan, adminUnbanScenario, adminDeleteScenario,
     executeCreateTester, adminSendMailToUser,
-    adminGrantItem, adminSendMailToAll, grantItemToAll 
+    adminGrantItem, adminSendMailToAll, grantItemToAll
   } = useAdmin({
     scenarios, fetchData, isMaintenance, setIsMaintenance,
     isTicketSystemEnabled, setIsTicketSystemEnabled, setGeminiFlashModel,
@@ -228,6 +227,7 @@ export default function Home() {
   const createdScenarios = scenarios.filter((s: any) => s.authorId === currentUser?.id);
   const availableRoomsRaw = rooms.filter((r: any) => !r.scenario?.isBanned);
 
+  // ★ 部屋の言語に応じた翻訳の適用と、国旗バッジの付与
   const availableRooms = availableRoomsRaw.map((room: any) => {
     if (!currentUser) return room;
     const hostId = room.host_id;
@@ -236,8 +236,37 @@ export default function Home() {
     if (myBlockedIds.includes(hostId)) return null;
     if (joinedUserIds.some((id: string) => myBlockedIds.includes(id))) return null;
     if (blockedMeIds.includes(hostId)) return null;
+    
+    let displayScenario = { ...room.scenario };
+    let langBadge = "🇯🇵 ";
+    
+    if (room.language === 'en' && room.scenario?.translationEn) {
+      langBadge = "🇺🇸 EN | ";
+      const t = room.scenario.translationEn;
+      if (t.title) displayScenario.title = t.title;
+      if (t.description) displayScenario.description = t.description;
+      if (t.characters && Array.isArray(t.characters)) {
+        displayScenario.presetCharacters = displayScenario.presetCharacters.map((c: any, i: number) => {
+          const tChar = t.characters[i];
+          return tChar ? { ...c, name: tChar.name || c.name, job: tChar.job || c.job, personality: tChar.personality || c.personality } : c;
+        });
+      }
+    } else if (room.language === 'zh' && room.scenario?.translationZh) {
+      langBadge = "🇨🇳 ZH | ";
+      const t = room.scenario.translationZh;
+      if (t.title) displayScenario.title = t.title;
+      if (t.description) displayScenario.description = t.description;
+      if (t.characters && Array.isArray(t.characters)) {
+        displayScenario.presetCharacters = displayScenario.presetCharacters.map((c: any, i: number) => {
+          const tChar = t.characters[i];
+          return tChar ? { ...c, name: tChar.name || c.name, job: tChar.job || c.job, personality: tChar.personality || c.personality } : c;
+        });
+      }
+    }
+
+    displayScenario.title = `${langBadge}${displayScenario.title}`;
     const isWarning = joinedUserIds.some((id: string) => blockedMeIds.includes(id));
-    return { ...room, isWarning };
+    return { ...room, scenario: displayScenario, isWarning };
   }).filter(Boolean) as Room[];
 
   const defaultScene: Scene = { id: "scene_main", name: "メインルーム", memberIds: [] };
@@ -454,7 +483,7 @@ export default function Home() {
       const chars = activeRoom.scenario?.presetCharacters.filter((c: any) => Object.values(activeRoom.joined_users || {}).includes(c.id)).map((c: any) => `{"id": "${c.id}", "name": "${c.name}"}`).join(", ") || "";
       const prompt = ["あなたはTRPGのシステムAIです。以下の「現在参加しているキャラクター」と「直近のチャットログ」を分析し、物語の展開上、最も自然な【チーム分け（2つ以上のグループへの分割）の構成案】を作成してください。","【参加キャラクター】",chars,"","【直近のログ】",recentLogs,"","【出力形式（絶対遵守）】","必ず以下のJSONフォーマットのみを出力してください。余計な文章やマークダウン記号は一切含めないでください。",'{"teams": [{"action": "目的A", "members": ["キャラID1"]}, {"action": "目的B", "members": ["キャラID3"]}]}'].join('\n');
       const aiResponse = await generateAITextWithPrompt(prompt, 'lite', 800, 0.3);
-      const jsonStr = aiResponse.replace(/`{3}json/gi, "").replace(/`{3}/g, "").trim();
+      const jsonStr = aiResponse.replace(/`{3}json/g, "").replace(/`{3}/g, "").trim();
       const parsed = JSON.parse(jsonStr);
       if (parsed && parsed.teams) setProposedTeams(parsed.teams.map((t: any) => ({ id: `team_${Date.now()}_${Math.random()}`, action: t.action, members: t.members, leader: t.members[0] || "" })));
       else setProposedTeams([{ id: `team_${Date.now()}`, action: "", members: [], leader: "" }]);
@@ -1141,9 +1170,11 @@ export default function Home() {
         if (model === 'claude') { ticketKey = 'tickets_platinum'; ticketName = 'プラチナチケット'; }
         if (model === 'opus') { ticketKey = 'tickets_diamond'; ticketName = 'ダイヤモンドチケット'; }
 
+        // 二重返還を防ぐために部屋を「返還済み」にマーク
         await supabase.from('rooms').update({ error_refunded: true }).eq('id', activeRoom.id);
         setActiveRoom(prev => prev ? { ...prev, error_refunded: true } : null);
 
+        // 参加者全員に対して一律でチケットを返還する
         const joinedUserIds = Object.keys(activeRoom.joined_users || {});
         for (const uid of joinedUserIds) {
           const { data: userData } = await supabase.from('profiles').select(ticketKey).eq('id', uid).single();
@@ -1158,6 +1189,7 @@ export default function Home() {
           }
         }
         
+        // 自分の画面（ステート）も更新して表示を反映させる
         if (currentUser && joinedUserIds.includes(currentUser.id)) {
            setCurrentUser(prev => prev ? { ...prev, [ticketKey]: ((prev as any)[ticketKey] || 0) + 1 } : null);
         }
