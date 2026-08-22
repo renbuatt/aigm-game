@@ -500,7 +500,6 @@ export default function Home() {
       await callAIGM(extraUserContext, "story");
     } finally { isRequestingRef.current = false; setIsLoading(false); }
   };
-
   const executeCreateRoom = async () => {
     if (!currentUser || !roomConfigModal) return;
     const { scenario, charId, privacy, message, difficulty, rule, itemVisibility, aiModel, language } = roomConfigModal;
@@ -520,19 +519,7 @@ export default function Home() {
         alert(`チケットが足りません！\n（${costName}チケットが1枚必要です）\nロビーの「チケット購入ストア」から入手してください。`);
         setShowTicketModal(true); return;
       }
-      if (!confirm(`この部屋に入室するには ${costName}チケット を1枚消費します。よろしいですか？`)) return;
-
-      const { error: tErr } = await supabase.from('profiles').update({ [requiredTicketKey]: currentTickets - 1 }).eq('id', currentUser.id);
-      if (tErr) { alert("チケットの消費処理に失敗しました。"); return; }
-
-      setCurrentUser(prev => prev ? { 
-        ...prev, 
-        ticketsBronze: aiModel === 'lite' ? (prev.ticketsBronze || 0) - 1 : prev.ticketsBronze, 
-        ticketsSilver: aiModel === 'flash' ? (prev.ticketsSilver || 0) - 1 : prev.ticketsSilver, 
-        ticketsGold: aiModel === 'pro' ? (prev.ticketsGold || 0) - 1 : prev.ticketsGold, 
-        ticketsPlatinum: aiModel === 'claude' ? (prev.ticketsPlatinum || 0) - 1 : prev.ticketsPlatinum, 
-        ticketsDiamond: aiModel === 'opus' ? (prev.ticketsDiamond || 0) - 1 : prev.ticketsDiamond
-      } : null);
+      if (!confirm(`この部屋はセッション開始時に ${costName}チケット を1枚消費します。作成して入室しますか？`)) return;
     }
 
     const hostChar = scenario.presetCharacters.find((c: any) => c.id === charId);
@@ -617,17 +604,7 @@ export default function Home() {
         alert(`入室するためのチケットが足りません！\n（${costName}チケットが1枚必要です）\nロビーの「チケット購入ストア」から入手してください。`); 
         setShowTicketModal(true); return; 
       }
-      if (!confirm(`この部屋に入室するには ${costName}チケット を1枚消費します。よろしいですか？`)) return;
-      const { error: tErr } = await supabase.from('profiles').update({ [requiredTicketKey]: currentTickets - 1 }).eq('id', currentUser.id);
-      if (tErr) { alert("チケットの消費処理に失敗しました。"); return; }
-      setCurrentUser(prev => prev ? { 
-        ...prev, 
-        ticketsBronze: room.ai_model === 'lite' ? (prev.ticketsBronze || 0) - 1 : prev.ticketsBronze, 
-        ticketsSilver: room.ai_model === 'flash' ? (prev.ticketsSilver || 0) - 1 : prev.ticketsSilver, 
-        ticketsGold: room.ai_model === 'pro' ? (prev.ticketsGold || 0) - 1 : prev.ticketsGold, 
-        ticketsPlatinum: room.ai_model === 'claude' ? (prev.ticketsPlatinum || 0) - 1 : prev.ticketsPlatinum, 
-        ticketsDiamond: room.ai_model === 'opus' ? (prev.ticketsDiamond || 0) - 1 : prev.ticketsDiamond
-      } : null);
+      if (!confirm(`この部屋はセッション開始時に ${costName}チケット が必要です。入室しますか？\n（※チケットはゲーム開始時に消費されます）`)) return;
     }
 
     const { data: latestRoom } = await supabase.from('rooms').select('joined_users, inventories').eq('id', room.id).single();
@@ -669,6 +646,35 @@ export default function Home() {
 
   const startGame = async () => {
     if(!activeRoom || !activeRoom.scenario || !joinedCharacter || !myScene || isRequestingRef.current) return;
+    
+    const isAuthor = activeRoom.scenario.authorId === currentUser?.id;
+
+    if (isTicketSystemEnabled && !isAuthor && !activeRoom.is_trial && !isMaintenance && currentUser) {
+      let requiredTicketKey = ''; let currentTickets = 0; let costName = '';
+      if (activeRoom.ai_model === 'lite') { requiredTicketKey = 'tickets_bronze'; currentTickets = currentUser.ticketsBronze || 0; costName = 'ブロンズ'; }
+      if (activeRoom.ai_model === 'flash') { requiredTicketKey = 'tickets_silver'; currentTickets = currentUser.ticketsSilver || 0; costName = 'シルバー'; }
+      if (activeRoom.ai_model === 'pro') { requiredTicketKey = 'tickets_gold'; currentTickets = currentUser.ticketsGold || 0; costName = 'ゴールド'; }
+      if (activeRoom.ai_model === 'claude') { requiredTicketKey = 'tickets_platinum'; currentTickets = currentUser.ticketsPlatinum || 0; costName = 'プラチナ'; }
+      if (activeRoom.ai_model === 'opus') { requiredTicketKey = 'tickets_diamond'; currentTickets = currentUser.ticketsDiamond || 0; costName = 'ダイヤモンド'; }
+
+      if (currentTickets < 1) {
+        alert(`エラー：チケットが足りません！\n（${costName}チケットが1枚必要です）`);
+        return; 
+      }
+
+      const { error: tErr } = await supabase.from('profiles').update({ [requiredTicketKey]: currentTickets - 1 }).eq('id', currentUser.id);
+      if (tErr) { alert("チケットの消費処理に失敗しました。"); return; }
+
+      setCurrentUser(prev => prev ? { 
+        ...prev, 
+        ticketsBronze: activeRoom.ai_model === 'lite' ? (prev.ticketsBronze || 0) - 1 : prev.ticketsBronze, 
+        ticketsSilver: activeRoom.ai_model === 'flash' ? (prev.ticketsSilver || 0) - 1 : prev.ticketsSilver, 
+        ticketsGold: activeRoom.ai_model === 'pro' ? (prev.ticketsGold || 0) - 1 : prev.ticketsGold, 
+        ticketsPlatinum: activeRoom.ai_model === 'claude' ? (prev.ticketsPlatinum || 0) - 1 : prev.ticketsPlatinum, 
+        ticketsDiamond: activeRoom.ai_model === 'opus' ? (prev.ticketsDiamond || 0) - 1 : prev.ticketsDiamond
+      } : null);
+    }
+
     isRequestingRef.current = true; setIsLoading(true);
     try {
       let aiChars: Character[] = [];
@@ -1309,7 +1315,7 @@ export default function Home() {
           setCurrentView={setCurrentView} 
           createdScenarios={createdScenarios} 
           deleteScenario={deleteScenario} 
-          setRoomConfigModal={setRoomConfigModal}
+          setRoomConfigModal={setRoomConfigModal} 
           fetchAdminData={fetchAdminData} 
           startTrialPlay={(scenario: any) => setAdModal({ isOpen: true, step: 1, scenario, room: null, type: 'trial' })} 
           availableScenarios={availableScenarios} 
