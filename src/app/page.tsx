@@ -29,9 +29,7 @@ import AdVideoModal from "../components/modals/AdVideoModal";
 
 // ★ カスタムフックをインポート
 import { useAdmin } from "../hooks/useAdmin";
-
-const NO_IMAGE_SCENARIO = "https://images.unsplash.com/photo-1614729939124-03290b5609ce?auto=format&fit=crop&w=400&q=80";
-const DEFAULT_AVATAR = "https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&w=150&q=80";
+import { useAuth } from "../hooks/useAuth";
 
 export default function Home() {
   const [currentView, setCurrentView] = useState<ViewState>("login");
@@ -96,8 +94,6 @@ export default function Home() {
 
   const isRequestingRef = useRef(false);
 
-  const handleLogout = async () => { await supabase.auth.signOut(); setCurrentUser(null); setCurrentView("login"); setActiveRoom(null); setJoinedCharacter(null); };
-
   const fetchData = async () => {
     const { data: scData } = await supabase.from('scenarios').select('*').order('id', { ascending: false });
     let loadedScenarios: Scenario[] = [];
@@ -133,7 +129,58 @@ export default function Home() {
     return { loadedScenarios, formattedRooms };
   };
 
-  // ★ カスタムフック useAdmin を呼び出して機能を展開
+  const fetchProfile = async (userId: string, emailStr: string, currentMaintenance: boolean, roomsData: Room[]) => {
+    const { data } = await supabase.from('profiles').select('*').eq('id', userId).single();
+    if (!data || !data.full_name) { setEmail(emailStr); setCurrentView("onboarding"); return; }
+    
+    const today = new Date().toLocaleDateString('ja-JP');
+    let vCount = data.ad_view_count || 0;
+    let vDate = data.last_ad_view_date || "";
+    if (vDate !== today) { vCount = 0; vDate = today; }
+    setAdViewInfo({ count: vCount, date: vDate });
+
+    const profileData: UserProfile = { 
+      id: data.id, handleName: data.handle_name, fullName: data.full_name, address: data.address, phone: data.phone, avatarUrl: data.avatar_url, bio: data.bio, discordId: data.discord_id, ratingSum: data.rating_sum || 0, ratingCount: data.rating_count || 0, isAdmin: data.is_admin || false, isTester: data.is_tester || false, isBanned: data.is_banned || false, 
+      isSuspended: data.is_suspended || false, 
+      email: data.email, friendIds: data.friend_ids || [], blockedUserIds: data.blocked_user_ids || [],
+      points: data.points || 0, ticketsNormal: data.tickets_normal || 0, ticketsBronze: data.tickets_bronze || 0, ticketsSilver: data.tickets_silver || 0, ticketsGold: data.tickets_gold || 0, ticketsPlatinum: data.tickets_platinum || 0, ticketsDiamond: data.tickets_diamond || 0, ticketsItem: data.tickets_item || 0, imageGenCredits: data.image_gen_credits || 0
+    };
+    if (data.email !== emailStr) await supabase.from('profiles').update({ email: emailStr }).eq('id', userId);
+    setCurrentUser(profileData); 
+    
+    // fetchNotifications 処理
+    const { data: notifData } = await supabase.from('notifications').select('*').eq('user_id', userId).order('created_at', { ascending: false });
+    if(notifData) setMyNotifications(notifData.map((d: any) => ({ id: d.id, userId: d.user_id, title: d.title, message: d.message, isRead: d.is_read, createdAt: d.created_at })));
+
+    const { data: blockedMeData } = await supabase.from('profiles').select('id').contains('blocked_user_ids', [userId]);
+    setBlockedMeIds(blockedMeData ? blockedMeData.map((d: any) => d.id) : []);
+
+    const { data: archiveData } = await supabase.from('play_archives').select('*').eq('user_id', userId).order('created_at', { ascending: false });
+    if (archiveData) {
+      setPlayArchives(archiveData.map((d: any) => ({
+        id: d.id, userId: d.user_id, scenarioId: d.scenario_id, scenarioTitle: d.scenario_title, scenarioImage: d.scenario_image,
+        characterName: d.character_name, chatLogs: d.chat_logs, createdAt: d.created_at, rule: d.rule, coPlayers: d.co_players, novels: d.novels || {}, characters: d.characters || []
+      })));
+    }
+
+    if (!profileData.isBanned && (!currentMaintenance || profileData.isAdmin || profileData.isTester)) {
+      const activeMyRoom = roomsData.find((r: any) => (r.status === 'playing' || r.status === 'splitting' || r.status === 'recruiting') && r.joined_users && r.joined_users[userId]);
+      if (activeMyRoom && activeMyRoom.scenario) {
+        const charId = activeMyRoom.joined_users[userId];
+        const char = activeMyRoom.scenario.presetCharacters.find((c: any) => c.id === charId);
+        if (char) {
+          setActiveRoom(activeMyRoom); setJoinedCharacter(char);
+          const takenIds = Object.values(activeMyRoom.joined_users || {});
+          setAiPlayersList(activeMyRoom.scenario.presetCharacters.filter((c: any) => !takenIds.includes(c.id)));
+          await loadChatLogs(activeMyRoom.id); setCurrentView("game"); return;
+        }
+      }
+      setCurrentView("lobby");
+    } else if (profileData.isBanned) { setCurrentView("banned"); } 
+    else { setCurrentView("maintenance"); }
+  };
+
+  // ★ フックの呼び出し
   const {
     allUsers, reports, fetchAdminData, toggleMaintenance, toggleTicketSystem,
     toggleAdminStatus, toggleTesterStatus, toggleGeminiFlashModel, resolveReport,
@@ -141,15 +188,19 @@ export default function Home() {
     adminExecuteScenarioBan, adminUnbanScenario, adminDeleteScenario,
     executeCreateTester, grantPointsToAll, adminSendMailToUser
   } = useAdmin({
-    scenarios,
-    fetchData,
-    isMaintenance,
-    setIsMaintenance,
-    isTicketSystemEnabled,
-    setIsTicketSystemEnabled,
-    setGeminiFlashModel,
-    handleLogout,
+    scenarios, fetchData, isMaintenance, setIsMaintenance,
+    isTicketSystemEnabled, setIsTicketSystemEnabled, setGeminiFlashModel,
+    handleLogout: async () => {}, // ダミー（本来はuseAuthのhandleLogout）
     setIsLoading
+  });
+
+  const {
+    handleEmailAuth, handleEmailSignUp, handleProfileSetup, handleGoogleAuth, handleLogout,
+    openUserProfile, addFriend, blockUser, unblockUser, updateProfile, uploadAvatar
+  } = useAuth({
+    email, password, setAuthLoading, isMaintenance, fetchData, fetchProfile,
+    currentUser, setCurrentUser, setCurrentView, setActiveRoom, setJoinedCharacter,
+    setIsLoading, setTargetUserId
   });
 
   const availableScenarios = scenarios.filter((s: any) => !s.isBanned);
@@ -161,11 +212,9 @@ export default function Home() {
     const hostId = room.host_id;
     const joinedUserIds = Object.keys(room.joined_users || {});
     const myBlockedIds = currentUser.blockedUserIds || [];
-
     if (myBlockedIds.includes(hostId)) return null;
     if (joinedUserIds.some((id: string) => myBlockedIds.includes(id))) return null;
     if (blockedMeIds.includes(hostId)) return null;
-
     const isWarning = joinedUserIds.some((id: string) => blockedMeIds.includes(id));
     return { ...room, isWarning };
   }).filter(Boolean) as Room[];
@@ -188,59 +237,6 @@ export default function Home() {
 
   const handleOpenRoomConfig = (scenario: Scenario) => {
     setRoomConfigModal({ scenario, charId: "", privacy: "open", message: "", difficulty: "normal", rule: "coc_jp", itemVisibility: "none", aiModel: "lite", language: "ja" });
-  };
-
-  const openUserProfile = (userId: string) => { setTargetUserId(userId); setCurrentView("userProfile"); };
-
-  const addFriend = async (targetId: string) => {
-    if (!currentUser) return;
-    if (currentUser.friendIds?.includes(targetId)) { alert("既に友達に登録されています。"); return; }
-    const newFriends = [...(currentUser.friendIds || []), targetId];
-    const { error } = await supabase.from('profiles').update({ friend_ids: newFriends }).eq('id', currentUser.id);
-    if (!error) { setCurrentUser({ ...currentUser, friendIds: newFriends }); alert("友達に追加しました！"); } 
-    else { alert("エラーが発生しました: " + error.message); }
-  };
-
-  const blockUser = async (targetId: string) => {
-    if (!currentUser) return;
-    if (confirm("このユーザーをブロックしますか？\n（お互いに作成した部屋が見えなくなり、あなたが参加している部屋も相手から見えなくなります）")) {
-      const newBlocked = [...(currentUser.blockedUserIds || []), targetId];
-      const newFriends = (currentUser.friendIds || []).filter((id: string) => id !== targetId);
-      const { error } = await supabase.from('profiles').update({ blocked_user_ids: newBlocked, friend_ids: newFriends }).eq('id', currentUser.id);
-      if (!error) { setCurrentUser({ ...currentUser, blockedUserIds: newBlocked, friendIds: newFriends }); alert("ブロックしました。"); }
-    }
-  };
-
-  const unblockUser = async (targetId: string) => {
-    if (!currentUser) return;
-    const newBlocked = (currentUser.blockedUserIds || []).filter((id: string) => id !== targetId);
-    const { error } = await supabase.from('profiles').update({ blocked_user_ids: newBlocked }).eq('id', currentUser.id);
-    if (!error) { setCurrentUser({ ...currentUser, blockedUserIds: newBlocked }); alert("ブロックを解除しました。"); }
-  };
-
-  const updateProfile = async (updates: Partial<UserProfile>) => {
-    if (!currentUser) return;
-    const { error } = await supabase.from('profiles').update({ handle_name: updates.handleName, bio: updates.bio, avatar_url: updates.avatarUrl }).eq('id', currentUser.id);
-    if (error) alert("プロフィールの更新に失敗しました: " + error.message);
-    else setCurrentUser({ ...currentUser, ...updates });
-  };
-
-  const uploadAvatar = async (file: File) => {
-    if (!currentUser) return;
-    setIsLoading(true);
-    try {
-      const fileExt = file.name.split('.').pop();
-      const fileName = `${currentUser.id}_${Date.now()}.${fileExt}`;
-      const { error } = await supabase.storage.from('avatars').upload(fileName, file);
-      if (error) throw error;
-      const { data } = supabase.storage.from('avatars').getPublicUrl(fileName);
-      await updateProfile({ avatarUrl: data.publicUrl });
-      alert("アイコン画像を更新しました！");
-    } catch (e: any) {
-      alert("アップロード失敗: " + e.message);
-    } finally {
-      setIsLoading(false);
-    }
   };
 
   const loadChatLogs = async (roomId: string) => {
@@ -305,58 +301,6 @@ export default function Home() {
     }
   }, [activeRoom?.scenes, activeRoom?.status, activeRoom?.host_id, currentUser?.id, isSplitMode]);
 
-  const fetchNotifications = async (userId: string) => {
-    const { data } = await supabase.from('notifications').select('*').eq('user_id', userId).order('created_at', { ascending: false });
-    if(data) setMyNotifications(data.map((d: any) => ({ id: d.id, userId: d.user_id, title: d.title, message: d.message, isRead: d.is_read, createdAt: d.created_at })));
-  };
-
-  const fetchProfile = async (userId: string, emailStr: string, currentMaintenance: boolean, roomsData: Room[]) => {
-    const { data } = await supabase.from('profiles').select('*').eq('id', userId).single();
-    if (!data || !data.full_name) { setEmail(emailStr); setCurrentView("onboarding"); return; }
-    
-    const today = new Date().toLocaleDateString('ja-JP');
-    let vCount = data.ad_view_count || 0;
-    let vDate = data.last_ad_view_date || "";
-    if (vDate !== today) { vCount = 0; vDate = today; }
-    setAdViewInfo({ count: vCount, date: vDate });
-
-    const profileData: UserProfile = { 
-      id: data.id, handleName: data.handle_name, fullName: data.full_name, address: data.address, phone: data.phone, avatarUrl: data.avatar_url, bio: data.bio, discordId: data.discord_id, ratingSum: data.rating_sum || 0, ratingCount: data.rating_count || 0, isAdmin: data.is_admin || false, isTester: data.is_tester || false, isBanned: data.is_banned || false, 
-      isSuspended: data.is_suspended || false, 
-      email: data.email, friendIds: data.friend_ids || [], blockedUserIds: data.blocked_user_ids || [],
-      points: data.points || 0, ticketsNormal: data.tickets_normal || 0, ticketsBronze: data.tickets_bronze || 0, ticketsSilver: data.tickets_silver || 0, ticketsGold: data.tickets_gold || 0, ticketsPlatinum: data.tickets_platinum || 0, ticketsDiamond: data.tickets_diamond || 0, ticketsItem: data.tickets_item || 0, imageGenCredits: data.image_gen_credits || 0
-    };
-    if (data.email !== emailStr) await supabase.from('profiles').update({ email: emailStr }).eq('id', userId);
-    setCurrentUser(profileData); await fetchNotifications(userId);
-
-    const { data: blockedMeData } = await supabase.from('profiles').select('id').contains('blocked_user_ids', [userId]);
-    setBlockedMeIds(blockedMeData ? blockedMeData.map((d: any) => d.id) : []);
-
-    const { data: archiveData } = await supabase.from('play_archives').select('*').eq('user_id', userId).order('created_at', { ascending: false });
-    if (archiveData) {
-      setPlayArchives(archiveData.map((d: any) => ({
-        id: d.id, userId: d.user_id, scenarioId: d.scenario_id, scenarioTitle: d.scenario_title, scenarioImage: d.scenario_image,
-        characterName: d.character_name, chatLogs: d.chat_logs, createdAt: d.created_at, rule: d.rule, coPlayers: d.co_players, novels: d.novels || {}, characters: d.characters || []
-      })));
-    }
-
-    if (!profileData.isBanned && (!currentMaintenance || profileData.isAdmin || profileData.isTester)) {
-      const activeMyRoom = roomsData.find((r: any) => (r.status === 'playing' || r.status === 'splitting' || r.status === 'recruiting') && r.joined_users && r.joined_users[userId]);
-      if (activeMyRoom && activeMyRoom.scenario) {
-        const charId = activeMyRoom.joined_users[userId];
-        const char = activeMyRoom.scenario.presetCharacters.find((c: any) => c.id === charId);
-        if (char) {
-          setActiveRoom(activeMyRoom); setJoinedCharacter(char);
-          const takenIds = Object.values(activeMyRoom.joined_users || {});
-          setAiPlayersList(activeMyRoom.scenario.presetCharacters.filter((c: any) => !takenIds.includes(c.id)));
-          await loadChatLogs(activeMyRoom.id); setCurrentView("game"); return;
-        }
-      }
-      setCurrentView("lobby");
-    } else if (profileData.isBanned) { setCurrentView("banned"); } 
-    else { setCurrentView("maintenance"); }
-  };
-
   useEffect(() => {
     const initApp = async () => {
       const { data: appData } = await supabase.from('app_settings').select('*').eq('id', 1).single();
@@ -371,55 +315,6 @@ export default function Home() {
     };
     initApp();
   }, []);
-
-  const handleEmailAuth = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!email || !password) return;
-    setAuthLoading(true);
-    try {
-      const { data, error } = await supabase.auth.signInWithPassword({ email, password });
-      if (error) throw error;
-      const { formattedRooms } = await fetchData();
-      if (data.user) await fetchProfile(data.user.id, email, isMaintenance, formattedRooms);
-    } catch (error: any) { alert("ログインエラー: " + error.message); } finally { setAuthLoading(false); }
-  };
-
-  const handleEmailSignUp = async (e: React.FormEvent, name: string, addr: string, phone: string) => {
-    e.preventDefault();
-    if (!email || !password || !name || !addr || !phone) return;
-    setAuthLoading(true);
-    try {
-      const { data, error } = await supabase.auth.signUp({ email, password });
-      if (error) throw error;
-      if (data.user) {
-        const { error: upsertError } = await supabase.from('profiles').upsert({ id: data.user.id, handle_name: name.split(" ")[0] || email.split("@")[0], full_name: name, address: addr, phone: phone, avatar_url: DEFAULT_AVATAR, bio: "よろしくお願いします。", email: email });
-        if (upsertError) throw upsertError;
-        alert("アカウントを作成しました！");
-        const { formattedRooms } = await fetchData();
-        await fetchProfile(data.user.id, email, isMaintenance, formattedRooms);
-      }
-    } catch (error: any) { alert("登録エラー: " + error.message); } finally { setAuthLoading(false); }
-  };
-
-  const handleProfileSetup = async (name: string, addr: string, phone: string) => {
-    setAuthLoading(true);
-    try {
-      const { data: { session } } = await supabase.auth.getSession();
-      if (!session?.user) throw new Error("セッションが見つかりません。");
-      const { error: upsertError } = await supabase.from('profiles').upsert({ id: session.user.id, handle_name: name.split(" ")[0] || session.user.email?.split("@")[0], full_name: name, address: addr, phone: phone, avatar_url: DEFAULT_AVATAR, bio: "よろしくお願いします。", email: session.user.email });
-      if (upsertError) throw upsertError;
-      alert("登録が完了しました！");
-      const { formattedRooms } = await fetchData();
-      await fetchProfile(session.user.id, session.user.email || "", isMaintenance, formattedRooms);
-    } catch (error: any) { alert("登録エラー: " + error.message); } finally { setAuthLoading(false); }
-  };
-
-  const handleGoogleAuth = async () => {
-    setAuthLoading(true);
-    const { error } = await supabase.auth.signInWithOAuth({ provider: 'google' });
-    if (error) alert("Googleログインの初期設定が未完了です: " + error.message);
-    setAuthLoading(false);
-  };
 
   const togglePauseRoom = async () => {
     if (!activeRoom) return;
@@ -455,7 +350,6 @@ export default function Home() {
     const charName = activeRoom.scenario?.presetCharacters.find((c: any) => c.id === charId)?.name || "プレイヤー";
     await pushMessage(activeRoom.id, { sender: "system", text: `【システム】一定時間応答がなかったため、ホストによって ${charName} が追放されました。残りの役割はAIが引き継ぎます。`, type: "system", channel: "system" }, true);
   };
-
   const triggerAutoAction = async () => {
     if (!activeRoom || activeRoom.is_paused || activeRoom.status !== 'playing' || isScenarioEnded || isRequestingRef.current) return;
     isRequestingRef.current = true; setIsLoading(true);
@@ -521,6 +415,7 @@ export default function Home() {
     if (!error) { alert("運営に再審査（修正完了）の申請を送信しました。"); setScenarioAppealTarget(null); setScenarioAppealText(""); await fetchAdminData(); } 
     else alert("エラーが発生しました: " + error.message);
   };
+
   const exchangeTicketWithPoints = async (type: 'bronze'|'item'|'silver'|'gold'|'platinum'|'diamond', cost: number) => {
     if (!currentUser) return;
     if ((currentUser.points || 0) < cost) { alert("ポイントが足りません！"); return; }
@@ -930,7 +825,7 @@ export default function Home() {
   };
 
   const handleSend = async () => {
-    if (!input.trim() || isRequestingRef.current || !activeRoom || !joinedCharacter || !myScene) return;
+    if (!input.trim() || isRequestingRef.current || !activeRoom || !joinedCharacter || !currentUser || !myScene) return;
     isRequestingRef.current = true; 
     setIsLoading(true);
     try {
