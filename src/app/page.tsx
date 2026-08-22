@@ -996,7 +996,7 @@ export default function Home() {
   };
 
   const handleSend = async () => {
-    if (!input.trim() || isRequestingRef.current || !activeRoom || !joinedCharacter || !currentUser || !myScene) return;
+    if (!input.trim() || isRequestingRef.current || !activeRoom || !joinedCharacter || !myScene) return;
     isRequestingRef.current = true; 
     setIsLoading(true);
     try {
@@ -1748,7 +1748,7 @@ export default function Home() {
           setCurrentView={setCurrentView} 
           createdScenarios={createdScenarios} 
           deleteScenario={deleteScenario} 
-          openRoomConfigModal={handleOpenRoomConfig} 
+          setRoomConfigModal={setRoomConfigModal} 
           fetchAdminData={fetchAdminData} 
           startTrialPlay={(scenario: any) => setAdModal({ isOpen: true, step: 1, scenario, room: null, type: 'trial' })} 
           availableScenarios={availableScenarios} 
@@ -1839,22 +1839,34 @@ export default function Home() {
         />
       )}
 
-      <AdVideoModal adModal={adModal} setAdModal={setAdModal} executeTrialPlay={executeTrialPlay} executeAdReward={executeAdReward} spectateRoom={spectateRoom} />
+      <AdVideoModal 
+        adModal={adModal} 
+        setAdModal={setAdModal} 
+        executeTrialPlay={executeTrialPlay} 
+        executeAdReward={executeAdReward} 
+        spectateRoom={spectateRoom} 
+      />
       
-      <NovelSettingsModal novelSettingsModal={novelSettingsModal} setNovelSettingsModal={setNovelSettingsModal} handleStartNovel={handleStartNovel} isTicketSystemEnabled={isTicketSystemEnabled} />
+      <NovelSettingsModal 
+        novelSettingsModal={novelSettingsModal} 
+        setNovelSettingsModal={setNovelSettingsModal} 
+        handleStartNovel={handleStartNovel} 
+        isTicketSystemEnabled={isTicketSystemEnabled} 
+      />
       
       <TicketStoreModal 
-        showTicketModal={showTicketModal} 
-        setShowTicketModal={setShowTicketModal} 
+        isOpen={showTicketModal} 
+        closeModal={() => setShowTicketModal(false)} 
         currentUser={currentUser} 
         adViewInfo={adViewInfo} 
-        setAdModal={setAdModal} 
+        openAdModalForPoints={() => setAdModal({ isOpen: true, step: 1, scenario: null, room: null, type: 'points' })} 
         exchangeTicketWithPoints={exchangeTicketWithPoints} 
       />
       
       <RoomConfigModal 
-        roomConfigModal={roomConfigModal} 
-        setRoomConfigModal={setRoomConfigModal} 
+        config={roomConfigModal} 
+        setConfig={setRoomConfigModal} 
+        closeModal={() => setRoomConfigModal(null)} 
         executeCreateRoom={executeCreateRoom} 
         isTicketSystemEnabled={isTicketSystemEnabled} 
       />
