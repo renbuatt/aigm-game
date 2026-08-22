@@ -6,7 +6,7 @@ type LoginViewProps = {
   password: string;
   setPassword: React.Dispatch<React.SetStateAction<string>>;
   authLoading: boolean;
-  handleEmailAuth: (isSignUp: boolean) => Promise<void>;
+  handleEmailAuth: (e: any) => Promise<void> | void; // ★修正
   handleGoogleAuth: () => Promise<void>;
   setCurrentView: React.Dispatch<React.SetStateAction<any>>;
   isMaintenance: boolean;
@@ -62,7 +62,7 @@ export default function LoginView(props: LoginViewProps) {
             />
           </div>
           <button 
-            onClick={() => props.handleEmailAuth(false)} 
+            onClick={(e) => props.handleEmailAuth(e)} 
             disabled={props.authLoading}
             className="w-full bg-blue-600 hover:bg-blue-500 text-white font-bold py-3 px-4 rounded-lg transition-colors shadow-lg shadow-blue-900/50 disabled:opacity-50 mt-2"
           >

@@ -6,7 +6,7 @@ type SignupViewProps = {
   password: string;
   setPassword: React.Dispatch<React.SetStateAction<string>>;
   authLoading: boolean;
-  handleEmailSignUp: () => Promise<void>;
+  handleEmailSignUp: (e: any, name: string, addr: string, phone: string) => Promise<void> | void; // ★修正
   handleGoogleAuth: () => Promise<void>;
   setCurrentView: React.Dispatch<React.SetStateAction<any>>;
   isMaintenance: boolean;
@@ -62,14 +62,15 @@ export default function SignupView(props: SignupViewProps) {
             />
           </div>
           <button 
-            onClick={props.handleEmailSignUp} disabled={props.authLoading}
+            onClick={(e) => props.handleEmailSignUp(e, "", "", "")} // ★修正
+            disabled={props.authLoading}
             className="w-full bg-emerald-600 hover:bg-emerald-500 text-white font-bold py-3 px-4 rounded-lg transition-colors shadow-lg shadow-emerald-900/50 disabled:opacity-50 mt-2"
           >
             {props.authLoading ? "..." : t.signup}
           </button>
         </div>
 
-        {/* ★追加：Google認証ボタン */}
+        {/* Google認証ボタン */}
         <div className="mt-6 flex items-center justify-between">
           <span className="border-b border-slate-700 w-1/5"></span>
           <span className="text-xs text-slate-500 uppercase font-semibold">OR</span>

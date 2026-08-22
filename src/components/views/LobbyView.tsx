@@ -22,7 +22,7 @@ type LobbyViewProps = {
   fetchAdminData: () => Promise<void>;
   startTrialPlay: (scenario: Scenario) => void;
   availableScenarios: Scenario[];
-  openUserProfile: (id: string) => Promise<void>;
+  openUserProfile: (id: string) => void; // ★修正
   setScenarioAppealTarget: React.Dispatch<React.SetStateAction<Scenario | null>>;
   playArchives: PlayArchive[];
   setShowTicketModal: React.Dispatch<React.SetStateAction<boolean>>;
@@ -41,9 +41,9 @@ export default function LobbyView(props: LobbyViewProps) {
     zh: { lobby: "TRPG 大厅", rooms: "开放房间", scenarios: "剧本列表", create: "创建剧本", mypage: "我的主页", library: "游玩记录", logout: "登出", store: "购买门票", searchRoom: "输入私密房间 ID...", search: "搜索", host: "房主", players: "玩家", spectate: "观战", join: "加入", author: "作者", play: "游玩", view: "观战", createRoom: "创建房间", trial: "试玩", details: "查看详情", edit: "编辑", del: "删除", selectChar: "选择角色加入...", noRooms: "当前没有开放的房间。", noScenarios: "目前还没有创建任何剧本。", myScenarios: "你创建的剧本", newScenario: "+ 创建新剧本", originalScenario: "✨ 创建原创剧本", originalDesc: "创建你自己的故事并与全世界的玩家分享。" }
   }[lang];
 
-  // ★ シナリオデータを指定言語に自動翻訳（代入）する関数
-  const getTScen = (scenario: Scenario): Scenario => {
-    if (!scenario) return scenario;
+  // ★ 修正：引数に undefined を許容し、戻り値の型も整える
+  const getTScen = (scenario?: Scenario): Scenario | undefined => {
+    if (!scenario) return undefined;
     let s = { ...scenario };
     if (lang === 'en' && s.translationEn?.title) {
       s.title = s.translationEn.title;
@@ -57,9 +57,9 @@ export default function LobbyView(props: LobbyViewProps) {
     return s;
   };
 
-  const localizedScenarios = props.availableScenarios.map(s => getTScen(s));
+  const localizedScenarios = props.availableScenarios.map(s => getTScen(s)!);
   const localizedRooms = props.availableRooms.map(r => ({ ...r, scenario: getTScen(r.scenario) }));
-  const localizedCreated = props.createdScenarios.map(s => getTScen(s));
+  const localizedCreated = props.createdScenarios.map(s => getTScen(s)!);
 
   return (
     <div className="flex flex-col h-full bg-slate-900 text-slate-100 overflow-hidden w-full max-w-6xl mx-auto">
@@ -117,7 +117,7 @@ export default function LobbyView(props: LobbyViewProps) {
              <div className="mb-8 p-1 border-2 border-emerald-500/50 rounded-2xl bg-emerald-900/10 shadow-[0_0_30px_rgba(16,185,129,0.1)] relative">
                 <div className="absolute -top-3 left-4 bg-emerald-600 text-white text-xs font-bold px-3 py-1 rounded-full shadow-lg">シークレット部屋発見！</div>
                 <div className="p-4 bg-slate-800 rounded-xl">
-                   <h3 className="font-bold text-lg mb-2">{getTScen(props.searchedSecretRoom.scenario).title}</h3>
+                   <h3 className="font-bold text-lg mb-2">{getTScen(props.searchedSecretRoom.scenario)?.title}</h3>
                    <button onClick={() => {}} className="bg-emerald-600 px-4 py-2 rounded font-bold">参加する (Coming Soon)</button>
                    <button onClick={()=>props.setSearchedSecretRoom(null)} className="ml-2 text-sm text-slate-400">閉じる</button>
                 </div>
@@ -237,8 +237,9 @@ export default function LobbyView(props: LobbyViewProps) {
                     </div>
                     
                     <h3 className="text-xl font-bold mb-2 line-clamp-2 leading-tight">{s.title}</h3>
+                    {/* ★修正: s.authorId が未定義のケースを保護 */}
                     <p className="text-xs text-slate-400 mb-4 flex items-center gap-2">
-                       <span className="font-medium">{t.author}: <button onClick={()=>props.openUserProfile(s.authorId)} className="text-blue-400 hover:underline">{s.authorId.substring(0,6)}...</button></span>
+                       <span className="font-medium">{t.author}: <button onClick={()=>props.openUserProfile(s.authorId || "")} className="text-blue-400 hover:underline">{(s.authorId || "").substring(0,6)}...</button></span>
                        <span className="text-slate-600">|</span>
                        <span>{t.play}:{s.playCount||0} / {t.view}:{s.viewCount||0}</span>
                     </p>
