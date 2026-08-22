@@ -196,8 +196,8 @@ export default function Home() {
     toggleAdminStatus, toggleTesterStatus, toggleGeminiFlashModel, resolveReport,
     adminExecuteBan, adminUnbanUser, adminSuspendUser, adminUnsuspendUser,
     adminExecuteScenarioBan, adminUnbanScenario, adminDeleteScenario,
-    executeCreateTester, grantPointsToAll, adminSendMailToUser,
-    adminGrantItem, adminSendMailToAll // ★個別付与・一斉メールを追加
+    executeCreateTester, adminSendMailToUser,
+    adminGrantItem, adminSendMailToAll, grantItemToAll // ★古い grantPointsToAll を削除し修正済み
   } = useAdmin({
     scenarios, fetchData, isMaintenance, setIsMaintenance,
     isTicketSystemEnabled, setIsTicketSystemEnabled, setGeminiFlashModel,
@@ -1243,10 +1243,11 @@ export default function Home() {
           adminSuspendUser={adminSuspendUser} adminUnsuspendUser={adminUnsuspendUser} 
           adminExecuteScenarioBan={adminExecuteScenarioBan} adminUnbanScenario={adminUnbanScenario} 
           adminDeleteScenario={adminDeleteScenario} setCurrentView={setCurrentView} 
-          executeCreateTester={executeCreateTester} grantPointsToAll={grantPointsToAll} 
+          executeCreateTester={executeCreateTester} 
           adminSendMailToUser={adminSendMailToUser} 
           adminGrantItem={adminGrantItem}
           adminSendMailToAll={adminSendMailToAll}
+          grantItemToAll={grantItemToAll}
         />
       )}
 
