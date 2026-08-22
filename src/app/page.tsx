@@ -22,6 +22,12 @@ import GameView from "../components/views/GameView";
 import UserProfileView from "../components/views/UserProfileView";
 import LibraryView from "../components/views/LibraryView";
 
+// ★ 分割したモーダル群をインポート
+import TicketStoreModal from "../components/modals/TicketStoreModal";
+import RoomConfigModal from "../components/modals/RoomConfigModal";
+import NovelSettingsModal from "../components/modals/NovelSettingsModal";
+import AdVideoModal from "../components/modals/AdVideoModal";
+
 const NO_IMAGE_SCENARIO = "https://images.unsplash.com/photo-1614729939124-03290b5609ce?auto=format&fit=crop&w=400&q=80";
 const DEFAULT_AVATAR = "https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&w=150&q=80";
 
@@ -115,14 +121,6 @@ export default function Home() {
 
   const unreadCount = myNotifications.filter((n: any) => !n.isRead).length;
   const isChatDisabled = Boolean(isLoading || (isSplitMode && myScene && myScene.isMerged === true && chatTab !== 'consult'));
-
-  const deleteScenario = async (id: string) => {
-    if (!confirm("本当にこのシナリオを削除しますか？\n（※関連する部屋も削除されます）")) return;
-    await supabase.from('rooms').delete().eq('scenario_id', id);
-    const { error } = await supabase.from('scenarios').delete().eq('id', id);
-    if (error) alert("削除に失敗しました: " + error.message);
-    else { alert("シナリオを削除しました。"); await fetchData(); }
-  };
 
   const handleOpenRoomConfig = (scenario: Scenario) => {
     setRoomConfigModal({ scenario, charId: "", privacy: "open", message: "", difficulty: "normal", rule: "coc_jp", itemVisibility: "none", aiModel: "lite", language: "ja" });
@@ -440,6 +438,14 @@ export default function Home() {
     } finally { isRequestingRef.current = false; setIsLoading(false); }
   };
 
+  const deleteScenario = async (id: string) => {
+    if (!confirm("本当にこのシナリオを削除しますか？\n（※関連する部屋も削除されます）")) return;
+    await supabase.from('rooms').delete().eq('scenario_id', id);
+    const { error } = await supabase.from('scenarios').delete().eq('id', id);
+    if (error) alert("削除に失敗しました: " + error.message);
+    else { alert("シナリオを削除しました。"); await fetchData(); }
+  };
+
   const saveScenario = async () => {
     if (!editingScenario || !currentUser) return;
     setIsLoading(true);
@@ -529,13 +535,12 @@ export default function Home() {
     await supabase.from('scenarios').update({ is_banned: false }).eq('id', scenarioId);
     alert("シナリオの非公開設定を解除しました。"); await fetchData(); await fetchAdminData();
   };
-const adminDeleteScenario = async (scenarioId: string) => {
+  const adminDeleteScenario = async (scenarioId: string) => {
     if(!confirm("本当にこのシナリオを強制削除しますか？\n関連する部屋も削除されます。")) return;
     await supabase.from('rooms').delete().eq('scenario_id', scenarioId);
     const { error } = await supabase.from('scenarios').delete().eq('id', scenarioId);
     if(!error) { alert("シナリオを完全に削除しました。"); await fetchData(); await fetchAdminData(); }
   };
-
   const adminSendMailToUser = async (userId: string, body: string) => {
     await supabase.from('notifications').insert({ user_id: userId, title: '✉️ 運営からのお知らせ', message: body });
     alert("メールを送信しました！");
@@ -729,7 +734,6 @@ const adminDeleteScenario = async (scenarioId: string) => {
       await callAIGM(extraUserContext, "story");
     } finally { isRequestingRef.current = false; setIsLoading(false); }
   };
-
   const executeCreateRoom = async () => {
     if (!currentUser || !roomConfigModal) return;
     const { scenario, charId, privacy, message, difficulty, rule, itemVisibility, aiModel, language } = roomConfigModal;
@@ -941,10 +945,7 @@ const adminDeleteScenario = async (scenarioId: string) => {
     if (!joinedCharacter) { 
       const newSpectators = (activeRoom.spectator_ids || []).filter((id: string) => id !== currentUser.id);
       await supabase.from('rooms').update({ spectator_ids: newSpectators }).eq('id', activeRoom.id);
-      setCurrentView("lobby"); 
-      setActiveRoom(null); 
-      await fetchData(); 
-      return; 
+      setCurrentView("lobby"); setActiveRoom(null); await fetchData(); return; 
     }
 
     const isHost = activeRoom.host_id === currentUser.id;
@@ -958,42 +959,27 @@ const adminDeleteScenario = async (scenarioId: string) => {
       if (isHost && remainingPlayers === 0) {
         await supabase.from('rooms').update({ status: 'finished' }).eq('id', activeRoom.id);
       }
-      setCurrentView("lobby"); 
-      setActiveRoom(null); 
-      setJoinedCharacter(null); 
-      await fetchData(); 
-      return;
+      setCurrentView("lobby"); setActiveRoom(null); setJoinedCharacter(null); await fetchData(); return;
     }
 
     if (remainingPlayers === 0) {
       if (confirm("【警告】他に人間プレイヤーがいないため、退出すると部屋は完全に閉じられます。本当によろしいですか？")) {
         await supabase.from('rooms').update({ status: 'finished' }).eq('id', activeRoom.id);
-        setCurrentView("lobby"); 
-        setActiveRoom(null); 
-        setJoinedCharacter(null); 
-        setAiPlayersList([]); 
-        setMessages([]); 
-        await fetchData(); 
+        setCurrentView("lobby"); setActiveRoom(null); setJoinedCharacter(null); setAiPlayersList([]); setMessages([]); await fetchData(); 
       }
     } else {
       if (confirm("自分のキャラクターをAIに引き継がせて離脱します。よろしいですか？")) {
         const newUsers = { ...activeRoom.joined_users };
         delete newUsers[currentUser.id];
         await supabase.from('rooms').update({ joined_users: newUsers }).eq('id', activeRoom.id);
-        setCurrentView("lobby"); 
-        setActiveRoom(null); 
-        setJoinedCharacter(null); 
-        setAiPlayersList([]); 
-        setMessages([]); 
-        await fetchData(); 
+        setCurrentView("lobby"); setActiveRoom(null); setJoinedCharacter(null); setAiPlayersList([]); setMessages([]); await fetchData(); 
       }
     }
   };
 
   const handleSend = async () => {
-    if (!input.trim() || isRequestingRef.current || !activeRoom || !joinedCharacter || !myScene) return;
-    isRequestingRef.current = true; 
-    setIsLoading(true);
+    if (!input.trim() || isRequestingRef.current || !activeRoom || !joinedCharacter || !currentUser || !myScene) return;
+    isRequestingRef.current = true; setIsLoading(true);
     try {
       const currentInput = input; 
       setInput(""); 
@@ -1022,8 +1008,7 @@ const adminDeleteScenario = async (scenarioId: string) => {
 
   const rollDice = async (targetValue: number, label: string, is1d100: boolean = false) => {
     if(!myScene || !activeRoom || isRequestingRef.current || !joinedCharacter) return;
-    isRequestingRef.current = true; 
-    setIsLoading(true);
+    isRequestingRef.current = true; setIsLoading(true);
     try {
       let res = 0; let isSuccess = false; let msgText = "";
       const rule = activeRoom.rule || "coc_jp";
@@ -1743,7 +1728,7 @@ const adminDeleteScenario = async (scenarioId: string) => {
           setCurrentView={setCurrentView} 
           createdScenarios={createdScenarios} 
           deleteScenario={deleteScenario} 
-          setRoomConfigModal={setRoomConfigModal} 
+          openRoomConfigModal={handleOpenRoomConfig} 
           fetchAdminData={fetchAdminData} 
           startTrialPlay={(scenario: any) => setAdModal({ isOpen: true, step: 1, scenario, room: null, type: 'trial' })} 
           availableScenarios={availableScenarios} 
@@ -1834,361 +1819,11 @@ const adminDeleteScenario = async (scenarioId: string) => {
         />
       )}
 
-      {/* 動画広告モーダル */}
-      {adModal.isOpen && (
-        <div className="fixed inset-0 bg-black/90 z-[120] flex items-center justify-center p-4">
-          <div className="bg-slate-800 border border-pink-500/50 rounded-xl p-8 w-full max-w-sm shadow-2xl text-center space-y-6">
-            <h3 className="text-xl font-bold text-pink-400">📺 広告を視聴して{adModal.type === 'trial' ? "プレイ" : adModal.type === 'points' ? "ポイント獲得" : "観戦"}</h3>
-            <div className="h-32 bg-slate-900 border border-slate-700 flex items-center justify-center rounded">
-              <span className="text-slate-500 font-bold animate-pulse">動画広告が再生されています...<br/>({adModal.step}/3)</span>
-            </div>
-            {adModal.step <= 3 ? (
-              <button 
-                onClick={() => { 
-                  if(adModal.step === 3) { 
-                    if (adModal.type === 'trial') executeTrialPlay(); 
-                    else if (adModal.type === 'points') executeAdReward(); 
-                    else if (adModal.type === 'spectate' && adModal.room) { 
-                      spectateRoom(adModal.room); 
-                      setAdModal({ isOpen: false, step: 0, scenario: null, room: null, type: 'trial' }); 
-                    } 
-                  } else { 
-                    setAdModal({...adModal, step: adModal.step + 1}); 
-                  } 
-                }} 
-                className="w-full bg-pink-600 hover:bg-pink-500 py-3 rounded text-sm font-bold text-white shadow-lg"
-              >
-                {adModal.step === 3 ? (adModal.type === 'trial' ? "お試しプレイを開始する！" : adModal.type === 'points' ? "ポイントを受け取る！" : "観戦を開始する！") : "次の広告へ進む"}
-              </button>
-            ) : null}
-            <button 
-              onClick={() => setAdModal({ isOpen: false, step: 0, scenario: null, room: null, type: 'trial' })} 
-              className="text-xs text-slate-400 hover:text-white underline"
-            >
-              キャンセル
-            </button>
-          </div>
-        </div>
-      )}
+      <AdVideoModal adModal={adModal} setAdModal={setAdModal} executeTrialPlay={executeTrialPlay} executeAdReward={executeAdReward} spectateRoom={spectateRoom} />
+      <NovelSettingsModal novelSettingsModal={novelSettingsModal} setNovelSettingsModal={setNovelSettingsModal} handleStartNovel={handleStartNovel} isTicketSystemEnabled={isTicketSystemEnabled} />
+      <TicketStoreModal showTicketModal={showTicketModal} setShowTicketModal={setShowTicketModal} currentUser={currentUser} adViewInfo={adViewInfo} setAdModal={setAdModal} exchangeTicketWithPoints={exchangeTicketWithPoints} />
+      <RoomConfigModal roomConfigModal={roomConfigModal} setRoomConfigModal={setRoomConfigModal} executeCreateRoom={executeCreateRoom} isTicketSystemEnabled={isTicketSystemEnabled} />
 
-      {/* 小説出力設定モーダル */}
-      {novelSettingsModal && (
-        <div className="fixed inset-0 bg-black/80 z-[90] flex items-center justify-center p-4">
-          <div className="bg-slate-800 border border-emerald-700/50 rounded-xl p-6 w-full max-w-md shadow-2xl">
-            <h3 className="text-xl font-bold text-emerald-400 mb-4">📖 小説の執筆設定</h3>
-            <div className="space-y-4 mb-6">
-              <div>
-                <label className="text-xs text-slate-400 block mb-1">文体（トーン）</label>
-                <select 
-                  value={novelSettingsModal.options?.tone || 'light'} 
-                  onChange={(e) => setNovelSettingsModal({...novelSettingsModal, options: {...novelSettingsModal.options, tone: e.target.value}})} 
-                  className="w-full bg-slate-900 border border-slate-700 rounded p-2 text-sm text-white"
-                >
-                  <option value="light">ライトノベル風（会話多め・テンポ重視）</option>
-                  <option value="literature">純文学風（情景・心理描写を重厚に）</option>
-                  <option value="hardboiled">ハードボイルド風（渋く簡潔な表現）</option>
-                </select>
-              </div>
-              <div>
-                <label className="text-xs text-slate-400 block mb-1">使用するAIモデル</label>
-                <select 
-                  value={novelSettingsModal.aiModel} 
-                  onChange={(e) => setNovelSettingsModal({...novelSettingsModal, aiModel: e.target.value})} 
-                  className="w-full bg-slate-900 border border-slate-700 rounded p-2 text-sm text-white"
-                >
-                  <option value="lite">🟤 Gemini Flash Lite {isTicketSystemEnabled ? "(消費: ブロンズチケット 1枚)" : "(無料)"}</option>
-                  <option value="flash">⚪ Gemini Flash {isTicketSystemEnabled ? "(消費: シルバーチケット 1枚)" : "(無料)"}</option>
-                  <option value="pro">🟡 Gemini Pro {isTicketSystemEnabled ? "(消費: ゴールドチケット 1枚)" : "(無料)"}</option>
-                  <option value="claude">🟣 Claude 3.5 Sonnet {isTicketSystemEnabled ? "(消費: プラチナチケット 1枚)" : "(無料)"}</option>
-                  <option value="opus">💎 Claude 3 Opus {isTicketSystemEnabled ? "(消費: ダイヤモンドチケット 1枚)" : "(無料)"}</option>
-                </select>
-              </div>
-            </div>
-            <div className="flex gap-4">
-              <button 
-                onClick={() => setNovelSettingsModal(null)} 
-                className="flex-1 bg-slate-700 hover:bg-slate-600 py-3 rounded text-sm font-bold"
-              >
-                キャンセル
-              </button>
-              <button 
-                onClick={handleStartNovel} 
-                className="flex-1 bg-emerald-600 hover:bg-emerald-500 py-3 rounded text-sm font-bold shadow-lg"
-              >
-                執筆開始
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* チケットストアモーダル */}
-      {showTicketModal && (
-        <div className="fixed inset-0 bg-black/80 z-[110] flex items-center justify-center p-4">
-          <div className="bg-slate-800 border border-slate-700 rounded-xl p-6 w-full max-w-4xl shadow-2xl">
-            <div className="flex justify-between items-center mb-4 border-b border-slate-700 pb-3">
-              <h3 className="text-xl font-bold text-emerald-400">🎟️ チケット購入・交換ストア</h3>
-              <button onClick={() => setShowTicketModal(false)} className="text-2xl text-slate-400 hover:text-white">×</button>
-            </div>
-            
-            <div className="flex flex-col md:flex-row gap-4 mb-4">
-              <div className="flex-1 bg-slate-900 border border-slate-700 rounded-lg p-4 flex flex-col justify-center items-center shadow-inner">
-                 <span className="text-sm text-slate-400 mb-1">現在の所持ポイント</span>
-                 <span className="text-3xl font-bold text-yellow-400">🪙 {currentUser?.points || 0} pt</span>
-              </div>
-              <div className="flex-1 bg-pink-900/20 border border-pink-500/50 rounded-lg p-4 flex flex-col justify-center items-center shadow-inner relative overflow-hidden">
-                 <span className="text-xs text-pink-300 mb-2 font-bold">ログインボーナス（1日3回まで）</span>
-                 {adViewInfo.count < 3 ? (
-                   <button 
-                     onClick={() => setAdModal({ isOpen: true, step: 1, scenario: null, room: null, type: 'points' })} 
-                     className="w-full bg-pink-600 hover:bg-pink-500 text-white font-bold py-2 rounded-lg shadow-lg flex items-center justify-center gap-2"
-                   >
-                     📺 動画を見て 20pt 獲得する ({adViewInfo.count}/3)
-                   </button>
-                 ) : (
-                   <div className="w-full bg-slate-700 text-slate-400 font-bold py-2 rounded-lg text-center text-sm">
-                     本日の上限に達しました (3/3)
-                   </div>
-                 )}
-                 <p className="text-[10px] text-pink-400/70 mt-2">※3回視聴でブロンズチケット1枚分(60pt)になります。</p>
-              </div>
-            </div>
-
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 max-h-[50vh] overflow-y-auto pr-2 custom-scrollbar">
-               <div className="bg-stone-800/50 border border-stone-600 p-4 rounded-xl flex flex-col justify-between">
-                  <div>
-                    <div className="flex justify-between items-center mb-2">
-                      <h4 className="text-lg font-bold text-stone-300">ブロンズ</h4>
-                      <span className="bg-stone-600 text-white text-[10px] px-2 py-1 rounded font-bold">所持: {currentUser?.ticketsBronze || 0}枚</span>
-                    </div>
-                    <p className="text-[11px] text-stone-400">日常的な探索やテストプレイに。<br/>超高速・低コストな最安プラン。</p>
-                  </div>
-                  <div className="mt-4 pt-3 border-t border-stone-600">
-                    <div className="flex gap-2 mb-2">
-                      <button onClick={() => alert("※決済システム準備中")} className="flex-1 bg-stone-600 hover:bg-stone-500 text-white text-xs py-2 rounded font-bold shadow">¥240</button>
-                      <button onClick={() => exchangeTicketWithPoints('bronze', 60)} className="flex-1 bg-yellow-600 hover:bg-yellow-500 text-white text-xs py-2 rounded font-bold shadow flex items-center justify-center gap-1">🪙 60pt</button>
-                    </div>
-                    <button onClick={() => alert("※決済システム準備中")} className="w-full bg-stone-700/50 hover:bg-stone-600 text-stone-300 text-[10px] py-1.5 rounded font-bold border border-stone-600 transition-colors">3枚セット - ¥640 (11%OFF)</button>
-                  </div>
-               </div>
-               
-               <div className="bg-slate-700/30 border border-slate-600 p-4 rounded-xl flex flex-col justify-between">
-                  <div>
-                    <div className="flex justify-between items-center mb-2">
-                      <h4 className="text-lg font-bold text-slate-300">シルバー</h4>
-                      <span className="bg-slate-600 text-white text-[10px] px-2 py-1 rounded font-bold">所持: {currentUser?.ticketsSilver || 0}枚</span>
-                    </div>
-                    <p className="text-[11px] text-slate-400">手軽にサクッと遊びたい方向け。<br/>テンポの良いスピーディーなセッション。</p>
-                  </div>
-                  <div className="mt-4 pt-3 border-t border-slate-600">
-                    <div className="flex gap-2 mb-2">
-                      <button onClick={() => alert("※決済システム準備中")} className="flex-1 bg-blue-600 hover:bg-blue-500 text-white text-xs py-2 rounded font-bold shadow">¥360</button>
-                      <button onClick={() => exchangeTicketWithPoints('silver', 100)} className="flex-1 bg-yellow-600 hover:bg-yellow-500 text-white text-xs py-2 rounded font-bold shadow flex items-center justify-center gap-1">🪙 100pt</button>
-                    </div>
-                    <button onClick={() => alert("※決済システム準備中")} className="w-full bg-slate-800 hover:bg-slate-700 text-slate-300 text-[10px] py-1.5 rounded font-bold border border-slate-600 transition-colors">3枚セット - ¥970 (10%OFF)</button>
-                  </div>
-               </div>
-               
-               <div className="bg-amber-900/10 border border-amber-700/50 p-4 rounded-xl flex flex-col justify-between">
-                  <div>
-                    <div className="flex justify-between items-center mb-2">
-                      <h4 className="text-lg font-bold text-amber-400">ゴールド</h4>
-                      <span className="bg-amber-600 text-white text-[10px] px-2 py-1 rounded font-bold">所持: {currentUser?.ticketsGold || 0}枚</span>
-                    </div>
-                    <p className="text-[11px] text-amber-500/70">論理的で緻密なシナリオ向け。<br/>※AIプレイヤーは参加できません。</p>
-                  </div>
-                  <div className="mt-4 pt-3 border-t border-amber-900/50">
-                    <div className="flex flex-col gap-2">
-                      <button onClick={() => alert("※決済システム準備中")} className="w-full bg-amber-600 hover:bg-amber-500 text-white text-xs py-2 rounded font-bold shadow">1枚購入 - ¥600</button>
-                      <button onClick={() => alert("※決済システム準備中")} className="w-full bg-amber-900/50 hover:bg-amber-800/80 text-amber-300 text-[10px] py-1.5 rounded font-bold border border-amber-700/50 transition-colors">3枚セット - ¥1,620 (10%OFF)</button>
-                    </div>
-                  </div>
-               </div>
-               
-               <div className="bg-indigo-900/10 border border-indigo-700/50 p-4 rounded-xl flex flex-col justify-between">
-                  <div>
-                    <div className="flex justify-between items-center mb-2">
-                      <h4 className="text-lg font-bold text-indigo-300">プラチナ</h4>
-                      <span className="bg-indigo-600 text-white text-[10px] px-2 py-1 rounded font-bold">所持: {currentUser?.ticketsPlatinum || 0}枚</span>
-                    </div>
-                    <p className="text-[11px] text-indigo-400/70">エモーショナルな体験を求める方向け。<br/>※AIプレイヤーは参加できません。</p>
-                  </div>
-                  <div className="mt-4 pt-3 border-t border-indigo-900/50">
-                    <div className="flex flex-col gap-2">
-                      <button onClick={() => alert("※決済システム準備中")} className="w-full bg-indigo-600 hover:bg-indigo-500 text-white text-xs py-2 rounded font-bold shadow">1枚購入 - ¥1,200</button>
-                      <button onClick={() => alert("※決済システム準備中")} className="w-full bg-indigo-900/50 hover:bg-indigo-800/80 text-indigo-300 text-[10px] py-1.5 rounded font-bold border border-indigo-700/50 transition-colors">3枚セット - ¥3,240 (10%OFF)</button>
-                    </div>
-                  </div>
-               </div>
-               
-               <div className="bg-gradient-to-br from-fuchsia-900/40 to-rose-900/20 border-2 border-fuchsia-500/50 p-4 rounded-xl flex flex-col justify-between relative overflow-hidden lg:col-span-2">
-                  <div className="absolute top-0 right-0 bg-fuchsia-600 text-white text-[8px] font-bold px-4 py-1 rotate-45 translate-x-3 translate-y-2 shadow-lg">最高級</div>
-                  <div>
-                    <div className="flex justify-between items-center mb-2">
-                      <h4 className="text-lg font-bold text-fuchsia-300">ダイヤモンド</h4>
-                      <span className="bg-fuchsia-600 text-white text-[10px] px-2 py-1 rounded font-bold relative z-10">所持: {currentUser?.ticketsDiamond || 0}枚</span>
-                    </div>
-                    <p className="text-[11px] text-fuchsia-200/80 relative z-10">最高峰のVIP TRPG体験。人間を超える神業GMで、絶対に失敗できない究極のセッションを。<br/>※AIプレイヤーは参加できません。</p>
-                  </div>
-                  <div className="mt-4 pt-3 border-t border-fuchsia-900/50 relative z-10">
-                    <div className="flex flex-col sm:flex-row gap-2">
-                      <button onClick={() => alert("※決済システム準備中")} className="flex-1 bg-fuchsia-600 hover:bg-fuchsia-500 text-white text-xs py-2 rounded font-bold shadow">1枚購入 - ¥1,800</button>
-                      <button onClick={() => alert("※決済システム準備中")} className="flex-1 bg-fuchsia-900/50 hover:bg-fuchsia-800/80 text-fuchsia-300 text-[10px] py-2 rounded font-bold border border-fuchsia-700/50 transition-colors">3枚セット - ¥4,860 (10%OFF)</button>
-                    </div>
-                  </div>
-               </div>
-               
-               <div className="bg-slate-700/30 border border-slate-600 p-4 rounded-xl flex flex-col justify-between">
-                  <div>
-                    <div className="flex justify-between items-center mb-2">
-                      <h4 className="text-lg font-bold text-white">アイテム</h4>
-                      <span className="bg-slate-500 text-white text-[10px] px-2 py-1 rounded font-bold">所持: {currentUser?.ticketsItem || 0}枚</span>
-                    </div>
-                    <p className="text-[11px] text-slate-400">高品質画像生成(3回分)や、<br/>小説執筆、書庫保存などに使用します。</p>
-                  </div>
-                  <div className="mt-4 pt-3 border-t border-slate-600">
-                    <div className="flex gap-2 mb-2">
-                      <button onClick={() => alert("※決済システム準備中")} className="flex-1 bg-slate-600 hover:bg-slate-500 text-white text-xs py-2 rounded font-bold shadow">¥200</button>
-                      <button onClick={() => exchangeTicketWithPoints('item', 500)} className="flex-1 bg-yellow-600 hover:bg-yellow-500 text-white text-xs py-2 rounded font-bold shadow flex items-center justify-center gap-1">🪙 500pt</button>
-                    </div>
-                    <button onClick={() => alert("※決済システム準備中")} className="w-full bg-slate-800 border border-slate-500 hover:bg-slate-700 text-slate-300 text-[10px] py-1.5 rounded font-bold transition-colors">3枚セット - ¥540 (10%OFF)</button>
-                  </div>
-               </div>
-               
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* 部屋作成モーダル */}
-      {roomConfigModal && (
-        <div className="fixed inset-0 bg-black/80 z-[100] flex items-center justify-center p-4">
-          <div className="bg-slate-800 border border-emerald-700/50 rounded-xl p-6 w-full max-w-lg shadow-2xl">
-            <h3 className="text-xl font-bold text-emerald-400 mb-4">🚪 部屋の作成: {roomConfigModal.scenario?.title}</h3>
-            <div className="space-y-4 mb-6">
-              <div>
-                <label className="text-xs text-slate-400 block mb-1">使用するキャラクター <span className="text-red-400">*</span></label>
-                <select 
-                  value={roomConfigModal.charId || ""} 
-                  onChange={(e) => setRoomConfigModal({...roomConfigModal, charId: e.target.value})} 
-                  className="w-full bg-slate-900 border border-slate-700 rounded p-2 text-sm text-white"
-                >
-                  <option value="" disabled>選択してください</option>
-                  {roomConfigModal.scenario?.presetCharacters?.map((c: any) => (
-                    <option key={c.id} value={c.id}>{c.name} ({c.job})</option>
-                  ))}
-                </select>
-              </div>
-              <div>
-                <label className="text-xs text-slate-400 block mb-1">AIモデル (GM) {isTicketSystemEnabled && <span className="text-amber-400 text-[10px]">※チケット消費</span>}</label>
-                <select 
-                  value={roomConfigModal.aiModel || "lite"} 
-                  onChange={(e) => setRoomConfigModal({...roomConfigModal, aiModel: e.target.value})} 
-                  className="w-full bg-slate-900 border border-slate-700 rounded p-2 text-sm text-white"
-                >
-                  <option value="lite">🟤 ブロンズ (Flash Lite) {isTicketSystemEnabled ? "(1枚消費)" : "(無料)"}</option>
-                  <option value="flash">⚪ シルバー (Gemini Flash) {isTicketSystemEnabled ? "(1枚消費)" : "(無料)"}</option>
-                  <option value="pro">🟡 ゴールド (Gemini Pro) {isTicketSystemEnabled ? "(1枚消費)" : "(無料)"}</option>
-                  <option value="claude">🟣 プラチナ (Claude Sonnet) {isTicketSystemEnabled ? "(1枚消費)" : "(無料)"}</option>
-                  <option value="opus">💎 ダイヤモンド (Claude Opus) {isTicketSystemEnabled ? "(1枚消費)" : "(無料)"}</option>
-                </select>
-              </div>
-              <div>
-                <label className="text-xs text-slate-400 block mb-1">ゲームルール（システム）</label>
-                <select 
-                  value={roomConfigModal.rule || "coc_jp"} 
-                  onChange={(e) => setRoomConfigModal({...roomConfigModal, rule: e.target.value})} 
-                  className="w-full bg-slate-900 border border-slate-700 rounded p-2 text-sm text-white"
-                >
-                  <option value="coc_jp">🟩 日本クトゥルフ風（ドラマ・探索重視 / 1d100）</option>
-                  <option value="coc_en">🟦 海外クトゥルフ風（シビア・ホラー / 1d100）</option>
-                  <option value="dnd">🟥 D&D風（ヒロイック・ファンタジー / 1d20）</option>
-                  <option value="sw25">🟨 ソードワールド風（明るい冒険 / 2d6）</option>
-                  <option value="storytelling">🟪 ストーリーテリング（文学的・演出重視 / 1d6）</option>
-                </select>
-              </div>
-              
-              {/* 多言語対応の言語設定プルダウン */}
-              <div>
-                <label className="text-xs text-slate-400 block mb-1">セッション進行言語（Language）</label>
-                <select 
-                  value={roomConfigModal.language || "ja"} 
-                  onChange={(e) => setRoomConfigModal({...roomConfigModal, language: e.target.value})} 
-                  className="w-full bg-slate-900 border border-slate-700 rounded p-2 text-sm text-white"
-                >
-                  <option value="ja">🇯🇵 日本語 (Japanese)</option>
-                  <option value="en">🇺🇸 英語 (English)</option>
-                  <option value="zh">🇨🇳 中国語 (Simplified Chinese)</option>
-                </select>
-              </div>
-              
-              <div>
-                <label className="text-xs text-slate-400 block mb-1">難易度</label>
-                <select 
-                  value={roomConfigModal.difficulty || "normal"} 
-                  onChange={(e) => setRoomConfigModal({...roomConfigModal, difficulty: e.target.value})} 
-                  className="w-full bg-slate-900 border border-slate-700 rounded p-2 text-sm text-white"
-                >
-                  <option value="beginner">⬜ 初心者（接待GM / 手取り足取り30分限定）</option>
-                  <option value="easy">🟩 簡単（やさしいGM / 判定が通りやすい）</option>
-                  <option value="normal">🟦 普通（標準GM / 一般的なバランス）</option>
-                  <option value="hard">🟧 難しい（厳しめGM / ヒント少なめ）</option>
-                  <option value="pro">🟥 プロ（本格派GM / ロストの危険あり）</option>
-                  <option value="oni">🟪 鬼（容赦ないGM / 死ぬ覚悟で挑むモード）</option>
-                </select>
-              </div>
-              <div>
-                <label className="text-xs text-slate-400 block mb-1">公開設定</label>
-                <div className="flex gap-4">
-                  <label className="flex items-center gap-2 text-sm">
-                    <input type="radio" checked={roomConfigModal.privacy === 'open'} onChange={() => setRoomConfigModal({...roomConfigModal, privacy: 'open'})} /> 🔓 オープン（誰でも観戦可能）
-                  </label>
-                  <label className="flex items-center gap-2 text-sm">
-                    <input type="radio" checked={roomConfigModal.privacy === 'secret'} onChange={() => setRoomConfigModal({...roomConfigModal, privacy: 'secret'})} /> 🔒 シークレット（IDを知る人のみ）
-                  </label>
-                </div>
-              </div>
-              <div>
-                <label className="text-xs text-slate-400 block mb-1">アイテム表示機能</label>
-                <select 
-                  value={roomConfigModal.itemVisibility || "none"} 
-                  onChange={(e) => setRoomConfigModal({...roomConfigModal, itemVisibility: e.target.value})} 
-                  className="w-full bg-slate-900 border border-slate-700 rounded p-2 text-sm text-white"
-                >
-                  <option value="none">非表示</option>
-                  <option value="self">自分の所持品のみ表示</option>
-                  <option value="all">パーティー全員の所持品を表示</option>
-                </select>
-              </div>
-              <div>
-                <label className="text-xs text-slate-400 block mb-1 mt-2">ひとことメッセージ</label>
-                <input 
-                  type="text" 
-                  value={roomConfigModal.message || ""} 
-                  onChange={(e) => setRoomConfigModal({...roomConfigModal, message: e.target.value})} 
-                  placeholder="例：初心者歓迎！ゆっくり遊びましょう" 
-                  className="w-full bg-slate-900 border border-slate-700 rounded p-2 text-sm text-white" 
-                />
-              </div>
-            </div>
-            <div className="flex gap-4">
-              <button 
-                onClick={() => setRoomConfigModal(null)} 
-                className="flex-1 bg-slate-700 hover:bg-slate-600 py-3 rounded text-sm font-bold"
-              >
-                キャンセル
-              </button>
-              <button 
-                onClick={executeCreateRoom} 
-                disabled={!roomConfigModal.charId} 
-                className="flex-1 bg-emerald-600 hover:bg-emerald-500 disabled:bg-slate-600 py-3 rounded text-sm font-bold shadow-lg shadow-emerald-900/50"
-              >
-                作成して入室
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
     </main>
   );
 }
