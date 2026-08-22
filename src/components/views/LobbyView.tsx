@@ -22,7 +22,7 @@ type LobbyViewProps = {
   fetchAdminData: () => Promise<void>;
   startTrialPlay: (scenario: Scenario) => void;
   availableScenarios: Scenario[];
-  openUserProfile: (id: string) => void; // ★修正
+  openUserProfile: (id: string) => void; // ★型エラー修正
   setScenarioAppealTarget: React.Dispatch<React.SetStateAction<Scenario | null>>;
   playArchives: PlayArchive[];
   setShowTicketModal: React.Dispatch<React.SetStateAction<boolean>>;
@@ -36,12 +36,12 @@ export default function LobbyView(props: LobbyViewProps) {
   // ★ 言語ごとのUI辞書
   const lang = props.appLanguage || "ja";
   const t = {
-    ja: { lobby: "TRPG ロビー", rooms: "募集中の部屋", scenarios: "シナリオ一覧", create: "シナリオ作成", mypage: "マイページ", library: "プレイ書庫", logout: "ログアウト", store: "チケット購入", searchRoom: "シークレット部屋IDを入力...", search: "検索", host: "ホスト", players: "参加者", spectate: "観戦", join: "参加", author: "作者", play: "プレイ", view: "観戦", createRoom: "部屋を立てる", trial: "お試しプレイ", details: "詳細を見る", edit: "編集", del: "削除", selectChar: "キャラクターを選択して参加...", noRooms: "現在募集中の部屋はありません。", noScenarios: "まだ作成されたシナリオはありません。", myScenarios: "あなたの作成したシナリオ", newScenario: "+ 新規作成", originalScenario: "✨ オリジナルシナリオを作る", originalDesc: "あなただけの物語を作成し、世界中のプレイヤーと共有しましょう。" },
-    en: { lobby: "TRPG Lobby", rooms: "Open Rooms", scenarios: "Scenarios", create: "Create", mypage: "My Page", library: "Library", logout: "Logout", store: "Ticket Store", searchRoom: "Enter Secret Room ID...", search: "Search", host: "Host", players: "Players", spectate: "Spectate", join: "Join", author: "Author", play: "Plays", view: "Views", createRoom: "Create Room", trial: "Trial Play", details: "Details", edit: "Edit", del: "Delete", selectChar: "Select a character to join...", noRooms: "No rooms are currently open.", noScenarios: "No scenarios have been created yet.", myScenarios: "Your Created Scenarios", newScenario: "+ Create New", originalScenario: "✨ Create Original Scenario", originalDesc: "Create your own story and share it with players worldwide." },
-    zh: { lobby: "TRPG 大厅", rooms: "开放房间", scenarios: "剧本列表", create: "创建剧本", mypage: "我的主页", library: "游玩记录", logout: "登出", store: "购买门票", searchRoom: "输入私密房间 ID...", search: "搜索", host: "房主", players: "玩家", spectate: "观战", join: "加入", author: "作者", play: "游玩", view: "观战", createRoom: "创建房间", trial: "试玩", details: "查看详情", edit: "编辑", del: "删除", selectChar: "选择角色加入...", noRooms: "当前没有开放的房间。", noScenarios: "目前还没有创建任何剧本。", myScenarios: "你创建的剧本", newScenario: "+ 创建新剧本", originalScenario: "✨ 创建原创剧本", originalDesc: "创建你自己的故事并与全世界的玩家分享。" }
+    ja: { lobby: "TRPG ロビー", rooms: "募集中の部屋", scenarios: "シナリオ一覧", create: "シナリオ作成", mypage: "マイページ", library: "プレイ書庫", logout: "ログアウト", store: "チケット購入", searchRoom: "シークレット部屋IDを入力...", search: "検索", host: "ホスト", players: "参加者", spectate: "観戦", join: "参加", author: "作者", play: "プレイ", view: "観戦", createRoom: "部屋を立てる", trial: "お試しプレイ", details: "詳細を見る", edit: "編集", del: "削除", selectChar: "キャラクターを選択して参加...", noRooms: "現在募集中の部屋はありません。", noScenarios: "まだ作成されたシナリオはありません。", myScenarios: "あなたの作成したシナリオ", newScenario: "+ 新規作成", originalScenario: "✨ オリジナルシナリオを作る", originalDesc: "あなただけの物語を作成し、世界中のプレイヤーと共有しましょう。", selectableChars: "選択可能なキャラクター", diffBeginner: "🟩 初心者向け", diffEasy: "🟦 簡単", diffNormal: "🟦 普通", diffHard: "🟧 難しい", diffPro: "🟥 プロ", diffOni: "🟪 鬼" },
+    en: { lobby: "TRPG Lobby", rooms: "Open Rooms", scenarios: "Scenarios", create: "Create", mypage: "My Page", library: "Library", logout: "Logout", store: "Ticket Store", searchRoom: "Enter Secret Room ID...", search: "Search", host: "Host", players: "Players", spectate: "Spectate", join: "Join", author: "Author", play: "Plays", view: "Views", createRoom: "Create Room", trial: "Trial Play", details: "Details", edit: "Edit", del: "Delete", selectChar: "Select a character to join...", noRooms: "No rooms are currently open.", noScenarios: "No scenarios have been created yet.", myScenarios: "Your Created Scenarios", newScenario: "+ Create New", originalScenario: "✨ Create Original Scenario", originalDesc: "Create your own story and share it with players worldwide.", selectableChars: "Selectable Characters", diffBeginner: "🟩 Beginner", diffEasy: "🟦 Easy", diffNormal: "🟦 Normal", diffHard: "🟧 Hard", diffPro: "🟥 Pro", diffOni: "🟪 Oni" },
+    zh: { lobby: "TRPG 大厅", rooms: "开放房间", scenarios: "剧本列表", create: "创建剧本", mypage: "我的主页", library: "游玩记录", logout: "登出", store: "购买门票", searchRoom: "输入私密房间 ID...", search: "搜索", host: "房主", players: "玩家", spectate: "观战", join: "加入", author: "作者", play: "游玩", view: "观战", createRoom: "创建房间", trial: "试玩", details: "查看详情", edit: "编辑", del: "删除", selectChar: "选择角色加入...", noRooms: "当前没有开放的房间。", noScenarios: "目前还没有创建任何剧本。", myScenarios: "你创建的剧本", newScenario: "+ 创建新剧本", originalScenario: "✨ 创建原创剧本", originalDesc: "创建你自己的故事并与全世界的玩家分享。", selectableChars: "可选角色", diffBeginner: "🟩 新手", diffEasy: "🟦 简单", diffNormal: "🟦 普通", diffHard: "🟧 困难", diffPro: "🟥 专业", diffOni: "🟪 恶鬼" }
   }[lang];
 
-  // ★ 修正：引数に undefined を許容し、戻り値の型も整える
+  // ★ シナリオデータを指定言語に自動翻訳（代入）する関数
   const getTScen = (scenario?: Scenario): Scenario | undefined => {
     if (!scenario) return undefined;
     let s = { ...scenario };
@@ -124,79 +124,118 @@ export default function LobbyView(props: LobbyViewProps) {
              </div>
           )}
 
-          {/* Tab: Rooms */}
+          {/* Tab: Rooms (★リッチデザイン復元) */}
           {activeTab === 'rooms' && (
             <div className="space-y-6">
               {localizedRooms.length === 0 && <div className="text-center text-slate-500 py-20 font-medium bg-slate-800/30 rounded-2xl border border-slate-800 border-dashed">{t.noRooms}</div>}
               {localizedRooms.map(room => (
-                <div key={room.id} className="bg-slate-800 rounded-2xl p-5 border border-slate-700 shadow-xl relative overflow-hidden group hover:border-blue-500/50 transition-colors">
+                <div key={room.id} className="bg-slate-800 rounded-2xl p-5 border border-slate-700 shadow-xl relative overflow-hidden group hover:border-slate-500 transition-colors">
                   <div className="flex flex-col md:flex-row gap-6 relative z-10">
+                    
+                    {/* 画像エリア */}
                     {room.scenario?.imageUrl ? (
-                      <div className="w-full md:w-48 h-32 md:h-full shrink-0 rounded-xl overflow-hidden relative shadow-lg">
+                      <div className="w-full md:w-48 h-48 md:h-auto shrink-0 rounded-xl overflow-hidden relative shadow-lg">
                          <img src={room.scenario.imageUrl} alt="cover" className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" />
                          <div className="absolute inset-0 bg-gradient-to-t from-slate-900/80 to-transparent"></div>
                       </div>
                     ) : (
-                      <div className="w-full md:w-48 h-32 md:h-full shrink-0 rounded-xl bg-slate-700 flex items-center justify-center shadow-inner">
-                        <span className="text-slate-500 font-bold text-lg">No Image</span>
+                      <div className="w-full md:w-48 h-48 md:h-auto shrink-0 rounded-xl bg-slate-700 flex items-center justify-center shadow-inner">
+                        <span className="text-slate-500 font-bold text-sm">No Image</span>
                       </div>
                     )}
                     
                     <div className="flex-1 flex flex-col justify-between">
                       <div>
-                        <div className="flex items-center gap-2 mb-2">
-                           {room.privacy === 'secret' && <span className="bg-purple-900/80 text-purple-200 text-xs px-2 py-0.5 rounded shadow border border-purple-500/30">🔒 Secret</span>}
-                           {room.isWarning && <span className="bg-red-900/80 text-red-200 text-xs px-2 py-0.5 rounded shadow border border-red-500/30">⚠️ ブロックユーザー参加中</span>}
-                           <span className="bg-blue-900/50 text-blue-300 text-xs px-2 py-1 rounded-md border border-blue-500/30 font-semibold tracking-wide">
-                             {room.ai_model === 'lite' ? '🟢 Lite' : room.ai_model === 'pro' ? '🟡 Pro' : room.ai_model === 'claude' ? '🟣 Claude' : room.ai_model === 'opus' ? '💎 Opus' : '🔵 Flash'}
-                           </span>
+                        {/* タイトルとアイコン */}
+                        <h3 className="text-2xl font-bold mb-2 flex items-center gap-2 line-clamp-1">
+                          {room.privacy === 'secret' ? <span title="シークレット">🔒</span> : <span title="オープン">🔓</span>}
+                          {room.scenario?.title}
+                        </h3>
+                        
+                        {/* メタ情報バッジ */}
+                        <div className="flex flex-wrap items-center gap-3 mb-4 text-sm">
+                          <span className="text-slate-400">{t.host}: <span className="text-blue-300 font-medium">{room.host_name}</span></span>
+                          {room.scenario?.ratingCount && room.scenario.ratingCount > 0 ? (
+                            <span className="bg-slate-900/80 text-yellow-400 text-xs px-2 py-0.5 rounded shadow border border-slate-700 font-bold flex items-center gap-1">⭐ {(room.scenario.ratingSum / room.scenario.ratingCount).toFixed(1)}</span>
+                          ) : (
+                            <span className="bg-slate-900/80 text-yellow-400 text-xs px-2 py-0.5 rounded shadow border border-slate-700 font-bold flex items-center gap-1">⭐ 未評価</span>
+                          )}
+                          
+                          <span className={`text-xs px-2 py-0.5 rounded font-bold text-white shadow ${
+                            room.difficulty === 'beginner' ? 'bg-emerald-600' :
+                            room.difficulty === 'easy' ? 'bg-blue-500' :
+                            room.difficulty === 'normal' ? 'bg-blue-600' :
+                            room.difficulty === 'hard' ? 'bg-amber-600' :
+                            room.difficulty === 'pro' ? 'bg-red-600' :
+                            room.difficulty === 'oni' ? 'bg-purple-600' : 'bg-slate-600'
+                          }`}>
+                            {room.difficulty === 'beginner' && t.diffBeginner}
+                            {room.difficulty === 'easy' && t.diffEasy}
+                            {room.difficulty === 'normal' && t.diffNormal}
+                            {room.difficulty === 'hard' && t.diffHard}
+                            {room.difficulty === 'pro' && t.diffPro}
+                            {room.difficulty === 'oni' && t.diffOni}
+                          </span>
+
+                          <span className="bg-slate-900/80 text-blue-300 text-xs px-2 py-0.5 rounded border border-blue-500/30 font-bold tracking-wide">
+                            {room.ai_model === 'lite' ? '🟢 Lite' : room.ai_model === 'pro' ? '🟡 Pro' : room.ai_model === 'claude' ? '🟣 Claude' : room.ai_model === 'opus' ? '💎 Opus' : '🔵 Flash'}
+                          </span>
+                          
+                          {room.isWarning && <span className="bg-red-900/80 text-red-200 text-xs px-2 py-0.5 rounded border border-red-500/30 font-bold shadow">⚠️ ブロックユーザー参加中</span>}
                         </div>
-                        <h3 className="text-xl font-bold mb-1 line-clamp-1">{room.scenario?.title}</h3>
-                        <p className="text-sm text-slate-400 flex items-center gap-2 mb-3">
-                          <span className="font-medium text-slate-300">{t.host}: <span className="text-blue-300">{room.host_name}</span></span>
-                          <span className="text-slate-600">|</span>
-                          <span className="text-xs">ID: {room.id.substring(0,8)}...</span>
+                        
+                        {/* あらすじ */}
+                        <p className="text-sm text-slate-300 mb-5 line-clamp-2 leading-relaxed">
+                          {room.scenario?.description}
                         </p>
                         
                         {room.host_message && (
-                          <div className="bg-slate-900/50 p-3 rounded-lg border border-slate-700/50 text-sm text-slate-300 mb-4 italic border-l-4 border-l-blue-500">
+                          <div className="bg-slate-900/50 p-3 rounded-lg border border-slate-700/50 text-sm text-slate-300 mb-5 italic border-l-4 border-l-blue-500">
                              "{room.host_message}"
                           </div>
                         )}
-                      </div>
 
-                      <div className="flex flex-col sm:flex-row justify-between items-end sm:items-center gap-4 mt-auto">
-                        <div className="w-full sm:w-auto">
-                          <div className="text-xs font-bold text-slate-500 mb-2 flex items-center gap-1">👤 {t.players}</div>
+                        {/* キャラクターカード一覧 */}
+                        <div className="mb-6">
+                          <div className="text-xs font-bold text-emerald-400 mb-2 flex items-center gap-1">👤 {t.selectableChars}</div>
                           <div className="flex flex-wrap gap-2">
                             {room.scenario?.presetCharacters.map((c: any) => {
                               const isTaken = Object.values(room.joined_users || {}).includes(c.id);
                               return (
-                                <div key={c.id} className={`text-xs px-3 py-1.5 rounded-lg border flex items-center gap-2 ${isTaken ? 'bg-slate-700/50 border-slate-600 text-slate-500' : 'bg-slate-900 border-blue-500/30 text-blue-200'}`}>
-                                  {isTaken ? <span className="text-[10px]">❌</span> : <span className="w-2 h-2 rounded-full bg-blue-500"></span>}
-                                  {c.name}
+                                <div key={c.id} className={`flex items-center gap-3 px-3 py-2 rounded-lg border shadow-sm ${isTaken ? 'bg-slate-800 border-slate-700 opacity-50' : 'bg-slate-900/80 border-slate-600'}`}>
+                                  <div className="w-8 h-8 rounded-full bg-slate-700 flex items-center justify-center overflow-hidden shrink-0 border border-slate-600">
+                                    <span className="text-xs">{isTaken ? '❌' : '👤'}</span>
+                                  </div>
+                                  <div className="flex flex-col pr-2">
+                                    <span className={`text-sm font-bold ${isTaken ? 'text-slate-500 line-through' : 'text-white'}`}>{c.name}</span>
+                                    <span className="text-[10px] text-slate-400 font-medium">{c.job}</span>
+                                  </div>
                                 </div>
                               );
                             })}
                           </div>
                         </div>
+                      </div>
 
-                        <div className="flex gap-2 w-full sm:w-auto mt-4 sm:mt-0">
-                          <select id={`char_select_${room.id}`} className="bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-sm focus:border-blue-500 outline-none flex-1">
-                            <option value="">{t.selectChar}</option>
-                            {room.scenario?.presetCharacters.map((c: any) => {
-                              const isTaken = Object.values(room.joined_users || {}).includes(c.id);
-                              if (isTaken) return null;
-                              return <option key={c.id} value={c.id}>{c.name}</option>;
-                            })}
-                          </select>
-                          <button onClick={() => props.spectateRoom(room)} className="px-4 py-2 bg-slate-700 hover:bg-slate-600 rounded-lg text-sm font-bold shadow transition-colors shrink-0">👁️ {t.spectate}</button>
+                      {/* 下部アクションバー */}
+                      <div className="flex flex-col sm:flex-row justify-between items-end sm:items-center gap-4 mt-auto pt-4 border-t border-slate-700/50">
+                        <select id={`char_select_${room.id}`} className="w-full sm:w-64 bg-slate-900 border border-slate-700 rounded-lg px-3 py-2.5 text-sm focus:border-blue-500 outline-none text-white font-medium">
+                          <option value="">{t.selectChar}</option>
+                          {room.scenario?.presetCharacters.map((c: any) => {
+                            const isTaken = Object.values(room.joined_users || {}).includes(c.id);
+                            if (isTaken) return null;
+                            return <option key={c.id} value={c.id}>{c.name}</option>;
+                          })}
+                        </select>
+                        <div className="flex gap-2 w-full sm:w-auto">
+                          <button onClick={() => props.spectateRoom(room)} className="flex-1 sm:flex-none px-5 py-2.5 bg-slate-700 hover:bg-slate-600 rounded-lg text-sm font-bold shadow transition-colors shrink-0">👁️ {t.spectate}</button>
                           <button onClick={() => {
                             const charId = (document.getElementById(`char_select_${room.id}`) as HTMLSelectElement)?.value;
                             if(charId) props.executeJoinRoom(room, charId); else alert(t.selectChar);
-                          }} className="px-6 py-2 bg-blue-600 hover:bg-blue-500 rounded-lg text-sm font-bold shadow-lg shadow-blue-900/50 transition-colors shrink-0">{t.join}</button>
+                          }} className="flex-1 sm:flex-none px-8 py-2.5 bg-blue-600 hover:bg-blue-500 text-white rounded-lg text-sm font-bold shadow-lg shadow-blue-900/50 transition-colors shrink-0">{t.join}</button>
                         </div>
                       </div>
+
                     </div>
                   </div>
                 </div>
@@ -204,50 +243,53 @@ export default function LobbyView(props: LobbyViewProps) {
             </div>
           )}
 
-          {/* Tab: Scenarios */}
+          {/* Tab: Scenarios (★リッチデザイン復元) */}
           {activeTab === 'scenarios' && (
             <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
               {localizedScenarios.length === 0 && <div className="col-span-full text-center text-slate-500 py-20 font-medium bg-slate-800/30 rounded-2xl border border-slate-800 border-dashed">{t.noScenarios}</div>}
               {localizedScenarios.map((s) => (
-                <div key={s.id} className="bg-slate-800 rounded-2xl border border-slate-700 overflow-hidden flex flex-col group hover:border-slate-500 transition-colors shadow-lg">
+                <div key={s.id} className="bg-slate-800 rounded-2xl border border-slate-700 overflow-hidden flex flex-col group hover:border-slate-500 transition-colors shadow-xl">
                   {s.imageUrl ? (
                     <div className="h-48 overflow-hidden relative">
                       <img src={s.imageUrl} alt="cover" className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" />
-                      <div className="absolute inset-0 bg-gradient-to-t from-slate-900 to-transparent"></div>
+                      <div className="absolute inset-0 bg-gradient-to-t from-slate-900/90 via-slate-900/20 to-transparent"></div>
+                      <div className="absolute top-3 left-3 flex gap-2">
+                         {s.price && s.price > 0 ? (
+                           <span className="bg-yellow-600/90 backdrop-blur text-slate-900 text-xs px-2.5 py-1 rounded font-bold shadow-lg">🎟️ {s.price}pt</span>
+                         ) : (
+                           <span className="bg-emerald-600/90 backdrop-blur text-white text-xs px-2.5 py-1 rounded font-bold shadow-lg">🆓 Free</span>
+                         )}
+                      </div>
                     </div>
                   ) : (
                     <div className="h-48 bg-slate-700 flex items-center justify-center shadow-inner relative">
                       <span className="text-slate-500 font-bold text-lg">No Image</span>
-                      <div className="absolute inset-0 bg-gradient-to-t from-slate-900 to-transparent"></div>
+                      <div className="absolute inset-0 bg-gradient-to-t from-slate-900/90 to-transparent"></div>
                     </div>
                   )}
                   
-                  <div className="p-5 flex flex-col flex-1 relative z-10 -mt-8">
-                    <div className="flex gap-2 mb-3">
-                      {s.price && s.price > 0 ? (
-                        <span className="bg-yellow-900/80 text-yellow-300 text-xs px-2 py-0.5 rounded shadow border border-yellow-500/30 font-bold flex items-center gap-1">🎟️ {s.price}pt</span>
-                      ) : (
-                        <span className="bg-emerald-900/80 text-emerald-300 text-xs px-2 py-0.5 rounded shadow border border-emerald-500/30 font-bold">🆓 Free</span>
-                      )}
-                      {s.ratingCount && s.ratingCount > 0 ? (
-                        <span className="bg-slate-900/80 text-yellow-400 text-xs px-2 py-0.5 rounded shadow border border-slate-700 font-bold flex items-center gap-1">⭐ {(s.ratingSum / s.ratingCount).toFixed(1)}</span>
-                      ) : (
-                        <span className="bg-slate-900/80 text-slate-400 text-xs px-2 py-0.5 rounded shadow border border-slate-700">⭐ 未評価</span>
-                      )}
-                    </div>
+                  <div className="p-5 flex flex-col flex-1 relative z-10 -mt-6">
+                    <h3 className="text-xl font-bold mb-3 line-clamp-2 leading-tight">{s.title}</h3>
                     
-                    <h3 className="text-xl font-bold mb-2 line-clamp-2 leading-tight">{s.title}</h3>
-                    {/* ★修正: s.authorId が未定義のケースを保護 */}
-                    <p className="text-xs text-slate-400 mb-4 flex items-center gap-2">
-                       <span className="font-medium">{t.author}: <button onClick={()=>props.openUserProfile(s.authorId || "")} className="text-blue-400 hover:underline">{(s.authorId || "").substring(0,6)}...</button></span>
-                       <span className="text-slate-600">|</span>
-                       <span>{t.play}:{s.playCount||0} / {t.view}:{s.viewCount||0}</span>
-                    </p>
+                    <div className="flex items-center gap-3 mb-4 text-xs text-slate-400">
+                       {s.ratingCount && s.ratingCount > 0 ? (
+                         <span className="bg-slate-900 text-yellow-400 px-2 py-1 rounded font-bold border border-slate-700 shadow-sm">⭐ {(s.ratingSum / s.ratingCount).toFixed(1)}</span>
+                       ) : (
+                         <span className="bg-slate-900 text-slate-500 px-2 py-1 rounded font-bold border border-slate-700 shadow-sm">⭐ 未評価</span>
+                       )}
+                       <span className="font-medium">{t.author}: <button onClick={()=>props.openUserProfile(s.authorId || "")} className="text-blue-400 hover:text-blue-300 hover:underline">{(s.authorId || "").substring(0,8)}...</button></span>
+                    </div>
+
+                    <div className="flex gap-4 text-xs text-slate-500 mb-4 font-mono bg-slate-900/50 p-2 rounded-lg border border-slate-700/50">
+                       <span>▶ {t.play}: <strong className="text-slate-300">{s.playCount||0}</strong></span>
+                       <span>👁️ {t.view}: <strong className="text-slate-300">{s.viewCount||0}</strong></span>
+                    </div>
+
                     <p className="text-sm text-slate-300 mb-6 line-clamp-3 leading-relaxed flex-1">{s.description}</p>
                     
                     <div className="flex gap-2 mt-auto">
-                      <button onClick={()=>props.setRoomConfigModal({ scenario: s, charId: "", privacy: "open", message: "", difficulty: "normal", rule: "coc_jp", itemVisibility: "none", aiModel: "lite", language: lang })} className="flex-1 bg-blue-600 hover:bg-blue-500 text-white font-bold py-2.5 rounded-lg shadow-lg shadow-blue-900/50 transition-colors text-sm">{t.createRoom}</button>
-                      <button onClick={()=>props.startTrialPlay(s)} className="px-4 bg-slate-700 hover:bg-slate-600 text-white font-bold py-2.5 rounded-lg shadow transition-colors text-sm whitespace-nowrap">🤖 {t.trial}</button>
+                      <button onClick={()=>props.setRoomConfigModal({ scenario: s, charId: "", privacy: "open", message: "", difficulty: "normal", rule: "coc_jp", itemVisibility: "none", aiModel: "lite", language: lang })} className="flex-1 bg-blue-600 hover:bg-blue-500 text-white font-bold py-3 rounded-lg shadow-lg shadow-blue-900/50 transition-colors text-sm">{t.createRoom}</button>
+                      <button onClick={()=>props.startTrialPlay(s)} className="px-5 bg-slate-700 hover:bg-slate-600 text-white font-bold py-3 rounded-lg shadow transition-colors text-sm whitespace-nowrap">🤖 {t.trial}</button>
                     </div>
                   </div>
                 </div>
@@ -275,22 +317,29 @@ export default function LobbyView(props: LobbyViewProps) {
                  <h4 className="font-bold text-slate-400 pl-2">{t.myScenarios}</h4>
                  {localizedCreated.length === 0 && <div className="text-center text-slate-500 py-10 bg-slate-800/30 rounded-xl border border-slate-700 border-dashed">{t.noScenarios}</div>}
                  {localizedCreated.map(s => (
-                   <div key={s.id} className="bg-slate-800 rounded-xl p-5 border border-slate-700 shadow flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 hover:border-slate-500 transition-colors">
-                     <div className="flex gap-4 items-center w-full sm:w-auto">
-                        {s.imageUrl ? <img src={s.imageUrl} alt="cover" className="w-20 h-20 rounded-lg object-cover shadow" /> : <div className="w-20 h-20 rounded-lg bg-slate-700 flex items-center justify-center shadow-inner"><span className="text-xs text-slate-500 font-bold">No Img</span></div>}
+                   <div key={s.id} className="bg-slate-800 rounded-xl p-5 border border-slate-700 shadow-xl flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 hover:border-slate-500 transition-colors">
+                     <div className="flex gap-5 items-center w-full sm:w-auto">
+                        {s.imageUrl ? (
+                          <img src={s.imageUrl} alt="cover" className="w-24 h-24 rounded-xl object-cover shadow-lg border border-slate-700" />
+                        ) : (
+                          <div className="w-24 h-24 rounded-xl bg-slate-700 flex items-center justify-center shadow-inner border border-slate-600">
+                            <span className="text-xs text-slate-400 font-bold">No Img</span>
+                          </div>
+                        )}
                         <div>
-                          <div className="font-bold text-lg mb-1">{s.title || "名称未設定"}</div>
-                          <div className="text-xs text-slate-400 flex items-center gap-3">
-                            {s.isBanned ? <span className="text-red-400 font-bold">⚠️ 修正依頼中 (非公開)</span> : <span className="text-emerald-400">🟢 公開中</span>}
-                            <span>{t.play}: {s.playCount||0}</span>
+                          <div className="font-bold text-xl mb-1 text-white">{s.title || "名称未設定"}</div>
+                          <div className="text-xs font-medium text-slate-400 flex items-center gap-3 bg-slate-900/50 px-3 py-1.5 rounded-lg border border-slate-700/50 inline-flex mt-1">
+                            {s.isBanned ? <span className="text-red-400">⚠️ 修正依頼中 (非公開)</span> : <span className="text-emerald-400">🟢 公開中</span>}
+                            <span className="text-slate-600">|</span>
+                            <span>▶ {t.play}: {s.playCount||0}</span>
                             <span>⭐ {(s.ratingCount||0)>0 ? (s.ratingSum!/s.ratingCount!).toFixed(1) : "-"}</span>
                           </div>
                         </div>
                      </div>
-                     <div className="flex gap-2 w-full sm:w-auto">
-                        {s.isBanned && <button onClick={()=>props.setScenarioAppealTarget(s)} className="flex-1 sm:flex-none px-4 py-2 bg-amber-600 hover:bg-amber-500 text-slate-900 font-bold rounded-lg text-sm shadow">再審査</button>}
-                        <button onClick={()=>{ props.setEditingScenario(s); props.setCurrentView("scenarioEdit"); }} className="flex-1 sm:flex-none px-6 py-2 bg-slate-700 hover:bg-slate-600 text-white font-bold rounded-lg text-sm shadow transition-colors">✏️ {t.edit}</button>
-                        <button onClick={()=>props.deleteScenario(s.id!)} className="flex-1 sm:flex-none px-4 py-2 bg-red-900/80 hover:bg-red-800 text-red-200 font-bold rounded-lg text-sm shadow transition-colors">🗑️ {t.del}</button>
+                     <div className="flex gap-3 w-full sm:w-auto mt-2 sm:mt-0">
+                        {s.isBanned && <button onClick={()=>props.setScenarioAppealTarget(s)} className="flex-1 sm:flex-none px-4 py-2.5 bg-amber-600 hover:bg-amber-500 text-slate-900 font-bold rounded-lg text-sm shadow">再審査</button>}
+                        <button onClick={()=>{ props.setEditingScenario(s); props.setCurrentView("scenarioEdit"); }} className="flex-1 sm:flex-none px-6 py-2.5 bg-slate-700 hover:bg-slate-600 text-white font-bold rounded-lg text-sm shadow transition-colors">✏️ {t.edit}</button>
+                        <button onClick={()=>props.deleteScenario(s.id!)} className="flex-1 sm:flex-none px-4 py-2.5 bg-red-900/80 hover:bg-red-800 text-red-200 font-bold rounded-lg text-sm shadow transition-colors">🗑️ {t.del}</button>
                      </div>
                    </div>
                  ))}
