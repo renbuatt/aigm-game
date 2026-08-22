@@ -25,7 +25,6 @@ export function useExport({
   setIsExporting, geminiFlashModel, novelSettingsModal, setNovelSettingsModal, setCurrentView
 }: UseExportProps) {
 
-  // ★ page.tsx側でチケット消費のインターセプトを行うため、ここでは純粋にDBへの保存のみを行います
   const saveToArchive = async () => {
     if (!currentUser || !activeRoom || !activeRoom.scenario) return;
     setIsExporting(true);
@@ -58,14 +57,14 @@ export function useExport({
     }
   };
 
-  const handleStartNovel = async (lang: string = 'ja') => {
+  // ★ 型を厳密に合わせてエラーを解消
+  const handleStartNovel = async (lang: "ja" | "en" | "zh" | string = 'ja') => {
     if (!currentUser || !activeRoom || !activeRoom.scenario) return;
     
     setIsExporting(true);
     try {
       const chatLogs = messages.map(m => `${m.charName || m.sender}: ${m.text}`).join('\n');
       
-      // ★ 選択された言語に応じたAIへの厳格な出力指示
       let langInstruction = "必ず【日本語】で、美しく読みやすい小説形式で出力してください。";
       if (lang === 'en') langInstruction = "You MUST output the entire novel in 【English】, writing in a beautiful, engaging, and highly descriptive prose style.";
       if (lang === 'zh') langInstruction = "You MUST output the entire novel in 【Simplified Chinese (简体中文)】, writing in a beautiful, engaging, and highly descriptive prose style.";
@@ -84,11 +83,9 @@ ${chatLogs}`;
       
       const novelText = await generateAITextWithPrompt(novelPrompt, geminiFlashModel, 8000, 0.7);
       
-      // 既に書庫に保存されているか確認
       const existingArchive = playArchives.find(a => a.scenarioId === activeRoom.scenario_id && a.userId === currentUser.id);
       
       if (existingArchive) {
-        // ★ 将来の多言語View用にキー（ja, en, zh）を分けて代入保存する
         const updatedNovels = { ...(existingArchive.novels || {}), [lang]: novelText };
         const { error } = await supabase.from('play_archives').update({ novels: updatedNovels }).eq('id', existingArchive.id);
         if (error) throw error;
@@ -96,7 +93,6 @@ ${chatLogs}`;
         setPlayArchives(playArchives.map(a => a.id === existingArchive.id ? { ...a, novels: updatedNovels } : a));
         alert(`ノベル（${lang.toUpperCase()}）の作成が完了し、プレイ書庫に追記保存されました！`);
       } else {
-        // まだ書庫に保存されていない場合は、新規作成してノベルを代入
         const coPlayers = Object.keys(activeRoom.joined_users || {}).filter(id => id !== currentUser.id);
         const { data, error } = await supabase.from('play_archives').insert({
           user_id: currentUser.id,
@@ -107,7 +103,7 @@ ${chatLogs}`;
           chat_logs: chatLogs,
           rule: activeRoom.rule,
           co_players: coPlayers,
-          novels: { [lang]: novelText }, // ★ ここに代入
+          novels: { [lang]: novelText },
           characters: activeRoom.scenario.presetCharacters
         }).select().single();
         
@@ -122,18 +118,29 @@ ${chatLogs}`;
     }
   };
 
-  const executeExport = async (format: string, archiveId: string) => {
-    const target = playArchives.find(a => a.id === archiveId);
-    if (!target) return;
+  // ★ UI側（LibraryViewなど）が要求する正しい型シグネチャに合わせる
+  const executeExport = async (
+    title: string, 
+    messagesArg: any[], 
+    type: "summary" | "chat" | "novel", 
+    options?: { archiveId?: string; modelName?: string; viewPoint?: "third" | "first"; characters?: any[]; language?: string }
+  ) => {
+    const targetArchiveId = options?.archiveId;
+    const target = playArchives.find(a => a.id === targetArchiveId) || playArchives[0];
     
-    let content = `シナリオ: ${target.scenarioTitle}\nキャラクター: ${target.characterName}\n\n`;
-    content += target.chatLogs;
+    let content = `シナリオ: ${title}\nキャラクター: ${target?.characterName || "プレイヤー"}\n\n`;
+    if (type === 'novel' && target?.novels) {
+      const lang = options?.language || 'ja';
+      content += target.novels[lang] || Object.values(target.novels)[0] || target?.chatLogs || "";
+    } else {
+      content += target?.chatLogs || messagesArg.map(m => `${m.charName || m.sender}: ${m.text}`).join('\n');
+    }
     
     const blob = new Blob([content], { type: 'text/plain' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = `${target.scenarioTitle}_log.txt`;
+    a.download = `${title}_log.txt`;
     a.click();
     URL.revokeObjectURL(url);
   };
