@@ -27,7 +27,6 @@ import RoomConfigModal from "../components/modals/RoomConfigModal";
 import NovelSettingsModal from "../components/modals/NovelSettingsModal";
 import AdVideoModal from "../components/modals/AdVideoModal";
 
-// ★ カスタムフック
 import { useAdmin } from "../hooks/useAdmin";
 import { useAuth } from "../hooks/useAuth";
 import { useScenario } from "../hooks/useScenario";
@@ -196,7 +195,7 @@ export default function Home() {
     adminExecuteBan, adminUnbanUser, adminSuspendUser, adminUnsuspendUser,
     adminExecuteScenarioBan, adminUnbanScenario, adminDeleteScenario,
     executeCreateTester, adminSendMailToUser,
-    adminGrantItem, adminSendMailToAll, grantItemToAll
+    adminGrantItem, adminSendMailToAll, grantItemToAll 
   } = useAdmin({
     scenarios, fetchData, isMaintenance, setIsMaintenance,
     isTicketSystemEnabled, setIsTicketSystemEnabled, setGeminiFlashModel,
@@ -215,7 +214,7 @@ export default function Home() {
   });
 
   const {
-    saveToArchive, executeExport, handleStartNovel, exportToPDF
+    saveToArchive: originalSaveToArchive, executeExport, handleStartNovel, exportToPDF
   } = useExport({
     currentUser, setCurrentUser, activeRoom, joinedCharacter, messages,
     isTicketSystemEnabled, setShowTicketModal, playArchives, setPlayArchives,
@@ -223,11 +222,30 @@ export default function Home() {
     setCurrentView
   });
 
+  // ★ プレイ書庫保存時のチケット消費処理（インターセプト）
+  const saveToArchive = async () => {
+    if (isTicketSystemEnabled && currentUser) {
+      const isExempt = isMaintenance && (currentUser.isAdmin || currentUser.isTester);
+      if (!isExempt) {
+        if ((currentUser.ticketsItem || 0) < 1) {
+          alert("プレイ書庫に保存するには「アイテムチケット」が1枚必要です。ストアで購入してください。");
+          setShowTicketModal(true);
+          return;
+        }
+        if (!confirm("書庫に保存するためにアイテムチケットを1枚消費します。よろしいですか？")) return;
+
+        const { error } = await supabase.from('profiles').update({ tickets_item: currentUser.ticketsItem! - 1 }).eq('id', currentUser.id);
+        if (error) { alert("チケット消費エラー: " + error.message); return; }
+        setCurrentUser({ ...currentUser, ticketsItem: currentUser.ticketsItem! - 1 });
+      }
+    }
+    await originalSaveToArchive();
+  };
+
   const availableScenarios = scenarios.filter((s: any) => !s.isBanned);
   const createdScenarios = scenarios.filter((s: any) => s.authorId === currentUser?.id);
   const availableRoomsRaw = rooms.filter((r: any) => !r.scenario?.isBanned);
 
-  // ★ 部屋の言語に応じた翻訳の適用と、国旗バッジの付与
   const availableRooms = availableRoomsRaw.map((room: any) => {
     if (!currentUser) return room;
     const hostId = room.host_id;
@@ -237,32 +255,12 @@ export default function Home() {
     if (joinedUserIds.some((id: string) => myBlockedIds.includes(id))) return null;
     if (blockedMeIds.includes(hostId)) return null;
     
+    // ★ 言語バッジだけを付与（将来のEN/ZHビュー用にデータの上書きはしない）
     let displayScenario = { ...room.scenario };
     let langBadge = "🇯🇵 ";
     
-    if (room.language === 'en' && room.scenario?.translationEn) {
-      langBadge = "🇺🇸 EN | ";
-      const t = room.scenario.translationEn;
-      if (t.title) displayScenario.title = t.title;
-      if (t.description) displayScenario.description = t.description;
-      if (t.characters && Array.isArray(t.characters)) {
-        displayScenario.presetCharacters = displayScenario.presetCharacters.map((c: any, i: number) => {
-          const tChar = t.characters[i];
-          return tChar ? { ...c, name: tChar.name || c.name, job: tChar.job || c.job, personality: tChar.personality || c.personality } : c;
-        });
-      }
-    } else if (room.language === 'zh' && room.scenario?.translationZh) {
-      langBadge = "🇨🇳 ZH | ";
-      const t = room.scenario.translationZh;
-      if (t.title) displayScenario.title = t.title;
-      if (t.description) displayScenario.description = t.description;
-      if (t.characters && Array.isArray(t.characters)) {
-        displayScenario.presetCharacters = displayScenario.presetCharacters.map((c: any, i: number) => {
-          const tChar = t.characters[i];
-          return tChar ? { ...c, name: tChar.name || c.name, job: tChar.job || c.job, personality: tChar.personality || c.personality } : c;
-        });
-      }
-    }
+    if (room.language === 'en') langBadge = "🇺🇸 EN | ";
+    else if (room.language === 'zh') langBadge = "🇨🇳 ZH | ";
 
     displayScenario.title = `${langBadge}${displayScenario.title}`;
     const isWarning = joinedUserIds.some((id: string) => blockedMeIds.includes(id));
@@ -580,6 +578,14 @@ export default function Home() {
   const executeTrialPlay = async () => {
     if (!currentUser || !adModal.scenario) return;
     const scenario = adModal.scenario;
+
+    // ★追加：お試しプレイの言語選択
+    const langInput = prompt("お試しプレイの言語を番号で選択してください。\n[ 1: 日本語 / 2: English / 3: 中文 ]", "1");
+    if (!langInput) return; // キャンセル時
+    let selectedLang = "ja";
+    if (langInput === "2") selectedLang = "en";
+    if (langInput === "3") selectedLang = "zh";
+
     setAdModal({ isOpen: false, step: 0, scenario: null, room: null, type: 'trial' });
 
     const charId = scenario.presetCharacters[0]?.id;
@@ -591,7 +597,7 @@ export default function Home() {
     scenario.presetCharacters.forEach((c: any) => { initialInventories[c.id] = c.items || "特になし"; });
 
     const { data, error } = await supabase.from('rooms').insert({ 
-      scenario_id: scenario.id, host_name: currentUser.handleName, host_id: currentUser.id, status: "recruiting", scenes: initialScenes, privacy: 'secret', host_message: "お試しプレイ", joined_users: { [currentUser.id]: charId }, current_summary: "", difficulty: "normal", rule: "coc_jp", is_paused: false, afk_users: [], is_trial: true, item_visibility: "none", inventories: initialInventories, current_chapter_index: 0, ai_model: 'lite', error_refunded: false, free_image_count: 0, is_lost: false, lost_turn_count: 0, language: 'ja' 
+      scenario_id: scenario.id, host_name: currentUser.handleName, host_id: currentUser.id, status: "recruiting", scenes: initialScenes, privacy: 'secret', host_message: "お試しプレイ", joined_users: { [currentUser.id]: charId }, current_summary: "", difficulty: "normal", rule: "coc_jp", is_paused: false, afk_users: [], is_trial: true, item_visibility: "none", inventories: initialInventories, current_chapter_index: 0, ai_model: 'lite', error_refunded: false, free_image_count: 0, is_lost: false, lost_turn_count: 0, language: selectedLang 
     }).select().single();
     
     if (error) { alert("データベースエラーが発生しました: " + error.message); return; }
@@ -604,7 +610,7 @@ export default function Home() {
         status: data.status, scenes: data.scenes, privacy: data.privacy, host_message: data.host_message, joined_users: data.joined_users, 
         current_summary: "", difficulty: data.difficulty, rule: data.rule, is_paused: false, afk_users: [], is_trial: true, 
         item_visibility: "none", inventories: data.inventories, current_chapter_index: 0, ai_model: data.ai_model, error_refunded: false, 
-        free_image_count: 0, is_lost: false, lost_turn_count: 0, language: 'ja' 
+        free_image_count: 0, is_lost: false, lost_turn_count: 0, language: selectedLang 
       };
       await supabase.from('ai_memory').delete().eq('room_id', newRoom.id);
       setActiveRoom(newRoom); setJoinedCharacter(hostChar); setMessages([]); 
@@ -1170,11 +1176,9 @@ export default function Home() {
         if (model === 'claude') { ticketKey = 'tickets_platinum'; ticketName = 'プラチナチケット'; }
         if (model === 'opus') { ticketKey = 'tickets_diamond'; ticketName = 'ダイヤモンドチケット'; }
 
-        // 二重返還を防ぐために部屋を「返還済み」にマーク
         await supabase.from('rooms').update({ error_refunded: true }).eq('id', activeRoom.id);
         setActiveRoom(prev => prev ? { ...prev, error_refunded: true } : null);
 
-        // 参加者全員に対して一律でチケットを返還する
         const joinedUserIds = Object.keys(activeRoom.joined_users || {});
         for (const uid of joinedUserIds) {
           const { data: userData } = await supabase.from('profiles').select(ticketKey).eq('id', uid).single();
@@ -1189,7 +1193,6 @@ export default function Home() {
           }
         }
         
-        // 自分の画面（ステート）も更新して表示を反映させる
         if (currentUser && joinedUserIds.includes(currentUser.id)) {
            setCurrentUser(prev => prev ? { ...prev, [ticketKey]: ((prev as any)[ticketKey] || 0) + 1 } : null);
         }
