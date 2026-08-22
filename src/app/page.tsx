@@ -197,7 +197,7 @@ export default function Home() {
     adminExecuteBan, adminUnbanUser, adminSuspendUser, adminUnsuspendUser,
     adminExecuteScenarioBan, adminUnbanScenario, adminDeleteScenario,
     executeCreateTester, grantPointsToAll, adminSendMailToUser,
-    adminGrantItem
+    adminGrantItem, adminSendMailToAll // ★個別付与・一斉メールを追加
   } = useAdmin({
     scenarios, fetchData, isMaintenance, setIsMaintenance,
     isTicketSystemEnabled, setIsTicketSystemEnabled, setGeminiFlashModel,
@@ -501,6 +501,7 @@ export default function Home() {
       await callAIGM(extraUserContext, "story");
     } finally { isRequestingRef.current = false; setIsLoading(false); }
   };
+
   const executeCreateRoom = async () => {
     if (!currentUser || !roomConfigModal) return;
     const { scenario, charId, privacy, message, difficulty, rule, itemVisibility, aiModel, language } = roomConfigModal;
@@ -1245,6 +1246,7 @@ export default function Home() {
           executeCreateTester={executeCreateTester} grantPointsToAll={grantPointsToAll} 
           adminSendMailToUser={adminSendMailToUser} 
           adminGrantItem={adminGrantItem}
+          adminSendMailToAll={adminSendMailToAll}
         />
       )}
 

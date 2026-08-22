@@ -21,6 +21,7 @@ type AdminViewProps = {
   grantPointsToAll: (amount: number) => void;
   adminSendMailToUser: (id: string, body: string) => void;
   adminGrantItem?: (id: string, type: string, amount: number) => void;
+  adminSendMailToAll: (title: string, body: string) => void; // ★追加
 };
 
 export default function AdminView(props: AdminViewProps) {
@@ -52,10 +53,6 @@ export default function AdminView(props: AdminViewProps) {
     </div>
   );
 }
-
-// ----------------------------------------------------
-// 各タブのコンポーネント
-// ----------------------------------------------------
 
 const SystemTab = (props: AdminViewProps) => {
   const [testerEmail, setTesterEmail] = useState("");
@@ -130,9 +127,18 @@ const UsersTab = (props: AdminViewProps) => {
   const [grantType, setGrantType] = useState("points");
   const [grantAmount, setGrantAmount] = useState(1);
 
+  // ★ 一斉メール用ステート
+  const [massMailModal, setMassMailModal] = useState(false);
+  const [massMailTitle, setMassMailTitle] = useState("✉️ 運営からのお知らせ");
+  const [massMailBody, setMassMailBody] = useState("");
+
   return (
     <div className="space-y-4">
-      <div className="text-sm text-slate-400 mb-4">全 {props.allUsers.length} ユーザー登録</div>
+      <div className="flex justify-between items-center mb-4">
+        <div className="text-sm text-slate-400">全 {props.allUsers.length} ユーザー登録</div>
+        <button onClick={() => setMassMailModal(true)} className="bg-indigo-600 hover:bg-indigo-500 text-sm px-5 py-2 rounded font-bold shadow">📢 一斉メール送信</button>
+      </div>
+
       {props.allUsers.map(u => (
          <div key={u.id} className="p-5 bg-slate-800 rounded-xl border border-slate-700 flex flex-col xl:flex-row justify-between items-start xl:items-center gap-4 hover:border-slate-600 transition-colors">
             <div>
@@ -177,6 +183,7 @@ const UsersTab = (props: AdminViewProps) => {
          </div>
       ))}
 
+      {/* 個別メールモーダル */}
       {mailModal && (
         <div className="fixed inset-0 bg-black/80 z-[100] flex justify-center items-center p-4">
            <div className="bg-slate-800 p-6 rounded-xl w-full max-w-md border border-slate-700">
@@ -190,6 +197,31 @@ const UsersTab = (props: AdminViewProps) => {
         </div>
       )}
 
+      {/* ★ 一斉メールモーダル */}
+      {massMailModal && (
+        <div className="fixed inset-0 bg-black/80 z-[100] flex justify-center items-center p-4">
+           <div className="bg-slate-800 p-6 rounded-xl w-full max-w-md border border-slate-700">
+              <h3 className="font-bold mb-4 text-indigo-400">📢 一斉メール送信</h3>
+              <div className="text-xs text-slate-400 mb-4">全 {props.allUsers.length} 人のユーザーに同時送信します。</div>
+              <div className="space-y-4 mb-4">
+                <div>
+                  <label className="text-xs text-slate-400 block mb-1">件名 (タイトル)</label>
+                  <input type="text" value={massMailTitle} onChange={e=>setMassMailTitle(e.target.value)} className="w-full bg-slate-900 border border-slate-700 rounded p-2 text-sm text-white" />
+                </div>
+                <div>
+                  <label className="text-xs text-slate-400 block mb-1">本文</label>
+                  <textarea value={massMailBody} onChange={e=>setMassMailBody(e.target.value)} className="w-full h-32 bg-slate-900 border border-slate-700 rounded p-3 text-sm text-white" placeholder="メッセージを入力..."></textarea>
+                </div>
+              </div>
+              <div className="flex gap-3">
+                 <button onClick={()=>{setMassMailModal(false); setMassMailBody("");}} className="flex-1 bg-slate-700 py-3 rounded font-bold">キャンセル</button>
+                 <button onClick={()=>{ props.adminSendMailToAll(massMailTitle, massMailBody); setMassMailModal(false); setMassMailBody(""); }} className="flex-1 bg-indigo-600 hover:bg-indigo-500 py-3 rounded font-bold shadow-lg">全ユーザーに送信</button>
+              </div>
+           </div>
+        </div>
+      )}
+
+      {/* 個別付与モーダル */}
       {grantModal && (
         <div className="fixed inset-0 bg-black/80 z-[100] flex justify-center items-center p-4">
            <div className="bg-slate-800 p-6 rounded-xl w-full max-w-md border border-slate-700">
@@ -224,18 +256,27 @@ const UsersTab = (props: AdminViewProps) => {
 };
 
 const ScenariosTab = (props: AdminViewProps) => {
+   const [viewScenario, setViewScenario] = useState<Scenario | null>(null);
+
    return (
      <div className="space-y-4">
         <div className="text-sm text-slate-400 mb-4">全 {props.scenarios.length} シナリオ</div>
         {props.scenarios.map(s => (
            <div key={s.id} className="p-5 bg-slate-800 rounded-xl border border-slate-700 flex flex-col md:flex-row justify-between items-start md:items-center gap-4 hover:border-slate-600 transition-colors">
               <div>
-                <div className="font-bold text-lg">{s.title}</div>
+                {/* ★シナリオ名をリンク風に変更 */}
+                <div 
+                  className="font-bold text-lg text-blue-400 hover:text-blue-300 cursor-pointer underline transition-colors" 
+                  onClick={() => setViewScenario(s)} 
+                  title="内容を閲覧する"
+                >
+                  {s.title}
+                </div>
                 <div className="text-xs text-slate-500 mt-1 font-mono">ID: {s.id} | Author: {s.authorId}</div>
                 {s.isBanned && <div className="mt-2"><span className="bg-red-900/50 text-red-400 text-xs px-2 py-0.5 rounded border border-red-900">一時非公開（修正依頼中）</span></div>}
               </div>
               
-              <div className="flex flex-wrap gap-2">
+              <div className="flex flex-wrap gap-2 shrink-0">
                  {!s.isBanned ? (
                    <button onClick={() => {
                       const reason = prompt("修正依頼（一時非公開）の理由を入力してください:");
@@ -248,6 +289,38 @@ const ScenariosTab = (props: AdminViewProps) => {
               </div>
            </div>
         ))}
+
+        {/* ★シナリオ閲覧モーダル（読み取り専用） */}
+        {viewScenario && (
+          <div className="fixed inset-0 bg-black/80 z-[100] flex justify-center items-center p-4">
+             <div className="bg-slate-800 p-6 rounded-xl w-full max-w-3xl border border-slate-700 max-h-[90vh] flex flex-col">
+                <h3 className="font-bold text-xl mb-4 text-blue-400 shrink-0 border-b border-slate-700 pb-2">📖 {viewScenario.title}</h3>
+                
+                <div className="overflow-y-auto pr-2 flex-1 custom-scrollbar space-y-6 text-sm text-slate-300">
+                  <div className="bg-slate-900/50 p-3 rounded text-xs text-slate-400">
+                     ※これは管理用の閲覧モードです。内容は編集できません。
+                  </div>
+                  <div><strong className="text-white">【システム / タグ / 舞台】</strong><br/>{viewScenario.system || "未設定"} / {viewScenario.tags || "未設定"} / {viewScenario.setting || "未設定"}</div>
+                  <div><strong className="text-white">【あらすじ】</strong><br/><p className="whitespace-pre-wrap mt-1">{viewScenario.description || "未設定"}</p></div>
+                  <div><strong className="text-white">【プロローグ】</strong><br/><p className="whitespace-pre-wrap mt-1">{viewScenario.prologue || "未設定"}</p></div>
+                  <div><strong className="text-white">【プロット（GM用）】</strong><br/><p className="whitespace-pre-wrap mt-1">{viewScenario.plot || "未設定"}</p></div>
+                  <div><strong className="text-white">【エピローグ】</strong><br/><p className="whitespace-pre-wrap mt-1">{viewScenario.epilogue || "未設定"}</p></div>
+                  <div><strong className="text-white">【NPCリスト】</strong><br/><p className="whitespace-pre-wrap mt-1">{viewScenario.npcList || "未設定"}</p></div>
+                  <div><strong className="text-white">【プリセットキャラクター】</strong>
+                    <ul className="list-disc list-inside ml-4 mt-2 space-y-2">
+                      {viewScenario.presetCharacters.map((c, i) => (
+                        <li key={i}><strong>{c.name}</strong> ({c.job})<br/><span className="text-slate-400 text-xs ml-4">設定: {c.personality}</span></li>
+                      ))}
+                    </ul>
+                  </div>
+                </div>
+
+                <div className="pt-4 border-t border-slate-700 shrink-0 mt-2">
+                  <button onClick={() => setViewScenario(null)} className="w-full bg-slate-700 hover:bg-slate-600 py-3 rounded font-bold">閉じる</button>
+                </div>
+             </div>
+          </div>
+        )}
      </div>
    );
 };

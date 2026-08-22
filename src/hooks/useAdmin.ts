@@ -86,6 +86,26 @@ export function useAdmin({
     alert("メールを送信しました！");
   };
 
+  // ★ 追加：全ユーザーへ一斉メール送信
+  const adminSendMailToAll = async (title: string, body: string) => {
+    if (!confirm(`全 ${allUsers.length} 人のユーザーに一斉メールを送信します。よろしいですか？`)) return;
+    setIsLoading(true);
+    try {
+      const notifications = allUsers.map(u => ({
+        user_id: u.id,
+        title: title || '✉️ 運営からのお知らせ',
+        message: body
+      }));
+      const { error } = await supabase.from('notifications').insert(notifications);
+      if (error) throw error;
+      alert("全ユーザーへの一斉メール送信が完了しました！");
+    } catch (err: any) {
+      alert("送信エラー: " + err.message);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
   const toggleMaintenance = async () => { const newStatus = !isMaintenance; await supabase.from('app_settings').update({ is_maintenance: newStatus }).eq('id', 1); setIsMaintenance(newStatus); alert(`メンテナンスモードを ${newStatus ? "ON" : "OFF"} にしました。`); };
   const toggleTicketSystem = async () => { const newStatus = !isTicketSystemEnabled; await supabase.from('app_settings').update({ is_ticket_system_enabled: newStatus }).eq('id', 1); setIsTicketSystemEnabled(newStatus); alert(`チケットシステムを ${newStatus ? "ON" : "OFF"} にしました。`); };
   const toggleAdminStatus = async (userId: string, currentStatus: boolean) => { const newStatus = !currentStatus; await supabase.from('profiles').update({ is_admin: newStatus }).eq('id', userId); alert(newStatus ? "管理者権限を付与しました。" : "管理者権限を剥奪しました。"); fetchAdminData(); };
@@ -111,7 +131,6 @@ export function useAdmin({
     } catch (err: any) { alert("作成失敗: " + err.message); }
   };
 
-  // ★ 追加：個別アイテム付与機能
   const adminGrantItem = async (userId: string, itemType: string, amount: number) => {
     const user = allUsers.find(u => u.id === userId);
     if (!user) return;
@@ -127,6 +146,6 @@ export function useAdmin({
   };
 
   return {
-    allUsers, reports, fetchAdminData, adminExecuteBan, adminUnbanUser, adminSuspendUser, adminUnsuspendUser, adminExecuteScenarioBan, adminUnbanScenario, adminDeleteScenario, adminSendMailToUser, toggleMaintenance, toggleTicketSystem, toggleAdminStatus, toggleTesterStatus, toggleGeminiFlashModel, resolveReport, grantPointsToAll, executeCreateTester, adminGrantItem
+    allUsers, reports, fetchAdminData, adminExecuteBan, adminUnbanUser, adminSuspendUser, adminUnsuspendUser, adminExecuteScenarioBan, adminUnbanScenario, adminDeleteScenario, adminSendMailToUser, adminSendMailToAll, toggleMaintenance, toggleTicketSystem, toggleAdminStatus, toggleTesterStatus, toggleGeminiFlashModel, resolveReport, grantPointsToAll, executeCreateTester, adminGrantItem
   };
 }
