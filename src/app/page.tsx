@@ -27,6 +27,9 @@ import RoomConfigModal from "../components/modals/RoomConfigModal";
 import NovelSettingsModal from "../components/modals/NovelSettingsModal";
 import AdVideoModal from "../components/modals/AdVideoModal";
 
+// ★ カスタムフックをインポート
+import { useAdmin } from "../hooks/useAdmin";
+
 const NO_IMAGE_SCENARIO = "https://images.unsplash.com/photo-1614729939124-03290b5609ce?auto=format&fit=crop&w=400&q=80";
 const DEFAULT_AVATAR = "https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&w=150&q=80";
 
@@ -67,11 +70,9 @@ export default function Home() {
   const [isTicketSystemEnabled, setIsTicketSystemEnabled] = useState(false);
   const [geminiFlashModel, setGeminiFlashModel] = useState<'3.5-lite' | '3.6'>('3.5-lite');
   
-  const [allUsers, setAllUsers] = useState<UserProfile[]>([]);
   const [myNotifications, setMyNotifications] = useState<Notification[]>([]);
   const [showMailbox, setShowMailbox] = useState(false);
 
-  const [reports, setReports] = useState<Report[]>([]);
   const [reportTarget, setReportTarget] = useState<any>(null);
   const [reportReason, setReportReason] = useState("");
 
@@ -94,6 +95,62 @@ export default function Home() {
   const [adViewInfo, setAdViewInfo] = useState({ count: 0, date: "" });
 
   const isRequestingRef = useRef(false);
+
+  const handleLogout = async () => { await supabase.auth.signOut(); setCurrentUser(null); setCurrentView("login"); setActiveRoom(null); setJoinedCharacter(null); };
+
+  const fetchData = async () => {
+    const { data: scData } = await supabase.from('scenarios').select('*').order('id', { ascending: false });
+    let loadedScenarios: Scenario[] = [];
+    if (scData && scData.length > 0) {
+      loadedScenarios = scData.map((d: any) => ({
+        id: d.id, title: d.title, description: d.description || "", system: d.system || "", tags: d.tags || "", setting: d.setting || "",
+        npcList: d.npc_list || "", plot: d.plot || "", prologue: d.prologue || "", epilogue: d.epilogue || "",
+        imageUrl: d.image_url || "", presetCharacters: d.preset_characters || [], ratingSum: d.rating_sum || 0, ratingCount: d.rating_count || 0,
+        authorId: d.author_id, price: d.price || 500, playLimit: d.play_limit || 1, giftLimit: d.gift_limit || 1,
+        purchasedTickets: d.purchased_tickets || {}, isBanned: d.is_banned || false, playTime: d.play_time || 60,
+        isPlayableByOthers: d.is_playable_by_others || false, isTrialOk: d.is_trial_ok || false, itemVisibility: d.item_visibility || "none",
+        requiredScenarioId: d.required_scenario_id || "", playCount: d.play_count || 0, viewCount: d.view_count || 0,
+        translationEn: d.translation_en || {}, translationZh: d.translation_zh || {}
+      }));
+      setScenarios(loadedScenarios);
+    }
+    const { data: rmData } = await supabase.from('rooms').select('*').neq('status', 'finished').order('id', { ascending: false });
+    let formattedRooms: Room[] = [];
+    if (rmData && loadedScenarios.length > 0) {
+      formattedRooms = rmData.map((r: any) => ({
+        id: r.id, scenario_id: r.scenario_id, scenario: loadedScenarios.find((s: any) => s.id === r.scenario_id),
+        host_name: r.host_name, host_id: r.host_id, status: r.status, scenes: r.scenes || [],
+        privacy: r.privacy || "open", host_message: r.host_message || "", joined_users: r.joined_users || {},
+        current_summary: r.current_summary || "", difficulty: r.difficulty || "normal", rule: r.rule || "coc_jp",
+        is_paused: r.is_paused || false, afk_users: r.afk_users || [], is_trial: r.is_trial || false,
+        item_visibility: r.item_visibility || "none", inventories: r.inventories || {},
+        current_chapter_index: r.current_chapter_index || 0, spectator_ids: r.spectator_ids || [], ai_model: r.ai_model || 'flash',
+        error_refunded: r.error_refunded || false, free_image_count: r.free_image_count || 0, is_lost: r.is_lost || false, lost_turn_count: r.lost_turn_count || 0,
+        language: r.language || 'ja'
+      })).filter((r: any) => r.scenario) as Room[];
+      setRooms(formattedRooms);
+    }
+    return { loadedScenarios, formattedRooms };
+  };
+
+  // ★ カスタムフック useAdmin を呼び出して機能を展開
+  const {
+    allUsers, reports, fetchAdminData, toggleMaintenance, toggleTicketSystem,
+    toggleAdminStatus, toggleTesterStatus, toggleGeminiFlashModel, resolveReport,
+    adminExecuteBan, adminUnbanUser, adminSuspendUser, adminUnsuspendUser,
+    adminExecuteScenarioBan, adminUnbanScenario, adminDeleteScenario,
+    executeCreateTester, grantPointsToAll, adminSendMailToUser
+  } = useAdmin({
+    scenarios,
+    fetchData,
+    isMaintenance,
+    setIsMaintenance,
+    isTicketSystemEnabled,
+    setIsTicketSystemEnabled,
+    setGeminiFlashModel,
+    handleLogout,
+    setIsLoading
+  });
 
   const availableScenarios = scenarios.filter((s: any) => !s.isBanned);
   const createdScenarios = scenarios.filter((s: any) => s.authorId === currentUser?.id);
@@ -248,41 +305,6 @@ export default function Home() {
     }
   }, [activeRoom?.scenes, activeRoom?.status, activeRoom?.host_id, currentUser?.id, isSplitMode]);
 
-  const fetchData = async () => {
-    const { data: scData } = await supabase.from('scenarios').select('*').order('id', { ascending: false });
-    let loadedScenarios: Scenario[] = [];
-    if (scData && scData.length > 0) {
-      loadedScenarios = scData.map((d: any) => ({
-        id: d.id, title: d.title, description: d.description || "", system: d.system || "", tags: d.tags || "", setting: d.setting || "",
-        npcList: d.npc_list || "", plot: d.plot || "", prologue: d.prologue || "", epilogue: d.epilogue || "",
-        imageUrl: d.image_url || "", presetCharacters: d.preset_characters || [], ratingSum: d.rating_sum || 0, ratingCount: d.rating_count || 0,
-        authorId: d.author_id, price: d.price || 500, playLimit: d.play_limit || 1, giftLimit: d.gift_limit || 1,
-        purchasedTickets: d.purchased_tickets || {}, isBanned: d.is_banned || false, playTime: d.play_time || 60,
-        isPlayableByOthers: d.is_playable_by_others || false, isTrialOk: d.is_trial_ok || false, itemVisibility: d.item_visibility || "none",
-        requiredScenarioId: d.required_scenario_id || "", playCount: d.play_count || 0, viewCount: d.view_count || 0,
-        translationEn: d.translation_en || {}, translationZh: d.translation_zh || {}
-      }));
-      setScenarios(loadedScenarios);
-    }
-    const { data: rmData } = await supabase.from('rooms').select('*').neq('status', 'finished').order('id', { ascending: false });
-    let formattedRooms: Room[] = [];
-    if (rmData && loadedScenarios.length > 0) {
-      formattedRooms = rmData.map((r: any) => ({
-        id: r.id, scenario_id: r.scenario_id, scenario: loadedScenarios.find((s: any) => s.id === r.scenario_id),
-        host_name: r.host_name, host_id: r.host_id, status: r.status, scenes: r.scenes || [],
-        privacy: r.privacy || "open", host_message: r.host_message || "", joined_users: r.joined_users || {},
-        current_summary: r.current_summary || "", difficulty: r.difficulty || "normal", rule: r.rule || "coc_jp",
-        is_paused: r.is_paused || false, afk_users: r.afk_users || [], is_trial: r.is_trial || false,
-        item_visibility: r.item_visibility || "none", inventories: r.inventories || {},
-        current_chapter_index: r.current_chapter_index || 0, spectator_ids: r.spectator_ids || [], ai_model: r.ai_model || 'flash',
-        error_refunded: r.error_refunded || false, free_image_count: r.free_image_count || 0, is_lost: r.is_lost || false, lost_turn_count: r.lost_turn_count || 0,
-        language: r.language || 'ja'
-      })).filter((r: any) => r.scenario) as Room[];
-      setRooms(formattedRooms);
-    }
-    return { loadedScenarios, formattedRooms };
-  };
-
   const fetchNotifications = async (userId: string) => {
     const { data } = await supabase.from('notifications').select('*').eq('user_id', userId).order('created_at', { ascending: false });
     if(data) setMyNotifications(data.map((d: any) => ({ id: d.id, userId: d.user_id, title: d.title, message: d.message, isRead: d.is_read, createdAt: d.created_at })));
@@ -398,8 +420,6 @@ export default function Home() {
     if (error) alert("Googleログインの初期設定が未完了です: " + error.message);
     setAuthLoading(false);
   };
-
-  const handleLogout = async () => { await supabase.auth.signOut(); setCurrentUser(null); setCurrentView("login"); setActiveRoom(null); setJoinedCharacter(null); };
 
   const togglePauseRoom = async () => {
     if (!activeRoom) return;
