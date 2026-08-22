@@ -1,6 +1,5 @@
-import React from "react";
 import { supabase } from "../lib/supabase";
-import { UserProfile, Room, ViewState } from "../types";
+import { UserProfile, ViewState, Room } from "../types";
 
 const DEFAULT_AVATAR = "https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&w=150&q=80";
 
@@ -8,20 +7,23 @@ type UseAuthProps = {
   email: string;
   password: string;
   setAuthLoading: React.Dispatch<React.SetStateAction<boolean>>;
-  fetchData: () => Promise<any>;
-  fetchProfile: (userId: string, emailStr: string, currentMaintenance: boolean, roomsData: Room[]) => Promise<void>;
   isMaintenance: boolean;
+  fetchData: () => Promise<{ loadedScenarios: any[]; formattedRooms: Room[] }>;
+  fetchProfile: (userId: string, emailStr: string, currentMaintenance: boolean, roomsData: Room[]) => Promise<void>;
   currentUser: UserProfile | null;
   setCurrentUser: React.Dispatch<React.SetStateAction<UserProfile | null>>;
   setCurrentView: React.Dispatch<React.SetStateAction<ViewState>>;
   setActiveRoom: React.Dispatch<React.SetStateAction<Room | null>>;
   setJoinedCharacter: React.Dispatch<React.SetStateAction<any>>;
   setIsLoading: React.Dispatch<React.SetStateAction<boolean>>;
+  setTargetUserId: React.Dispatch<React.SetStateAction<string>>;
 };
 
 export function useAuth({
-  email, password, setAuthLoading, fetchData, fetchProfile, isMaintenance,
-  currentUser, setCurrentUser, setCurrentView, setActiveRoom, setJoinedCharacter, setIsLoading
+  email, password, setAuthLoading,
+  isMaintenance, fetchData, fetchProfile,
+  currentUser, setCurrentUser, setCurrentView,
+  setActiveRoom, setJoinedCharacter, setIsLoading, setTargetUserId
 }: UseAuthProps) {
 
   const handleEmailAuth = async (e: React.FormEvent) => {
@@ -81,29 +83,9 @@ export function useAuth({
     setJoinedCharacter(null); 
   };
 
-  const updateProfile = async (updates: Partial<UserProfile>) => {
-    if (!currentUser) return;
-    const { error } = await supabase.from('profiles').update({ handle_name: updates.handleName, bio: updates.bio, avatar_url: updates.avatarUrl }).eq('id', currentUser.id);
-    if (error) alert("プロフィールの更新に失敗しました: " + error.message);
-    else setCurrentUser({ ...currentUser, ...updates });
-  };
-
-  const uploadAvatar = async (file: File) => {
-    if (!currentUser) return;
-    setIsLoading(true);
-    try {
-      const fileExt = file.name.split('.').pop();
-      const fileName = `${currentUser.id}_${Date.now()}.${fileExt}`;
-      const { error } = await supabase.storage.from('avatars').upload(fileName, file);
-      if (error) throw error;
-      const { data } = supabase.storage.from('avatars').getPublicUrl(fileName);
-      await updateProfile({ avatarUrl: data.publicUrl });
-      alert("アイコン画像を更新しました！");
-    } catch (e: any) {
-      alert("アップロード失敗: " + e.message);
-    } finally {
-      setIsLoading(false);
-    }
+  const openUserProfile = (userId: string) => { 
+    setTargetUserId(userId); 
+    setCurrentView("userProfile"); 
   };
 
   const addFriend = async (targetId: string) => {
@@ -132,16 +114,42 @@ export function useAuth({
     if (!error) { setCurrentUser({ ...currentUser, blockedUserIds: newBlocked }); alert("ブロックを解除しました。"); }
   };
 
+  const updateProfile = async (updates: Partial<UserProfile>) => {
+    if (!currentUser) return;
+    const { error } = await supabase.from('profiles').update({ handle_name: updates.handleName, bio: updates.bio, avatar_url: updates.avatarUrl }).eq('id', currentUser.id);
+    if (error) alert("プロフィールの更新に失敗しました: " + error.message);
+    else setCurrentUser({ ...currentUser, ...updates });
+  };
+
+  const uploadAvatar = async (file: File) => {
+    if (!currentUser) return;
+    setIsLoading(true);
+    try {
+      const fileExt = file.name.split('.').pop();
+      const fileName = `${currentUser.id}_${Date.now()}.${fileExt}`;
+      const { error } = await supabase.storage.from('avatars').upload(fileName, file);
+      if (error) throw error;
+      const { data } = supabase.storage.from('avatars').getPublicUrl(fileName);
+      await updateProfile({ avatarUrl: data.publicUrl });
+      alert("アイコン画像を更新しました！");
+    } catch (e: any) {
+      alert("アップロード失敗: " + e.message);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
   return {
     handleEmailAuth,
     handleEmailSignUp,
     handleProfileSetup,
     handleGoogleAuth,
     handleLogout,
-    updateProfile,
-    uploadAvatar,
+    openUserProfile,
     addFriend,
     blockUser,
-    unblockUser
+    unblockUser,
+    updateProfile,
+    uploadAvatar
   };
 }
