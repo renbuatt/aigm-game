@@ -27,6 +27,7 @@ import RoomConfigModal from "../components/modals/RoomConfigModal";
 import NovelSettingsModal from "../components/modals/NovelSettingsModal";
 import AdVideoModal from "../components/modals/AdVideoModal";
 
+// ★ カスタムフック
 import { useAdmin } from "../hooks/useAdmin";
 import { useAuth } from "../hooks/useAuth";
 import { useScenario } from "../hooks/useScenario";
@@ -195,7 +196,7 @@ export default function Home() {
     adminExecuteBan, adminUnbanUser, adminSuspendUser, adminUnsuspendUser,
     adminExecuteScenarioBan, adminUnbanScenario, adminDeleteScenario,
     executeCreateTester, adminSendMailToUser,
-    adminGrantItem, adminSendMailToAll, grantItemToAll 
+    adminGrantItem, adminSendMailToAll, grantItemToAll
   } = useAdmin({
     scenarios, fetchData, isMaintenance, setIsMaintenance,
     isTicketSystemEnabled, setIsTicketSystemEnabled, setGeminiFlashModel,
@@ -222,7 +223,6 @@ export default function Home() {
     setCurrentView
   });
 
-  // ★ プレイ書庫保存時のチケット消費処理（インターセプト）
   const saveToArchive = async () => {
     if (isTicketSystemEnabled && currentUser) {
       const isExempt = isMaintenance && (currentUser.isAdmin || currentUser.isTester);
@@ -255,7 +255,6 @@ export default function Home() {
     if (joinedUserIds.some((id: string) => myBlockedIds.includes(id))) return null;
     if (blockedMeIds.includes(hostId)) return null;
     
-    // ★ 言語バッジだけを付与（将来のEN/ZHビュー用にデータの上書きはしない）
     let displayScenario = { ...room.scenario };
     let langBadge = "🇯🇵 ";
     
@@ -579,10 +578,10 @@ export default function Home() {
     if (!currentUser || !adModal.scenario) return;
     const scenario = adModal.scenario;
 
-    // ★追加：お試しプレイの言語選択
     const langInput = prompt("お試しプレイの言語を番号で選択してください。\n[ 1: 日本語 / 2: English / 3: 中文 ]", "1");
-    if (!langInput) return; // キャンセル時
-    let selectedLang = "ja";
+    if (!langInput) return;
+    
+    let selectedLang: "ja" | "en" | "zh" = "ja";
     if (langInput === "2") selectedLang = "en";
     if (langInput === "3") selectedLang = "zh";
 

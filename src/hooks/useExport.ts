@@ -57,7 +57,6 @@ export function useExport({
     }
   };
 
-  // ★ 型を厳密に合わせてエラーを解消
   const handleStartNovel = async (lang: "ja" | "en" | "zh" | string = 'ja') => {
     if (!currentUser || !activeRoom || !activeRoom.scenario) return;
     
@@ -118,7 +117,6 @@ ${chatLogs}`;
     }
   };
 
-  // ★ UI側（LibraryViewなど）が要求する正しい型シグネチャに合わせる
   const executeExport = async (
     title: string, 
     messagesArg: any[], 
